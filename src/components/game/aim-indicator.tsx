@@ -21,7 +21,6 @@ export function AimIndicator({ rotation }: AimIndicatorProps) {
         className="opacity-50"
       >
         <path
-          transform="scale(-1, 1)"
           d="M 35.35 35.35 A 50 50 0 0 1 35.35 -35.35" // A 90 degree arc
           fill="none"
           stroke="hsl(var(--primary))"
@@ -29,7 +28,6 @@ export function AimIndicator({ rotation }: AimIndicatorProps) {
           strokeLinecap="round"
         />
         <polygon
-          transform="scale(-1, 1)"
           points="50,-5 56,0 50,5"
           className="fill-primary"
         />
