@@ -44,6 +44,8 @@ export interface StellarBaseData {
   hull: number;
 }
 
+export type EnemyAiState = 'patrolling' | 'chasing' | 'searching' | 'fleeing';
+
 export type EnemyState = {
   id: number;
   x: number;
@@ -53,7 +55,9 @@ export type EnemyState = {
   health: number;
   maxHealth: number;
   lastShotTimestamp: number;
-  isAggro: boolean;
+  aiState: EnemyAiState;
+  lastKnownPlayerPosition: { x: number, y: number } | null;
+  stateChangeTimestamp: number;
   energy: number;
   maxEnergy: number;
   cargo: number;
