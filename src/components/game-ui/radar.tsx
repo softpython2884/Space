@@ -116,7 +116,7 @@ export function Radar({ playerPosition, enemies, stations, asteroids, radarRange
                 </div>
                 
                 {enemies.map(e => renderObjectOnRadar(e, `enemy-${e.id}`, getEnemyIcon(e)))}
-                {stations.map(s => renderObjectOnRadar(s, `station-${s.id}`, <RadarDot color="bg-blue-400" size="w-4 h-4" type="square" pulse />))}
+                {stations.map(s => renderObjectOnRadar(s, `station-${s.id}`, <RadarDot color="bg-blue-400" size="w-3 h-3" pulse />))}
                 {asteroids.map(a => renderObjectOnRadar(a, `asteroid-${a.id}`, <RadarDot color="bg-gray-500" />))}
             </div>
 

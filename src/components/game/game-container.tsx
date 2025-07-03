@@ -58,7 +58,7 @@ const FRIGATE_COLLISION_RADIUS = 30;
 const STAFF_COLLISION_RADIUS = 25;
 const DEBRIS_COLLISION_RADIUS = 20;
 const STATION_COLLISION_RADIUS = 75;
-const ASTEROID_COLLISION_RADIUS = 0.3;
+const ASTEROID_COLLISION_RADIUS = 0.25; // Reduced from 0.3 for more forgiving hitboxes
 
 const PLAYER_PROJECTILE_DAMAGE = 10;
 const ENEMY_PROJECTILE_DAMAGE = 5;
@@ -66,6 +66,7 @@ const ENEMY_PROJECTILE_DAMAGE = 5;
 const ASTEROID_COLLISION_DAMAGE = 5;
 const ENEMY_COLLISION_DAMAGE = 10;
 const STATION_COLLISION_DAMAGE = 20;
+const COLLISION_SPEED_THRESHOLD = 1; // Min speed to take collision damage
 
 const ENERGY_PER_SHOT = 2;
 const LOW_HEALTH_THRESHOLD = 30;
@@ -84,7 +85,7 @@ const CRUISE_ENERGY_COST = 50;
 const CRUISE_COOLDOWN_MS = 5000;
 
 // Shield Mode Constants
-const SHIELD_ENERGY_DRAIN_RATE = 0.01;
+const SHIELD_ENERGY_DRAIN_RATE = 0.005; // Reduced drain
 const SHIELD_DAMAGE_TO_ENERGY_COST = 3;
 
 // Mode Switching Constants
@@ -206,6 +207,9 @@ export function GameContainer() {
   const asteroidsRef = useRef(asteroids);
   useEffect(() => { asteroidsRef.current = asteroids; }, [asteroids]);
 
+  const stationsRef = useRef(stations);
+  useEffect(() => { stationsRef.current = stations; }, [stations]);
+
   const playerProjectilesRef = useRef(playerProjectiles);
   useEffect(() => { playerProjectilesRef.current = playerProjectiles; }, [playerProjectiles]);
   
@@ -259,9 +263,14 @@ export function GameContainer() {
     resetGame();
   }, []);
 
-  const handleActionSelect = (action: PlayerActionType, targetId: number) => {
+  const handleActionSelect = (action: PlayerActionType | 'open_station_menu', targetId: number) => {
     setContextMenu(null);
     if (playerActionRef.current) return;
+
+    if (action === 'open_station_menu') {
+        setIsStationMenuOpen(true);
+        return;
+    }
 
     const targetEnemy = enemiesRef.current.find(e => e.id === targetId);
 
@@ -272,7 +281,7 @@ export function GameContainer() {
       case 'pillaging':
         if (targetEnemy) {
           if (playerDataRef.current.energy < PILLAGE_ENERGY_COST) {
-            toast({ variant: "destructive", title: "Not enough energy to pillage." });
+            // toast({ variant: "destructive", title: "Not enough energy to pillage." });
             return;
           }
           setPlayerData(d => ({ ...d, energy: d.energy - PILLAGE_ENERGY_COST }));
@@ -283,11 +292,11 @@ export function GameContainer() {
       case 'boarding':
         if (targetEnemy) {
             if (targetEnemy.isAlly) {
-                toast({ title: "Target is already an ally." });
+                // toast({ title: "Target is already an ally." });
                 return;
             }
           if (playerDataRef.current.energy < BOARDING_ENERGY_COST) {
-            toast({ variant: "destructive", title: "Not enough energy to board." });
+            // toast({ variant: "destructive", title: "Not enough energy to board." });
             return;
           }
           setPlayerData(d => ({ ...d, energy: d.energy - BOARDING_ENERGY_COST }));
@@ -393,7 +402,7 @@ export function GameContainer() {
             setIsSettingsOpen(open => !open);
             setAutoMoveTarget(null);
             setContextMenu(null);
-            if (!playerActionRef.current) setPlayerAction(null);
+            if (playerActionRef.current) setPlayerAction(null);
             return;
         }
         if (isSettingsOpen || isGameOver || isStationMenuOpen) return;
@@ -455,6 +464,13 @@ export function GameContainer() {
             return;
           }
         }
+        for (const station of stationsRef.current) {
+            const distance = Math.hypot(clickWorldX - station.x, clickWorldY - station.y);
+            if (distance < STATION_INTERACTION_RADIUS) {
+              setContextMenu({ x: event.clientX, y: event.clientY, targetId: station.id, targetType: 'station' });
+              return;
+            }
+          }
       }
     };
     
@@ -540,7 +556,6 @@ export function GameContainer() {
     const distanceToStation = Math.hypot(mainStation.x - playerPosition.x, mainStation.y - playerPosition.y);
     const currentlyDocked = distanceToStation < STATION_INTERACTION_RADIUS;
     
-    if (currentlyDocked && !isDocked) setIsStationMenuOpen(true);
     if (!currentlyDocked && isDocked) setIsStationMenuOpen(false);
 
     setIsDocked(currentlyDocked);
@@ -562,16 +577,11 @@ export function GameContainer() {
         const { type, targetId, startTime, duration } = playerActionRef.current;
         const now = timestamp;
         let isActionFinished = false;
-
-        const handleActionCompletion = () => {
-            setPlayerAction(null);
-        };
         
         if (type === 'mining') {
           const targetAsteroid = asteroidsRef.current.find(a => a.id === targetId);
           const distanceToTarget = targetAsteroid ? Math.hypot(targetAsteroid.x - playerPositionRef.current.x, targetAsteroid.y - playerPositionRef.current.y) : Infinity;
           if (!targetAsteroid || distanceToTarget > ACTION_MAX_RANGE) {
-              if (targetAsteroid) toast({ title: "Mining cancelled", description: "Target out of range." });
               isActionFinished = true;
           } else if (now - startTime > duration) {
             setAsteroids(prev => prev.filter(a => a.id !== targetId));
@@ -584,7 +594,6 @@ export function GameContainer() {
             const targetEnemy = enemiesRef.current.find(e => e.id === targetId);
             const distanceToTarget = targetEnemy ? Math.hypot(targetEnemy.x - playerPositionRef.current.x, targetEnemy.y - playerPositionRef.current.y) : Infinity;
             if (!targetEnemy || distanceToTarget > ACTION_MAX_RANGE) {
-                if (targetEnemy) toast({ title: "Pillaging cancelled", description: "Target out of range." });
                 isActionFinished = true;
             } else if (now - startTime > duration) {
               if (targetEnemy) {
@@ -608,7 +617,6 @@ export function GameContainer() {
             const distanceToTarget = targetEnemy ? Math.hypot(targetEnemy.x - playerPositionRef.current.x, targetEnemy.y - playerPositionRef.current.y) : Infinity;
 
             if (!targetEnemy || distanceToTarget > ACTION_MAX_RANGE * 1.5) {
-                if(targetEnemy) toast({ title: "Boarding cancelled", description: "Target out of range." });
                 isActionFinished = true;
             } else {
                 const stickDistance = PLAYER_COLLISION_RADIUS + ENEMY_COLLISION_RADIUS + 5;
@@ -621,17 +629,17 @@ export function GameContainer() {
 
                 if (now - startTime > duration) {
                     if (Math.random() < BOARDING_SUCCESS_CHANCE) {
-                        toast({ title: "Boarding Successful!", description: `${targetEnemy.type} has joined your side.` });
                         setEnemies(prev => prev.map(e => e.id === targetId ? { ...e, isAlly: true, aiState: 'following' } : e));
                     } else {
-                        toast({ variant: "destructive", title: "Boarding Failed!", description: "Your ship took damage." });
                         applyDamage(BOARDING_FAIL_DAMAGE);
                     }
                     isActionFinished = true;
                 }
             }
         }
-        if (isActionFinished) handleActionCompletion();
+        if (isActionFinished) {
+            setPlayerAction(null);
+        };
       }
       
       if (cruiseStateRef.current === 'charging') {
@@ -669,7 +677,9 @@ export function GameContainer() {
       const aimAngle = Math.atan2(mouseWorldY - playerPositionRef.current.y, mouseWorldX - playerPositionRef.current.x) * (180 / Math.PI);
       setAimRotation(aimAngle);
       
-      if (isLeftMouseDown.current) setPlayerRotation(aimAngle);
+      if (isLeftMouseDown.current) {
+        setPlayerRotation(aimAngle);
+      }
 
       let accelVec = { x: 0, y: 0 };
       const isMovementDisabled = shipModeRef.current === 'scan' || cruiseStateRef.current === 'charging';
@@ -693,7 +703,8 @@ export function GameContainer() {
         } else {
             const cos = Math.cos(rotRad);
             const sin = Math.sin(rotRad);
-            switch (controlScheme) {
+            const moveControlScheme = shipModeRef.current === 'stealth' ? 'absolute' : controlScheme;
+            switch (moveControlScheme) {
                 case 'relative':
                   if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) { accelVec.x += cos * currentAccel; accelVec.y += sin * currentAccel; }
                   if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) { accelVec.x -= cos * REVERSE_ACCELERATION; accelVec.y -= sin * REVERSE_ACCELERATION; }
@@ -728,6 +739,7 @@ export function GameContainer() {
       }
 
       const calculatedSpeed = Math.hypot(newVx, newVy);
+      setSpeed(calculatedSpeed);
 
       if (calculatedSpeed > currentMaxSpeed) {
         newVx = (newVx / calculatedSpeed) * currentMaxSpeed;
@@ -737,7 +749,6 @@ export function GameContainer() {
       const newVelocity = { x: newVx, y: newVy };
       
       setVelocity(newVelocity);
-      setSpeed(Math.hypot(newVelocity.x, newVelocity.y));
       setPlayerPosition(p => ({
         x: Math.max(40, Math.min(MAP_WIDTH - 40, p.x + newVelocity.x)),
         y: Math.max(40, Math.min(MAP_HEIGHT - 40, p.y + newVelocity.y)),
@@ -815,6 +826,7 @@ export function GameContainer() {
           else if (enemy.type === 'staff') collisionRadius = STAFF_COLLISION_RADIUS;
 
           let isHit = false;
+          // Allies cannot be hit by player, enemies can't be hit by other enemies.
           if (!updatedEnemy.isAlly) {
             for (const proj of playerProjectilesRef.current) {
                 if (hitPlayerProjectileIds.has(proj.id)) continue;
@@ -873,8 +885,18 @@ export function GameContainer() {
                     if (canSeePlayer) {
                         updatedEnemy.lastKnownPlayerPosition = { ...playerPositionRef.current };
                         const angleToPlayer = Math.atan2(playerPositionRef.current.y - updatedEnemy.y, playerPositionRef.current.x - updatedEnemy.x);
-                        updatedEnemy.vx = Math.cos(angleToPlayer) * ENEMY_SPEED;
-                        updatedEnemy.vy = Math.sin(angleToPlayer) * ENEMY_SPEED;
+                        
+                        const preferredDistance = ENEMY_AGGRO_RADIUS * 0.6;
+                        const rammingHealthAdvantage = updatedEnemy.health > playerDataRef.current.health * 1.5;
+
+                        if (distanceToPlayer > preferredDistance || rammingHealthAdvantage) {
+                             updatedEnemy.vx = Math.cos(angleToPlayer) * ENEMY_SPEED;
+                             updatedEnemy.vy = Math.sin(angleToPlayer) * ENEMY_SPEED;
+                        } else {
+                             updatedEnemy.vx *= FRICTION;
+                             updatedEnemy.vy *= FRICTION;
+                        }
+
                         if (timestamp - updatedEnemy.lastShotTimestamp > ENEMY_FIRE_RATE_MS && updatedEnemy.energy >= ENEMY_ENERGY_PER_SHOT) {
                             newEnemyProjectiles.push({ id: timestamp + updatedEnemy.id, x: updatedEnemy.x, y: updatedEnemy.y, rotation: angleToPlayer * (180 / Math.PI) });
                             updatedEnemy.lastShotTimestamp = timestamp;
@@ -942,46 +964,52 @@ export function GameContainer() {
       if (newEnemyProjectiles.length > 0) setEnemyProjectiles(prev => [...prev, ...newEnemyProjectiles]);
       if (hitPlayerProjectileIds.size > 0) setPlayerProjectiles(prev => prev.filter(p => !hitPlayerProjectileIds.has(p.id)));
       
+      let playerVelocityUpdate = { ...velocityRef.current };
       if (timestamp - lastCollisionTimestamp > 500) {
-          let collisionOccurred = false;
-          let damage = 0;
           const speedFactor = 0.5 + (speed / (currentMaxSpeed || MAX_SPEED)) * 0.5;
+          let collisionDamage = 0;
+          let repulsionAngle = 0;
+          let repulsionForce = 0.8;
+
           for (const asteroid of asteroids) {
               const distance = Math.hypot(asteroid.x - playerPositionRef.current.x, asteroid.y - playerPositionRef.current.y);
               if (distance < (asteroid.size * ASTEROID_COLLISION_RADIUS) + PLAYER_COLLISION_RADIUS) {
-                  damage = ASTEROID_COLLISION_DAMAGE * speedFactor;
-                  collisionOccurred = true;
+                  collisionDamage = ASTEROID_COLLISION_DAMAGE * speedFactor;
+                  repulsionAngle = Math.atan2(playerPositionRef.current.y - asteroid.y, playerPositionRef.current.x - asteroid.x);
                   break;
               }
           }
-          if (!collisionOccurred) {
-              for (const enemy of enemiesRef.current) {
-                  if (enemy.isAlly) continue;
-                  let enemyRadius = ENEMY_COLLISION_RADIUS;
-                  if (enemy.type === 'frigate') enemyRadius = FRIGATE_COLLISION_RADIUS;
-                  else if (enemy.type === 'staff') enemyRadius = STAFF_COLLISION_RADIUS;
-                  const distance = Math.hypot(enemy.x - playerPositionRef.current.x, enemy.y - playerPositionRef.current.y);
-                  if (distance < enemyRadius + PLAYER_COLLISION_RADIUS) {
-                      damage = ENEMY_COLLISION_DAMAGE * speedFactor;
-                      collisionOccurred = true;
-                      break;
-                  }
+          for (let i = 0; i < processedEnemies.length; i++) {
+              let enemy = processedEnemies[i];
+              if (enemy.isAlly) continue;
+              let enemyRadius = ENEMY_COLLISION_RADIUS;
+              if (enemy.type === 'frigate') enemyRadius = FRIGATE_COLLISION_RADIUS;
+              else if (enemy.type === 'staff') enemyRadius = STAFF_COLLISION_RADIUS;
+              const distance = Math.hypot(enemy.x - playerPositionRef.current.x, enemy.y - playerPositionRef.current.y);
+              if (distance < enemyRadius + PLAYER_COLLISION_RADIUS) {
+                  collisionDamage = ENEMY_COLLISION_DAMAGE * speedFactor;
+                  repulsionAngle = Math.atan2(playerPositionRef.current.y - enemy.y, playerPositionRef.current.x - enemy.x);
+                  enemy.vx -= Math.cos(repulsionAngle) * repulsionForce;
+                  enemy.vy -= Math.sin(repulsionAngle) * repulsionForce;
+                  break;
               }
           }
-          if (!collisionOccurred) {
-              for (const station of stations) {
-                  const distance = Math.hypot(station.x - playerPositionRef.current.x, station.y - playerPositionRef.current.y);
-                  if (distance < STATION_COLLISION_RADIUS + PLAYER_COLLISION_RADIUS) {
-                      damage = STATION_COLLISION_DAMAGE * speedFactor;
-                      collisionOccurred = true;
-                      break;
-                  }
+          for (const station of stations) {
+              const distance = Math.hypot(station.x - playerPositionRef.current.x, station.y - playerPositionRef.current.y);
+              if (distance < STATION_COLLISION_RADIUS + PLAYER_COLLISION_RADIUS) {
+                  collisionDamage = STATION_COLLISION_DAMAGE * speedFactor;
+                  repulsionAngle = Math.atan2(playerPositionRef.current.y - station.y, playerPositionRef.current.x - station.x);
+                  break;
               }
           }
-          if (collisionOccurred) {
+          if (collisionDamage > 0) {
               lastCollisionTimestamp = timestamp;
-              applyDamage(damage);
-              setVelocity(v => ({ x: -v.x * 0.5, y: -v.y * 0.5 }));
+              if (speed > COLLISION_SPEED_THRESHOLD) {
+                applyDamage(collisionDamage);
+              }
+              playerVelocityUpdate.x += Math.cos(repulsionAngle) * repulsionForce;
+              playerVelocityUpdate.y += Math.sin(repulsionAngle) * repulsionForce;
+              setVelocity(playerVelocityUpdate);
           }
       }
       
@@ -1035,11 +1063,8 @@ export function GameContainer() {
             const availableSpace = maxCargo - d.cargo.current;
             const amountToAdd = Math.min(cargoToAdd, availableSpace);
             
-            // For simplicity, we assume ore is prioritized if space is limited.
             const oreToAdd = Math.min(collectedResources.ore, amountToAdd);
             const gasToAdd = Math.min(collectedResources.gas, amountToAdd - oreToAdd);
-
-            if(cargoToAdd > availableSpace) toast({variant: 'destructive', title: "Cargo Hold Full"});
 
             return {
               ...d,
