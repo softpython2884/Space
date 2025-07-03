@@ -3,7 +3,7 @@ import type { PlayerData } from "@/lib/types";
 export const INITIAL_PLAYER_DATA: PlayerData = {
   level: 5,
   ship: {
-    class: "Fighter",
+    class: "Chasseur",
     role: "Combat",
     size: "S",
     upgrades: {

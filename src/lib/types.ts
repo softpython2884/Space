@@ -1,10 +1,14 @@
+'use server';
+
 export type ShipType = "Combat" | "Mining" | "Support" | "Galleon";
 export type ControlScheme = 'relative' | 'absolute' | 'hybrid';
 export type ShipMode = 'normal' | 'cruise' | 'stealth' | 'scan';
 
 export type ShipSize = 'S' | 'M' | 'L' | 'XL';
 export type ShipRole = 'Combat' | 'Commerce' | 'Mining' | 'Construction' | 'Support';
-export type ShipClass = 'Fighter' | 'Frigate' | 'Destroyer' | 'Corvette' | 'Galleon' | 'Hauler' | 'Miner';
+
+// Player ship types defined for future use
+export type PlayerShipClass = 'Chasseur' | 'Intercepteur' | 'Frégate' | 'Destroyer' | 'Porteur' | 'Cargo' | 'Mineur';
 
 export interface Resources {
   money: number;
@@ -13,7 +17,7 @@ export interface Resources {
 }
 
 export interface ShipData {
-    class: ShipClass;
+    class: PlayerShipClass;
     role: ShipRole;
     size: ShipSize;
     upgrades: Record<string, number>;
@@ -45,9 +49,11 @@ export interface StellarBaseData {
 }
 
 export type EnemyAiState = 'patrolling' | 'chasing' | 'searching' | 'fleeing';
+export type BotShipType = 'chasseur' | 'frigate' | 'staff';
 
 export type EnemyState = {
   id: number;
+  type: BotShipType;
   x: number;
   y: number;
   vx: number;
