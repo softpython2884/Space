@@ -54,6 +54,10 @@ export type EnemyState = {
   maxHealth: number;
   lastShotTimestamp: number;
   isAggro: boolean;
+  energy: number;
+  maxEnergy: number;
+  cargo: number;
+  lastEnergyUseTimestamp: number;
 };
 
 export type AsteroidState = {

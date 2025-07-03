@@ -77,6 +77,12 @@ const CRUISE_COOLDOWN_MS = 5000; // 5 seconds after cruise ends
 // Mode Switching Constants
 const MODE_CHANGE_COOLDOWN_MS = 2000; // 2 seconds between any mode change
 
+// Enemy AI Constants
+const ENEMY_MAX_ENERGY = 100;
+const ENEMY_ENERGY_PER_SHOT = 10;
+const ENEMY_ENERGY_REGEN_RATE = 0.05;
+const ENEMY_ENERGY_REGEN_DELAY_MS = 3000;
+
 
 type ProjectileState = {
   id: number;
@@ -88,11 +94,11 @@ type ProjectileState = {
 export type EnemyState = EnemyStateType;
 
 const generateInitialEnemies = (): EnemyState[] => [
-    { id: 1, x: MAP_WIDTH / 2 + 300, y: MAP_HEIGHT / 2, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, isAggro: false },
-    { id: 2, x: MAP_WIDTH / 2 - 400, y: MAP_HEIGHT / 2 - 200, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, isAggro: false },
-    { id: 3, x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 + 500, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, isAggro: false },
-    { id: 4, x: MAP_WIDTH / 2 + 500, y: MAP_HEIGHT / 2 - 300, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, isAggro: false },
-    { id: 5, x: MAP_WIDTH - 500, y: 500, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, isAggro: false }, // Out of initial radar range
+    { id: 1, x: MAP_WIDTH / 2 + 300, y: MAP_HEIGHT / 2, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, isAggro: false, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0 },
+    { id: 2, x: MAP_WIDTH / 2 - 400, y: MAP_HEIGHT / 2 - 200, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, isAggro: false, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0 },
+    { id: 3, x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 + 500, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, isAggro: false, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0 },
+    { id: 4, x: MAP_WIDTH / 2 + 500, y: MAP_HEIGHT / 2 - 300, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, isAggro: false, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0 },
+    { id: 5, x: MAP_WIDTH - 500, y: 500, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, isAggro: false, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0 }, // Out of initial radar range
 ];
 
 const generateInitialAsteroids = (): AsteroidState[] => [
@@ -176,6 +182,12 @@ export function GameContainer() {
 
   const cruiseStateRef = useRef(cruiseState);
   useEffect(() => { cruiseStateRef.current = cruiseState; }, [cruiseState]);
+
+  const debrisRef = useRef(debris);
+  useEffect(() => { debrisRef.current = debris; }, [debris]);
+
+  const shipModeRef = useRef(shipMode);
+  useEffect(() => { shipModeRef.current = shipMode; }, [shipMode]);
 
   const resetGame = () => {
     setPlayerPosition({ x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 });
@@ -272,7 +284,7 @@ export function GameContainer() {
       }
 
       if (event.button === 0) {
-        isLeftMouseDown.current = true;
+        // isLeftMouseDown.current = true; // This is now disabled for shooting
         
         const clickWorldX = playerPositionRef.current.x + (mousePosition.current.x - viewSize.width / 2) / zoom;
         const clickWorldY = playerPositionRef.current.y + (mousePosition.current.y - viewSize.height / 2) / zoom;
@@ -295,7 +307,7 @@ export function GameContainer() {
       }
     };
     const handleMouseUp = (event: MouseEvent) => {
-      if (event.button === 0) isLeftMouseDown.current = false;
+      // if (event.button === 0) isLeftMouseDown.current = false;
     };
     
     const handleWheel = (event: WheelEvent) => {
@@ -376,7 +388,6 @@ export function GameContainer() {
   // Main game loop
   useEffect(() => {
     let animationFrameId: number;
-    let lastPlayerShotTimestamp = 0;
     let lastCollisionTimestamp = 0;
 
     const gameLoop = (timestamp: number) => {
@@ -502,17 +513,18 @@ export function GameContainer() {
       } else if (currentTarget) {
         const angleToTarget = Math.atan2(currentTarget.y - playerPositionRef.current.y, currentTarget.x - playerPositionRef.current.x) * (180 / Math.PI);
         setPlayerRotation(angleToTarget);
-      } else if (isLeftMouseDown.current && cruiseStateRef.current === 'idle' && (shipMode === 'normal' || shipMode === 'stealth')) {
+      } else if (shipModeRef.current !== 'stealth' && isLeftMouseDown.current && cruiseStateRef.current === 'idle') {
         setPlayerRotation(aimAngle);
+      } else if (shipModeRef.current === 'stealth') {
+         setPlayerRotation(aimAngle);
       }
       
       // --- PLAYER SHOOTING ---
       const canShoot = playerDataRef.current.energy >= ENERGY_PER_SHOT && (shipMode === 'normal' || shipMode === 'stealth') && cruiseStateRef.current === 'idle';
       const isShooting = (currentTarget || keysPressed.current.has(' ')) && canShoot;
-      if (isShooting && timestamp - lastPlayerShotTimestamp > FIRE_RATE_MS) {
-        lastPlayerShotTimestamp = timestamp;
-        lastEnergyUseTimestamp.current = timestamp;
+      if (isShooting && timestamp - lastFiredTimestamp.current > FIRE_RATE_MS) {
         lastFiredTimestamp.current = timestamp;
+        lastEnergyUseTimestamp.current = timestamp;
         setPlayerProjectiles(prev => [...prev, { id: timestamp, x: playerPositionRef.current.x, y: playerPositionRef.current.y, rotation: playerRotationRef.current }]);
         setPlayerData(d => ({ ...d, energy: d.energy - ENERGY_PER_SHOT }));
       }
@@ -541,10 +553,15 @@ export function GameContainer() {
       // --- ENEMY PROCESSING & COMBAT ---
       const newEnemyProjectiles: ProjectileState[] = [];
       const hitPlayerProjectileIds = new Set<number>();
-      const killedEnemies: EnemyState[] = [];
+      const newDebrisFromKills: DebrisType[] = [];
 
-      const updatedEnemiesList = enemiesRef.current.map(enemy => {
+      let processedEnemies = enemiesRef.current.map(enemy => {
           let updatedEnemy = { ...enemy };
+          
+          // Energy Regen
+          if (timestamp - updatedEnemy.lastEnergyUseTimestamp > ENEMY_ENERGY_REGEN_DELAY_MS) {
+              updatedEnemy.energy = Math.min(updatedEnemy.maxEnergy, updatedEnemy.energy + ENEMY_ENERGY_REGEN_RATE);
+          }
           
           // Check for player projectile hits
           let isHit = false;
@@ -563,16 +580,24 @@ export function GameContainer() {
           }
 
           if (updatedEnemy.health <= 0) {
-              killedEnemies.push(updatedEnemy);
-              return null; // Will be filtered out
+              newDebrisFromKills.push({
+                  id: updatedEnemy.id + timestamp,
+                  x: updatedEnemy.x,
+                  y: updatedEnemy.y,
+                  amount: Math.floor(Math.random() * 21) + 5 + updatedEnemy.cargo,
+              });
+              if (updatedEnemy.id === targetIdRef.current) {
+                  setTargetId(null);
+              }
+              return null;
           }
 
           // AI behavior for alive enemies
           const distanceToPlayer = Math.hypot(updatedEnemy.x - playerPositionRef.current.x, updatedEnemy.y - playerPositionRef.current.y);
           
           let aggroRadius = ENEMY_AGGRO_RADIUS;
-          if (shipMode === 'scan') aggroRadius = ENEMY_AGGRO_RADIUS * 1.5;
-          else if (shipMode === 'stealth') aggroRadius = STEALTH_AGGRO_RADIUS;
+          if (shipModeRef.current === 'scan') aggroRadius = ENEMY_AGGRO_RADIUS * 1.5;
+          else if (shipModeRef.current === 'stealth') aggroRadius = STEALTH_AGGRO_RADIUS;
           
           const shouldBeAggro = updatedEnemy.isAggro || distanceToPlayer < aggroRadius;
           
@@ -581,22 +606,20 @@ export function GameContainer() {
               
               const angleToPlayer = Math.atan2(playerPositionRef.current.y - updatedEnemy.y, playerPositionRef.current.x - updatedEnemy.x);
               
-              // Move towards player
               updatedEnemy.vx = Math.cos(angleToPlayer) * ENEMY_SPEED;
               updatedEnemy.vy = Math.sin(angleToPlayer) * ENEMY_SPEED;
 
-              // Shoot at player
-              if (timestamp - updatedEnemy.lastShotTimestamp > ENEMY_FIRE_RATE_MS) {
+              if (timestamp - updatedEnemy.lastShotTimestamp > ENEMY_FIRE_RATE_MS && updatedEnemy.energy >= ENEMY_ENERGY_PER_SHOT) {
                   newEnemyProjectiles.push({ id: timestamp + updatedEnemy.id, x: updatedEnemy.x, y: updatedEnemy.y, rotation: angleToPlayer * (180 / Math.PI) });
                   updatedEnemy.lastShotTimestamp = timestamp;
+                  updatedEnemy.energy -= ENEMY_ENERGY_PER_SHOT;
+                  updatedEnemy.lastEnergyUseTimestamp = timestamp;
               }
           } else {
-              // Drift peacefully
               updatedEnemy.vx *= FRICTION;
               updatedEnemy.vy *= FRICTION;
           }
           
-          // Update position
           updatedEnemy.x += updatedEnemy.vx;
           updatedEnemy.y += updatedEnemy.vy;
           
@@ -604,39 +627,18 @@ export function GameContainer() {
 
       }).filter(Boolean) as EnemyState[];
 
-      // Apply state updates
-      setEnemies(updatedEnemiesList);
-
       if (newEnemyProjectiles.length > 0) {
         setEnemyProjectiles(prev => [...prev, ...newEnemyProjectiles]);
       }
-
       if (hitPlayerProjectileIds.size > 0) {
           setPlayerProjectiles(prev => prev.filter(p => !hitPlayerProjectileIds.has(p.id)));
       }
       
-      if (killedEnemies.length > 0) {
-          if (killedEnemies.some(e => e.id === targetIdRef.current)) {
-              setTargetId(null);
-          }
-          const newDebris = killedEnemies.map(e => ({
-              id: e.id + timestamp,
-              x: e.x,
-              y: e.y,
-              amount: Math.floor(Math.random() * 21) + 5,
-          }));
-          setDebris(d => [...d, ...newDebris]);
-      }
-
-
       // --- COLLISION DETECTION ---
-      const collisionCooldown = 1000; // 1 second invulnerability after collision
-      if (timestamp - lastCollisionTimestamp > collisionCooldown) {
+      if (timestamp - lastCollisionTimestamp > 1000) {
           let collisionOccurred = false;
           let damage = 0;
           const speedFactor = 0.5 + (currentSpeed / (currentMaxSpeed || MAX_SPEED)) * 0.5;
-
-          // Player vs. Asteroids
           for (const asteroid of asteroids) {
               const distance = Math.hypot(asteroid.x - playerPositionRef.current.x, asteroid.y - playerPositionRef.current.y);
               if (distance < (asteroid.size * ASTEROID_COLLISION_RADIUS) + PLAYER_COLLISION_RADIUS) {
@@ -645,8 +647,6 @@ export function GameContainer() {
                   break;
               }
           }
-
-          // Player vs. Enemies
           if (!collisionOccurred) {
               for (const enemy of enemiesRef.current) {
                   const distance = Math.hypot(enemy.x - playerPositionRef.current.x, enemy.y - playerPositionRef.current.y);
@@ -657,8 +657,6 @@ export function GameContainer() {
                   }
               }
           }
-
-          // Player vs. Stations
           if (!collisionOccurred) {
               for (const station of stations) {
                   const distance = Math.hypot(station.x - playerPositionRef.current.x, station.y - playerPositionRef.current.y);
@@ -669,7 +667,6 @@ export function GameContainer() {
                   }
               }
           }
-
           if (collisionOccurred) {
               setPlayerData(d => ({ ...d, health: Math.max(0, d.health - damage) }));
               lastCollisionTimestamp = timestamp;
@@ -677,7 +674,6 @@ export function GameContainer() {
           }
       }
       
-      // Enemy Projectiles vs. Player
       const hitEnemyProjectileIds = new Set<number>();
       let playerHealth = playerDataRef.current.health;
       for (const proj of enemyProjectilesRef.current) {
@@ -693,19 +689,41 @@ export function GameContainer() {
         setEnemyProjectiles(prev => prev.filter(p => !hitEnemyProjectileIds.has(p.id)));
       }
       
-      // Player vs. Debris
-      let cargo = playerDataRef.current.cargo;
-      setDebris(currentDebris => currentDebris.filter(d => {
-        const distance = Math.hypot(d.x - playerPositionRef.current.x, d.y - playerPositionRef.current.y);
-        if (distance < DEBRIS_COLLISION_RADIUS + PLAYER_COLLISION_RADIUS) {
-            if (cargo.current < cargo.max) {
-                cargo.current = Math.min(cargo.max, cargo.current + d.amount);
-            }
-            return false;
+      // --- UNIFIED DEBRIS COLLECTION ---
+      let cargo = { ...playerDataRef.current.cargo };
+      const collectedDebrisIds = new Set<number>();
+      const currentDebris = [...debrisRef.current, ...newDebrisFromKills];
+      
+      for (const d of currentDebris) {
+        // Player collection
+        const playerDist = Math.hypot(d.x - playerPositionRef.current.x, d.y - playerPositionRef.current.y);
+        if (playerDist < DEBRIS_COLLISION_RADIUS + PLAYER_COLLISION_RADIUS) {
+          if (cargo.current < cargo.max) {
+            cargo.current = Math.min(cargo.max, cargo.current + d.amount);
+          }
+          collectedDebrisIds.add(d.id);
+          continue;
         }
-        return true;
-      }));
-      setPlayerData(d => ({ ...d, cargo: { ...cargo } }));
+        
+        // Enemy collection
+        for (let i = 0; i < processedEnemies.length; i++) {
+          const enemyDist = Math.hypot(d.x - processedEnemies[i].x, d.y - processedEnemies[i].y);
+          if (enemyDist < DEBRIS_COLLISION_RADIUS + ENEMY_COLLISION_RADIUS) {
+            processedEnemies[i] = { ...processedEnemies[i], cargo: processedEnemies[i].cargo + d.amount };
+            collectedDebrisIds.add(d.id);
+            break;
+          }
+        }
+      }
+
+      setPlayerData(d => ({ ...d, cargo }));
+      if (collectedDebrisIds.size > 0) {
+        setDebris(prev => [...prev, ...newDebrisFromKills].filter(d => !collectedDebrisIds.has(d.id)));
+      } else if (newDebrisFromKills.length > 0) {
+        setDebris(prev => [...prev, ...newDebrisFromKills]);
+      }
+      setEnemies(processedEnemies);
+
 
       // --- GAME OVER CHECK ---
       if (playerDataRef.current.health <= 0) {
