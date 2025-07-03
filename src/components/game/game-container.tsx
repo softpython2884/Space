@@ -1143,7 +1143,6 @@ export function GameContainer() {
     <div
       ref={containerRef}
       className={containerClass}
-      data-ui-element="true"
     >
       <div style={{ 
           transform: `translate(${viewSize.width / 2}px, ${viewSize.height / 2}px) scale(${zoom}) translate(${-playerPosition.x}px, ${-playerPosition.y}px)`,
