@@ -9,7 +9,7 @@ import { Minimap } from '../game-ui/minimap';
 import { SpeedIndicator } from '../game-ui/speed-indicator';
 
 const ACCELERATION = 0.1;
-const STRAFE_ACCELERATION = 0.08;
+const STRAFE_ACCELERATION = 0.05;
 const REVERSE_ACCELERATION = 0.06;
 const MAX_SPEED = 6;
 const FRICTION = 0.98;
