@@ -6,9 +6,10 @@ interface StaffShipProps {
   health: number;
   maxHealth: number;
   isTargeted: boolean;
+  isAlly?: boolean;
 }
 
-export function StaffShip({ x, y, health, maxHealth, isTargeted }: StaffShipProps) {
+export function StaffShip({ x, y, health, maxHealth, isTargeted, isAlly }: StaffShipProps) {
     const healthPercentage = (health / maxHealth) * 100;
 
   return (
@@ -25,12 +26,12 @@ export function StaffShip({ x, y, health, maxHealth, isTargeted }: StaffShipProp
           width="50"
           height="30"
           viewBox="0 0 50 30"
-          className="fill-gray-500/80 stroke-gray-300"
-          style={{ filter: isTargeted ? 'drop-shadow(0 0 8px hsl(240 5% 80%))' : 'none' }}
+          className={isAlly ? "fill-blue-500/80 stroke-blue-300" : "fill-gray-500/80 stroke-gray-300"}
+          style={{ filter: isTargeted ? `drop-shadow(0 0 8px hsl(${isAlly ? '210 100% 50%' : '240 5% 80%'}))` : 'none' }}
         >
           <rect x="5" y="10" width="40" height="10" strokeWidth="2" />
-          <rect x="10" y="5" width="8" height="20" className="fill-gray-400/80" />
-          <rect x="32" y="5" width="8" height="20" className="fill-gray-400/80" />
+          <rect x="10" y="5" width="8" height="20" className={isAlly ? "fill-blue-400/80" : "fill-gray-400/80"} />
+          <rect x="32" y="5" width="8" height="20" className={isAlly ? "fill-blue-400/80" : "fill-gray-400/80"} />
           <polygon points="0,15 5,12 5,18" className="fill-cyan-400" />
         </svg>
 
@@ -44,7 +45,7 @@ export function StaffShip({ x, y, health, maxHealth, isTargeted }: StaffShipProp
         
         {/* Targeting indicator */}
         {isTargeted && (
-            <div className="absolute -inset-2 border-2 border-gray-400 rounded-full animate-pulse" />
+            <div className={`absolute -inset-2 border-2 ${isAlly ? 'border-blue-500' : 'border-gray-400'} rounded-full animate-pulse`} />
         )}
       </div>
     </div>
