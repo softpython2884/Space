@@ -1,6 +1,6 @@
 'use client';
 
-import { Shield, Wind, Ghost, Scan } from "lucide-react";
+import { Shield, Wind, Ghost, Scan, ShieldCheck } from "lucide-react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ShipMode } from "@/lib/types";
@@ -20,6 +20,7 @@ const modes: { value: ShipMode; label: string; icon: React.ElementType }[] = [
   { value: 'cruise', label: 'Cruise Mode', icon: Wind },
   { value: 'stealth', label: 'Stealth Mode', icon: Ghost },
   { value: 'scan', label: 'Scan Mode', icon: Scan },
+  { value: 'shield', label: 'Energy Shield', icon: ShieldCheck },
 ];
 
 export function ShipModeSelector({ currentMode, onModeChange, cooldowns, playerEnergy, cruiseEnergyCost, isCruising }: ShipModeSelectorProps) {
@@ -45,12 +46,18 @@ export function ShipModeSelector({ currentMode, onModeChange, cooldowns, playerE
               if (isSpecificCooldown) cooldownProgress = cooldowns.cruise;
           }
 
+          if (mode.value === 'shield' && playerEnergy <= 0) {
+              hasEnoughEnergy = false;
+          }
+
           const isDisabled = (isGeneralCooldown || isSpecificCooldown || !hasEnoughEnergy || isCruising) && mode.value !== currentMode;
 
           let tooltipText = mode.label;
           if (mode.value === 'cruise') {
               if (isSpecificCooldown) tooltipText = `Surchauffe (${Math.ceil((1 - cooldowns.cruise) * 5)}s)`;
               else if (!hasEnoughEnergy) tooltipText = `Énergie insuffisante (${cruiseEnergyCost} requis)`;
+          } else if (mode.value === 'shield' && !hasEnoughEnergy) {
+              tooltipText = `Énergie insuffisante`;
           }
 
           return (

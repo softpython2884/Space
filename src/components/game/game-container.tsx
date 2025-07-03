@@ -78,6 +78,10 @@ const CRUISE_DURATION = 4000; // 4 seconds
 const CRUISE_ENERGY_COST = 50;
 const CRUISE_COOLDOWN_MS = 5000; // 5 seconds after cruise ends
 
+// Shield Mode Constants
+const SHIELD_ENERGY_DRAIN_RATE = 0.05;
+const SHIELD_DAMAGE_TO_ENERGY_COST = 3;
+
 // Mode Switching Constants
 const MODE_CHANGE_COOLDOWN_MS = 2000; // 2 seconds between any mode change
 
@@ -242,6 +246,11 @@ export function GameContainer() {
         }
         setPlayerData(d => ({ ...d, energy: Math.max(0, d.energy - CRUISE_ENERGY_COST) }));
     }
+
+    if (newMode === 'shield' && playerDataRef.current.energy <= 0) {
+        console.warn("Not enough energy to activate shield.");
+        return;
+    }
     
     if (newMode === 'cruise') {
         setShipMode('cruise');
@@ -253,6 +262,17 @@ export function GameContainer() {
     }
 
     modeChangeAvailableAtRef.current = now + MODE_CHANGE_COOLDOWN_MS;
+  };
+
+  const applyDamage = (damage: number) => {
+    setPlayerData(d => {
+        const energyCost = damage * SHIELD_DAMAGE_TO_ENERGY_COST;
+        if (shipModeRef.current === 'shield' && d.energy >= energyCost) {
+            lastEnergyUseTimestamp.current = Date.now();
+            return { ...d, energy: Math.max(0, d.energy - energyCost) };
+        }
+        return { ...d, health: Math.max(0, d.health - damage) };
+    });
   };
 
   // Setup event listeners
@@ -376,6 +396,7 @@ export function GameContainer() {
     else if (energy < ENERGY_PER_SHOT) newSystems.weapons = 'Offline';
 
     if (shipMode === 'stealth') newSystems.shields = 'Offline';
+    else if (shipMode === 'shield') newSystems.shields = 'Online';
     else if (health < 50) newSystems.shields = 'Damaged';
     if (health <= 0) newSystems.shields = 'Offline';
     
@@ -530,7 +551,7 @@ export function GameContainer() {
       
       // --- PLAYER SHOOTING ---
       const currentTarget = enemiesRef.current.find(e => e.id === targetIdRef.current);
-      const canShoot = playerDataRef.current.energy >= ENERGY_PER_SHOT && (shipMode === 'normal' || shipMode === 'stealth') && cruiseStateRef.current === 'idle';
+      const canShoot = playerDataRef.current.energy >= ENERGY_PER_SHOT && (shipMode === 'normal' || shipMode === 'stealth' || shipMode === 'shield') && cruiseStateRef.current === 'idle';
       const isShooting = (currentTarget || keysPressed.current.has(' ')) && canShoot;
       if (isShooting && timestamp - lastFiredTimestamp.current > FIRE_RATE_MS) {
         lastFiredTimestamp.current = timestamp;
@@ -539,9 +560,20 @@ export function GameContainer() {
         setPlayerData(d => ({ ...d, energy: d.energy - ENERGY_PER_SHOT }));
       }
 
-      // --- PLAYER STATS REGEN ---
-      if (timestamp - lastEnergyUseTimestamp.current > ENERGY_REGEN_DELAY_MS) {
-        setPlayerData(d => ({ ...d, energy: Math.min(100, d.energy + ENERGY_REGEN_RATE) }));
+      // --- PLAYER STATS REGEN & DRAIN ---
+      if (shipModeRef.current === 'shield') {
+          setPlayerData(d => {
+              if (d.energy > 0) {
+                  lastEnergyUseTimestamp.current = timestamp;
+                  return { ...d, energy: Math.max(0, d.energy - SHIELD_ENERGY_DRAIN_RATE) };
+              }
+              return d;
+          });
+          if (playerDataRef.current.energy <= 0) {
+              setShipMode('normal'); // Deactivate shield if out of power
+          }
+      } else if (timestamp - lastEnergyUseTimestamp.current > ENERGY_REGEN_DELAY_MS) {
+          setPlayerData(d => ({ ...d, energy: Math.min(100, d.energy + ENERGY_REGEN_RATE) }));
       }
       
       // --- PROJECTILE MOVEMENT ---
@@ -581,7 +613,7 @@ export function GameContainer() {
           let isHit = false;
           for (const proj of playerProjectilesRef.current) {
               if (hitPlayerProjectileIds.has(proj.id)) continue;
-              const distance = Math.hypot(proj.x - updatedEnemy.x, proj.y - updatedEnemy.y);
+              const distance = Math.hypot(proj.x - updatedEnemy.x, updatedEnemy.y - updatedEnemy.y);
               if (distance < collisionRadius) {
                   hitPlayerProjectileIds.add(proj.id);
                   updatedEnemy.health -= PLAYER_PROJECTILE_DAMAGE;
@@ -740,24 +772,26 @@ export function GameContainer() {
               }
           }
           if (collisionOccurred) {
-              setPlayerData(d => ({ ...d, health: Math.max(0, d.health - damage) }));
+              applyDamage(damage);
               lastCollisionTimestamp = timestamp;
               setVelocity(v => ({ x: -v.x * 0.5, y: -v.y * 0.5 }));
           }
       }
       
       const hitEnemyProjectileIds = new Set<number>();
-      let playerHealth = playerDataRef.current.health;
+      let damageToPlayer = 0;
       for (const proj of enemyProjectilesRef.current) {
         if (hitEnemyProjectileIds.has(proj.id)) continue;
         const distance = Math.hypot(proj.x - playerPositionRef.current.x, proj.y - playerPositionRef.current.y);
         if (distance < PLAYER_COLLISION_RADIUS) {
           hitEnemyProjectileIds.add(proj.id);
-          playerHealth -= ENEMY_PROJECTILE_DAMAGE;
+          damageToPlayer += ENEMY_PROJECTILE_DAMAGE;
         }
       }
+      if (damageToPlayer > 0) {
+        applyDamage(damageToPlayer);
+      }
       if (hitEnemyProjectileIds.size > 0) {
-        setPlayerData(d => ({ ...d, health: Math.max(0, playerHealth) }));
         setEnemyProjectiles(prev => prev.filter(p => !hitEnemyProjectileIds.has(p.id)));
       }
       
@@ -847,6 +881,7 @@ export function GameContainer() {
 
   const renderEnemy = (enemy: EnemyState) => {
     const props = {
+      key: enemy.id,
       x: enemy.x,
       y: enemy.y,
       health: enemy.health,
@@ -855,11 +890,11 @@ export function GameContainer() {
     };
     switch (enemy.type) {
       case 'chasseur':
-        return <EnemyShip key={enemy.id} {...props} />;
+        return <EnemyShip {...props} />;
       case 'frigate':
-        return <FrigateShip key={enemy.id} {...props} />;
+        return <FrigateShip {...props} />;
       case 'staff':
-        return <StaffShip key={enemy.id} {...props} />;
+        return <StaffShip {...props} />;
       default:
         return null;
     }
@@ -891,12 +926,12 @@ export function GameContainer() {
             <SpaceStation key={s.id} x={s.x} y={s.y} />
         ))}
         {debris.map((d) => (
-            <Debris key={d.id} x={d.id} y={d.y} />
+            <Debris key={d.id} x={d.x} y={d.y} />
         ))}
       </div>
       
       {/* Player Ship is rendered outside the scaled container, so it doesn't change size with zoom */}
-      <PlayerShip rotation={playerRotation} aimRotation={aimRotation} />
+      <PlayerShip rotation={playerRotation} aimRotation={aimRotation} isShieldActive={shipMode === 'shield'} />
       
       {/* UI Overlays & Effects */}
       <MilitaryViewOverlay isOpen={zoom === MIN_ZOOM} />
