@@ -59,7 +59,7 @@ const FRIGATE_COLLISION_RADIUS = 30;
 const STAFF_COLLISION_RADIUS = 25;
 const DEBRIS_COLLISION_RADIUS = 20;
 const STATION_COLLISION_RADIUS = 75;
-const ASTEROID_COLLISION_RADIUS = 0.5; // More accurate hitbox
+const ASTEROID_COLLISION_RADIUS = 0.4; // More accurate hitbox, smaller than the visual size
 
 const PLAYER_PROJECTILE_DAMAGE = 10;
 const ENEMY_PROJECTILE_DAMAGE = 5;
@@ -99,6 +99,7 @@ const ENEMY_ENERGY_REGEN_RATE = 0.05;
 const ENEMY_ENERGY_REGEN_DELAY_MS = 3000;
 const ENEMY_SEARCH_DURATION_MS = 5000;
 const ENEMY_FLEE_HEALTH_THRESHOLD = 0.3;
+const ENEMY_RAM_HEALTH_ADVANTAGE = 1.5;
 
 // Action constants
 const MINING_DURATION_MS = 5000;
@@ -113,7 +114,9 @@ const ACTION_MAX_RANGE = 200;
 
 // Station Constants
 const STATION_INTERACTION_RADIUS = 300;
-const STATION_REGEN_RATE = 0.1;
+const STATION_PLAYER_REGEN_RATE = 0.1;
+const STATION_SHIELD_REGEN_RATE = 0.05;
+const STATION_SHIELD_REGEN_DELAY_MS = 5000;
 
 
 type ProjectileState = {
@@ -141,7 +144,7 @@ const generateInitialAsteroids = (): AsteroidState[] => [
 ];
 
 const generateInitialStations = (): StationState[] => [
-    { id: 1, x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2, health: 5000, maxHealth: 5000 },
+    { id: 1, x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2, health: 5000, maxHealth: 5000, shield: 1000, maxShield: 1000, lastHitTimestamp: 0 },
 ];
 
 
@@ -174,7 +177,6 @@ export function GameContainer() {
   const [playerAction, setPlayerAction] = useState<{ type: PlayerActionType; targetId: number; startTime: number; duration: number; } | null>(null);
 
   const [playerData, setPlayerData] = useState<PlayerData>(JSON.parse(JSON.stringify(INITIAL_PLAYER_DATA)));
-  const [stellarBaseData, setStellarBaseData] = useState<StellarBaseData>({ shields: 95, hull: 88 });
   const [vesselSystems, setVesselSystems] = useState<VesselSystemsData>({ shields: 'Online', weapons: 'Ready', power: 'Optimal' });
   const [isDocked, setIsDocked] = useState(false);
 
@@ -357,7 +359,7 @@ export function GameContainer() {
             return { ...d, energy: Math.max(0, d.energy - energyCost) };
         }
         const maxHealth = UPGRADE_VALUES.maxHealth[d.upgrades.maxHealth];
-        return { ...d, health: Math.max(0, d.health - damage * 100 / maxHealth) };
+        return { ...d, health: Math.max(0, (d.health * 100 / maxHealth) - damage) };
     });
   };
 
@@ -382,26 +384,38 @@ export function GameContainer() {
     const currentLevel = currentData.upgrades[upgrade];
 
     if (currentLevel >= UPGRADE_COSTS[upgrade].length) {
-        toast({ title: "Max level reached" });
         return;
     }
 
     const cost = UPGRADE_COSTS[upgrade][currentLevel];
     if (currentData.resources.money < cost) {
-        toast({ variant: 'destructive', title: "Not enough credits" });
         return;
     }
 
     const newUpgrades = { ...currentData.upgrades, [upgrade]: currentLevel + 1 };
     const newResources = { ...currentData.resources, money: currentData.resources.money - cost };
-
-    toast({ title: "Upgrade successful!", description: `${upgrade} is now level ${currentLevel + 1}` });
     
     setPlayerData(prev => ({ 
         ...prev, 
         upgrades: newUpgrades, 
         resources: newResources 
     }));
+  };
+
+  const handleRepairHull = (amount: number, cost: number) => {
+    if (playerDataRef.current.resources.money < cost) return;
+
+    setPlayerData(prev => ({
+      ...prev,
+      resources: {
+        ...prev.resources,
+        money: prev.resources.money - cost,
+      }
+    }));
+
+    setStations(prev => prev.map(s => 
+      s.id === 1 ? { ...s, health: Math.min(s.maxHealth, s.health + amount) } : s
+    ));
   };
 
   useEffect(() => {
@@ -466,7 +480,7 @@ export function GameContainer() {
         }
         for (const asteroid of asteroidsRef.current) {
           const distance = Math.hypot(clickWorldX - asteroid.x, clickWorldY - asteroid.y);
-          if (distance < ASTEROID_CLICK_RADIUS) {
+          if (distance < (asteroid.size * ASTEROID_COLLISION_RADIUS * 2)) {
             setContextMenu({ x: event.clientX, y: event.clientY, targetId: asteroid.id, targetType: 'asteroid' });
             return;
           }
@@ -580,7 +594,10 @@ export function GameContainer() {
       }
       
       let actionVelocity: {x: number, y: number} | null = null;
+      let isInputDisabled = false;
+
       if (playerActionRef.current) {
+        isInputDisabled = true;
         const { type, targetId, startTime, duration } = playerActionRef.current;
         const now = timestamp;
         let isActionFinished = false;
@@ -594,8 +611,6 @@ export function GameContainer() {
             setAsteroids(prev => prev.filter(a => a.id !== targetId));
             setPlayerData(d => ({ ...d, resources: { ...d.resources, ore: d.resources.ore + Math.floor(Math.random() * 51) + 25 }}));
             isActionFinished = true;
-          } else {
-            actionVelocity = { x: 0, y: 0 };
           }
         } else if (type === 'pillaging') {
             const targetEnemy = enemiesRef.current.find(e => e.id === targetId);
@@ -689,7 +704,7 @@ export function GameContainer() {
       }
 
       let accelVec = { x: 0, y: 0 };
-      const isMovementDisabled = shipModeRef.current === 'scan' || cruiseStateRef.current === 'charging';
+      const isMovementDisabled = shipModeRef.current === 'scan' || cruiseStateRef.current === 'charging' || isInputDisabled;
 
       if (!isMovementDisabled && !actionVelocity) {
         const rotRad = playerRotationRef.current * (Math.PI / 180);
@@ -797,8 +812,15 @@ export function GameContainer() {
       } else if (timestamp - lastEnergyUseTimestamp.current > ENERGY_REGEN_DELAY_MS) {
           setPlayerData(d => ({ ...d, energy: Math.min(100, d.energy + energyRechargeRate) }));
       }
-      if(nanobotRechargeRate > 0) setPlayerData(d => ({...d, health: Math.min(maxHealth, d.health + nanobotRechargeRate)}));
-      if (isDocked) setPlayerData(d => ({ ...d, health: Math.min(maxHealth, d.health + STATION_REGEN_RATE), energy: Math.min(100, d.energy + STATION_REGEN_RATE) }));
+      if(nanobotRechargeRate > 0) setPlayerData(d => ({...d, health: Math.min(100, d.health + nanobotRechargeRate * 100 / maxHealth)}));
+      if (isDocked) setPlayerData(d => ({ ...d, health: Math.min(100, d.health + STATION_PLAYER_REGEN_RATE), energy: Math.min(100, d.energy + STATION_PLAYER_REGEN_RATE) }));
+      
+      setStations(prev => prev.map(station => {
+        if (timestamp - station.lastHitTimestamp > STATION_SHIELD_REGEN_DELAY_MS) {
+          return { ...station, shield: Math.min(station.maxShield, station.shield + STATION_SHIELD_REGEN_RATE) };
+        }
+        return station;
+      }));
       
       setPlayerProjectiles(prev => prev
           .map(p => {
@@ -832,7 +854,6 @@ export function GameContainer() {
           if (enemy.type === 'frigate') collisionRadius = FRIGATE_COLLISION_RADIUS;
           else if (enemy.type === 'staff') collisionRadius = STAFF_COLLISION_RADIUS;
 
-          let isHit = false;
           // Allies cannot be hit by player, enemies can't be hit by other enemies.
           for (const proj of playerProjectilesRef.current) {
               if (hitPlayerProjectileIds.has(proj.id)) continue;
@@ -842,14 +863,12 @@ export function GameContainer() {
                   if (!updatedEnemy.isAlly) {
                     updatedEnemy.health -= PLAYER_PROJECTILE_DAMAGE;
                   }
-                  isHit = true;
+                  if (updatedEnemy.aiState === 'patrolling' && updatedEnemy.type !== 'staff' && !updatedEnemy.isAlly) {
+                    updatedEnemy.aiState = 'chasing';
+                    updatedEnemy.stateChangeTimestamp = timestamp;
+                    updatedEnemy.lastKnownPlayerPosition = { ...playerPositionRef.current };
+                  }
               }
-          }
-
-          if (isHit && updatedEnemy.aiState === 'patrolling' && updatedEnemy.type !== 'staff' && !updatedEnemy.isAlly) {
-            updatedEnemy.aiState = 'chasing';
-            updatedEnemy.stateChangeTimestamp = timestamp;
-            updatedEnemy.lastKnownPlayerPosition = { ...playerPositionRef.current };
           }
 
           if (updatedEnemy.health <= 0) {
@@ -875,6 +894,7 @@ export function GameContainer() {
             else if (shipModeRef.current === 'stealth') aggroRadius = STEALTH_AGGRO_RADIUS;
 
             const canSeePlayer = distanceToPlayer < aggroRadius;
+            const rammingHealthAdvantage = (updatedEnemy.health / updatedEnemy.maxHealth) > (playerDataRef.current.health / maxHealth * ENEMY_RAM_HEALTH_ADVANTAGE);
 
             const shouldFlee = (updatedEnemy.health / updatedEnemy.maxHealth) < ENEMY_FLEE_HEALTH_THRESHOLD && updatedEnemy.energy < (ENEMY_ENERGY_PER_SHOT * 2);
             if (shouldFlee && updatedEnemy.aiState !== 'fleeing' && !updatedEnemy.isAlly) {
@@ -898,8 +918,6 @@ export function GameContainer() {
                         const angleToPlayer = Math.atan2(playerPositionRef.current.y - updatedEnemy.y, playerPositionRef.current.x - updatedEnemy.x);
                         
                         const preferredDistance = ENEMY_AGGRO_RADIUS * 0.6;
-                        const rammingHealthAdvantage = updatedEnemy.health > playerDataRef.current.health * 1.5;
-
                         if (distanceToPlayer > preferredDistance && !rammingHealthAdvantage) {
                              updatedEnemy.vx = Math.cos(angleToPlayer) * ENEMY_SPEED;
                              updatedEnemy.vy = Math.sin(angleToPlayer) * ENEMY_SPEED;
@@ -984,38 +1002,48 @@ export function GameContainer() {
           let collisionDamage = 0;
           let repulsionAngle = 0;
           let repulsionForce = 0.8;
+          let collided = false;
 
-          for (const asteroid of asteroids) {
+          for (const asteroid of asteroidsRef.current) {
               const distance = Math.hypot(asteroid.x - playerPositionRef.current.x, asteroid.y - playerPositionRef.current.y);
               if (distance < (asteroid.size * ASTEROID_COLLISION_RADIUS) + PLAYER_COLLISION_RADIUS) {
+                  collided = true;
                   collisionDamage = ASTEROID_COLLISION_DAMAGE * speedFactor;
                   repulsionAngle = Math.atan2(playerPositionRef.current.y - asteroid.y, playerPositionRef.current.x - asteroid.x);
                   break;
               }
           }
-          for (let i = 0; i < processedEnemies.length; i++) {
-              let enemy = processedEnemies[i];
-              let enemyRadius = ENEMY_COLLISION_RADIUS;
-              if (enemy.type === 'frigate') enemyRadius = FRIGATE_COLLISION_RADIUS;
-              else if (enemy.type === 'staff') enemyRadius = STAFF_COLLISION_RADIUS;
-              const distance = Math.hypot(enemy.x - playerPositionRef.current.x, enemy.y - playerPositionRef.current.y);
-              if (distance < enemyRadius + PLAYER_COLLISION_RADIUS) {
-                  collisionDamage = ENEMY_COLLISION_DAMAGE * speedFactor;
-                  repulsionAngle = Math.atan2(playerPositionRef.current.y - enemy.y, playerPositionRef.current.x - enemy.x);
-                  enemy.vx -= Math.cos(repulsionAngle) * repulsionForce;
-                  enemy.vy -= Math.sin(repulsionAngle) * repulsionForce;
-                  break;
+          if (!collided) {
+              for (let i = 0; i < processedEnemies.length; i++) {
+                  let enemy = processedEnemies[i];
+                  let enemyRadius = ENEMY_COLLISION_RADIUS;
+                  if (enemy.type === 'frigate') enemyRadius = FRIGATE_COLLISION_RADIUS;
+                  else if (enemy.type === 'staff') enemyRadius = STAFF_COLLISION_RADIUS;
+                  const distance = Math.hypot(enemy.x - playerPositionRef.current.x, enemy.y - playerPositionRef.current.y);
+                  if (distance < enemyRadius + PLAYER_COLLISION_RADIUS) {
+                      collided = true;
+                      collisionDamage = ENEMY_COLLISION_DAMAGE * speedFactor;
+                      repulsionAngle = Math.atan2(playerPositionRef.current.y - enemy.y, playerPositionRef.current.x - enemy.x);
+                      const enemyRepulsionForce = repulsionForce * 0.8;
+                      enemy.vx -= Math.cos(repulsionAngle) * enemyRepulsionForce;
+                      enemy.vy -= Math.sin(repulsionAngle) * enemyRepulsionForce;
+                      break;
+                  }
               }
           }
-          for (const station of stations) {
-              const distance = Math.hypot(station.x - playerPositionRef.current.x, station.y - playerPositionRef.current.y);
-              if (distance < STATION_COLLISION_RADIUS + PLAYER_COLLISION_RADIUS) {
-                  collisionDamage = STATION_COLLISION_DAMAGE * speedFactor;
-                  repulsionAngle = Math.atan2(playerPositionRef.current.y - station.y, playerPositionRef.current.x - station.x);
-                  break;
+          if (!collided) {
+              for (const station of stationsRef.current) {
+                  const distance = Math.hypot(station.x - playerPositionRef.current.x, station.y - playerPositionRef.current.y);
+                  if (distance < STATION_COLLISION_RADIUS + PLAYER_COLLISION_RADIUS) {
+                      collided = true;
+                      collisionDamage = STATION_COLLISION_DAMAGE * speedFactor;
+                      repulsionAngle = Math.atan2(playerPositionRef.current.y - station.y, playerPositionRef.current.x - station.x);
+                      break;
+                  }
               }
           }
-          if (collisionDamage > 0) {
+
+          if (collided) {
               lastCollisionTimestamp = timestamp;
               if (speed > COLLISION_SPEED_THRESHOLD) {
                 applyDamage(collisionDamage);
@@ -1175,13 +1203,13 @@ export function GameContainer() {
     }
   };
   
-  const maxHealth = UPGRADE_VALUES.maxHealth[playerData.upgrades.maxHealth];
-  
   const mainStation = stations.find(s => s.id === 1);
-  const currentStellarBaseData = mainStation ? {
-      shields: 95, // Static for now
-      hull: (mainStation.health / mainStation.maxHealth) * 100,
-  } : stellarBaseData;
+  const currentStellarBaseData: StellarBaseData | null = mainStation ? {
+      shields: mainStation.shield,
+      maxShields: mainStation.maxShield,
+      hull: mainStation.health,
+      maxHull: mainStation.maxHealth,
+  } : null;
 
   return (
     <div
@@ -1215,13 +1243,13 @@ export function GameContainer() {
             <SpaceStation key={s.id} x={s.x} y={s.y} />
         ))}
         {visibleDebris.map((d) => (
-            <Debris key={d.id} x={d.id} y={d.y} />
+            <Debris key={d.id} x={d.x} y={d.y} />
         ))}
       </div>
       
       <MilitaryViewOverlay isOpen={zoom === MIN_ZOOM} />
       {cruiseState === 'cruising' && <CruiseStreaks />}
-       {playerData.health < (maxHealth * LOW_HEALTH_THRESHOLD / 100) && (
+       {playerData.health < LOW_HEALTH_THRESHOLD && (
           <div className="absolute inset-0 pointer-events-none animate-pulse" style={{ boxShadow: 'inset 0 0 80px 30px rgba(255, 0, 0, 0.4)' }} />
        )}
        {playerData.energy <= 0 && (
@@ -1245,7 +1273,7 @@ export function GameContainer() {
       </div>
       
       <div className="absolute bottom-4 left-4 z-10 flex flex-col items-start gap-4" data-ui-element="true">
-          <StellarBaseStatus data={currentStellarBaseData} />
+          {currentStellarBaseData && <StellarBaseStatus data={currentStellarBaseData} />}
           <ClientOnly>
             <ChatBox />
           </ClientOnly>
@@ -1294,8 +1322,10 @@ export function GameContainer() {
         isOpen={isStationMenuOpen}
         onOpenChange={setIsStationMenuOpen}
         playerData={playerData}
+        stationData={mainStation || null}
         onSellResource={handleSellResource}
         onBuyUpgrade={handleBuyUpgrade}
+        onRepairHull={handleRepairHull}
       />
 
       <GameOverOverlay isOpen={isGameOver} onRestart={resetGame} />

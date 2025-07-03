@@ -55,7 +55,9 @@ export interface VesselSystemsData {
 
 export interface StellarBaseData {
   shields: number;
+  maxShields: number;
   hull: number;
+  maxHull: number;
 }
 
 export type EnemyAiState = 'patrolling' | 'chasing' | 'searching' | 'fleeing' | 'following';
@@ -95,6 +97,9 @@ export type StationState = {
   y: number;
   health: number;
   maxHealth: number;
+  shield: number;
+  maxShield: number;
+  lastHitTimestamp: number;
 }
 
 export type Debris = {
