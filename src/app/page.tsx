@@ -31,10 +31,6 @@ export default function Home() {
             <ChatBox />
           </ClientOnly>
       </div>
-
-      <div className="absolute bottom-4 right-4 z-10">
-        <Minimap />
-      </div>
     </main>
   );
 }

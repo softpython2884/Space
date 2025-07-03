@@ -5,12 +5,19 @@ import { PlayerShip } from './player-ship';
 import { GameMap } from './game-map';
 import { Projectile } from './projectile';
 import { EnemyShip } from './enemy-ship';
+import { Minimap } from '../game-ui/minimap';
+import { SpeedIndicator } from '../game-ui/speed-indicator';
 
-const PLAYER_SPEED = 5;
+const ACCELERATION = 0.1;
+const STRAFE_ACCELERATION = 0.08;
+const REVERSE_ACCELERATION = 0.06;
+const MAX_SPEED = 6;
+const FRICTION = 0.98;
+
 const PROJECTILE_SPEED = 8;
 const MAP_WIDTH = 3000;
 const MAP_HEIGHT = 3000;
-const FIRE_RATE_MS = 250; // Fire rate in milliseconds
+const FIRE_RATE_MS = 250; 
 const ENEMY_CLICK_RADIUS = 30;
 const PROJECTILE_DAMAGE = 10;
 const ENEMY_COLLISION_RADIUS = 20;
@@ -22,7 +29,7 @@ type ProjectileState = {
   rotation: number;
 };
 
-type EnemyState = {
+export type EnemyState = {
   id: number;
   x: number;
   y: number;
@@ -32,6 +39,8 @@ type EnemyState = {
 
 export function GameContainer() {
   const [playerPosition, setPlayerPosition] = useState({ x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 });
+  const [velocity, setVelocity] = useState({ x: 0, y: 0 });
+  const [speed, setSpeed] = useState(0);
   const [playerRotation, setPlayerRotation] = useState(0);
   const [aimRotation, setAimRotation] = useState(0);
   const [projectiles, setProjectiles] = useState<ProjectileState[]>([]);
@@ -44,9 +53,11 @@ export function GameContainer() {
   const isLeftMouseDown = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
   
-  // Refs to get the latest state inside the game loop without re-triggering the effect
   const playerPositionRef = useRef(playerPosition);
   useEffect(() => { playerPositionRef.current = playerPosition; }, [playerPosition]);
+
+  const velocityRef = useRef(velocity);
+  useEffect(() => { velocityRef.current = velocity; }, [velocity]);
   
   const playerRotationRef = useRef(playerRotation);
   useEffect(() => { playerRotationRef.current = playerRotation; }, [playerRotation]);
@@ -94,7 +105,7 @@ export function GameContainer() {
             }
         }
         if (!clickedOnEnemy) {
-            setTargetId(null); // Clicked on empty space, deselect
+            setTargetId(null);
         }
       }
     };
@@ -117,7 +128,7 @@ export function GameContainer() {
       window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, [viewSize]); // Re-bind if viewSize changes to get correct world coordinates
+  }, [viewSize]);
 
   // Resize observer for container size
   useEffect(() => {
@@ -135,23 +146,45 @@ export function GameContainer() {
     let lastShotTimestamp = 0;
 
     const gameLoop = (timestamp: number) => {
-      // --- MOVEMENT (relative to rotation) ---
-      let forward = (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) ? 1 : (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) ? -1 : 0;
-      let strafe = (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) ? -1 : (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) ? 1 : 0;
-      if (forward !== 0 || strafe !== 0) {
-        setPlayerPosition(prev => {
-            const rotRad = playerRotationRef.current * (Math.PI / 180);
-            const cos = Math.cos(rotRad);
-            const sin = Math.sin(rotRad);
-            let dx = (forward * cos) - (strafe * sin);
-            let dy = (forward * sin) + (strafe * cos);
-            const mag = Math.sqrt(dx * dx + dy * dy);
-            if (mag > 0) { dx /= mag; dy /= mag; }
-            const newX = prev.x + dx * PLAYER_SPEED;
-            const newY = prev.y + dy * PLAYER_SPEED;
-            return { x: Math.max(40, Math.min(MAP_WIDTH - 40, newX)), y: Math.max(40, Math.min(MAP_HEIGHT - 40, newY)) };
-        });
+      // --- MOVEMENT ---
+      const rotRad = playerRotationRef.current * (Math.PI / 180);
+      const cos = Math.cos(rotRad);
+      const sin = Math.sin(rotRad);
+      
+      let accelVec = { x: 0, y: 0 };
+      if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) {
+        accelVec.x += cos * ACCELERATION;
+        accelVec.y += sin * ACCELERATION;
       }
+      if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) {
+        accelVec.x -= cos * REVERSE_ACCELERATION;
+        accelVec.y -= sin * REVERSE_ACCELERATION;
+      }
+      if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) {
+        accelVec.x += sin * STRAFE_ACCELERATION; // Left is 90 deg counter-clockwise from forward
+        accelVec.y -= cos * STRAFE_ACCELERATION;
+      }
+      if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) {
+        accelVec.x -= sin * STRAFE_ACCELERATION; // Right is 90 deg clockwise from forward
+        accelVec.y += cos * STRAFE_ACCELERATION;
+      }
+
+      setVelocity(v => {
+        const newVx = (v.x + accelVec.x) * FRICTION;
+        const newVy = (v.y + accelVec.y) * FRICTION;
+        const currentSpeed = Math.hypot(newVx, newVy);
+        if (currentSpeed > MAX_SPEED) {
+          return { x: (newVx / currentSpeed) * MAX_SPEED, y: (newVy / currentSpeed) * MAX_SPEED };
+        }
+        return { x: newVx, y: newVy };
+      });
+      
+      setSpeed(Math.hypot(velocityRef.current.x, velocityRef.current.y));
+
+      setPlayerPosition(p => ({
+        x: Math.max(40, Math.min(MAP_WIDTH - 40, p.x + velocityRef.current.x)),
+        y: Math.max(40, Math.min(MAP_HEIGHT - 40, p.y + velocityRef.current.y)),
+      }));
 
       // --- AIMING & ROTATION ---
       const shipScreenX = viewSize.width / 2;
@@ -162,21 +195,20 @@ export function GameContainer() {
       const currentTarget = enemiesRef.current.find(e => e.id === targetIdRef.current);
 
       if (currentTarget) {
-          // Auto-rotate towards target
           const angleToTarget = Math.atan2(currentTarget.y - playerPositionRef.current.y, currentTarget.x - playerPositionRef.current.x) * (180 / Math.PI);
           setPlayerRotation(angleToTarget);
       } else if (isLeftMouseDown.current) {
-          // Manual rotation
           setPlayerRotation(aimAngle);
       }
       
       // --- SHOOTING ---
-      if (currentTarget && timestamp - lastShotTimestamp > FIRE_RATE_MS) {
+      const isShooting = currentTarget || keysPressed.current.has(' ');
+      if (isShooting && timestamp - lastShotTimestamp > FIRE_RATE_MS) {
         lastShotTimestamp = timestamp;
         setProjectiles(prev => [...prev, { id: timestamp, x: playerPositionRef.current.x, y: playerPositionRef.current.y, rotation: playerRotationRef.current }]);
       }
       
-      // --- PROJECTILE MOVEMENT & COLLISION ---
+      // --- PROJECTILE MOVEMENT ---
       setProjectiles(prev => prev
           .map(p => {
               const rad = p.rotation * (Math.PI / 180);
@@ -232,6 +264,20 @@ export function GameContainer() {
         ))}
       </div>
       <PlayerShip rotation={playerRotation} aimRotation={aimRotation} />
+      
+      {/* UI Overlays */}
+      <div className="absolute bottom-4 right-4 z-10">
+        <Minimap 
+          playerPosition={playerPosition} 
+          playerRotation={playerRotation}
+          enemies={enemies}
+          mapWidth={MAP_WIDTH}
+          mapHeight={MAP_HEIGHT}
+        />
+      </div>
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10">
+        <SpeedIndicator speed={speed} rotation={playerRotation} />
+      </div>
     </div>
   );
 }

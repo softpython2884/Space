@@ -9,7 +9,7 @@ interface AimIndicatorProps {
 export function AimIndicator({ rotation }: AimIndicatorProps) {
   return (
     <motion.div
-      className="absolute top-1/2 left-1/2"
+      className="absolute"
       style={{ willChange: 'transform' }}
       animate={{ rotate: rotation }}
       transition={{ type: 'linear', duration: 0 }} // Instant rotation for the aimer
