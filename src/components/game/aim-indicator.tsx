@@ -12,23 +12,23 @@ export function AimIndicator({ rotation }: AimIndicatorProps) {
       className="row-start-1 col-start-1"
       style={{ willChange: 'transform' }}
       animate={{ rotate: rotation }}
-      transition={{ type: 'linear', duration: 0 }} // Instant rotation for the aimer
+      transition={{ type: 'linear', duration: 0 }}
     >
       <svg
         width="120"
         height="120"
         viewBox="-60 -60 120 120"
-        className="opacity-40"
+        className="opacity-50"
       >
         <path
-          d="M 40 0 A 40 40 0 0 1 28.28 28.28" // 45 degree arc
+          d="M 50 0 A 50 50 0 0 1 35.35 35.35" // A 45 degree arc
           fill="none"
           stroke="hsl(var(--primary))"
-          strokeWidth="2"
+          strokeWidth="2.5"
           strokeLinecap="round"
         />
         <polygon
-          points="40,-4 45,0 40,4"
+          points="50,-5 56,0 50,5"
           className="fill-primary"
         />
       </svg>
