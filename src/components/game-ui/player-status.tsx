@@ -8,7 +8,7 @@ export function PlayerStatus({ data }: { data: PlayerData }) {
     <Card className="w-80 bg-black/60 border-primary/50 text-foreground backdrop-blur-sm">
       <CardHeader className="p-3">
         <CardTitle className="text-lg flex items-center justify-between">
-          <span>{data.shipType}</span>
+          <span>{data.ship.class}</span>
           <div className="flex items-center gap-2">
             <Star className="h-4 w-4 text-primary" />
             <span className="font-medium text-base">Lvl: {data.level}</span>

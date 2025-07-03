@@ -20,17 +20,19 @@ export function Minimap({ playerPosition, playerRotation, enemies, asteroids, st
     
   const scale = MINIMAP_SIZE / (VIEW_RADIUS * 2);
 
-  const getDirectionalIcon = (isPlayer: boolean) => {
+  const getDirectionalIcon = (isPlayer: boolean, rotation: number) => {
     return (
-      <svg
-        width="16"
-        height="16"
-        viewBox="0 0 50 50"
-        className={isPlayer ? "fill-cyan-400 stroke-cyan-200" : "fill-red-500 stroke-red-300"}
-        style={{ filter: isPlayer ? 'drop-shadow(0 0 4px hsl(var(--primary)))' : 'drop-shadow(0 0 4px hsl(0 100% 50%))' }}
-      >
-        <polygon points="25,0 45,45 25,35 5,45" strokeWidth="4" />
-      </svg>
+      <div style={{ transform: `rotate(${rotation + 90}deg)` }}>
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 50 50"
+            className={isPlayer ? "fill-cyan-400 stroke-cyan-200" : "fill-red-500 stroke-red-300"}
+            style={{ filter: isPlayer ? 'drop-shadow(0 0 4px hsl(var(--primary)))' : 'drop-shadow(0 0 4px hsl(0 100% 50%))' }}
+          >
+            <polygon points="25,0 45,45 25,35 5,45" strokeWidth="4" />
+          </svg>
+      </div>
     )
   }
   
@@ -55,8 +57,8 @@ export function Minimap({ playerPosition, playerRotation, enemies, asteroids, st
           key={key}
           className="absolute"
           style={{
-            left: finalX - 4, // center the icon
-            top: finalY - 4,
+            left: finalX - 8, // center the icon
+            top: finalY - 8,
           }}
         >
           {icon}
@@ -69,7 +71,6 @@ export function Minimap({ playerPosition, playerRotation, enemies, asteroids, st
         {/* Compass Rose */}
         <div
             className="absolute inset-0 transition-transform duration-200"
-            style={{ transform: `rotate(${-playerRotation}deg)` }}
         >
             <Image
                 src="https://placehold.co/256x256"
@@ -97,15 +98,14 @@ export function Minimap({ playerPosition, playerRotation, enemies, asteroids, st
             {/* Player Icon at the center */}
             <div
                 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
-                style={{ transform: `translate(-50%, -50%) rotate(${playerRotation}deg)` }}
             >
-                {getDirectionalIcon(true)}
+                {getDirectionalIcon(true, playerRotation)}
             </div>
 
             {/* World Objects */}
-            {enemies.map((enemy) => renderObjectOnMap(enemy, `enemy-${enemy.id}`, <Rocket className="h-4 w-4 text-red-500" />))}
+            {enemies.map((enemy) => renderObjectOnMap(enemy, `enemy-${enemy.id}`, <Rocket className="h-4 w-4 text-red-500 animate-pulse" />))}
             {asteroids.map((asteroid) => renderObjectOnMap(asteroid, `asteroid-${asteroid.id}`, <div className="w-2 h-2 rounded-full bg-gray-400" />))}
-            {stations.map((station) => renderObjectOnMap(station, `station-${station.id}`, <div className="w-3 h-3 bg-blue-500" />))}
+            {stations.map((station) => renderObjectOnMap(station, `station-${station.id}`, <div className="w-3 h-3 bg-blue-500 animate-ping" />))}
         </CardContent>
         </Card>
     </div>

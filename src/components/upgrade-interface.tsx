@@ -22,13 +22,6 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -36,13 +29,12 @@ import { Badge } from "@/components/ui/badge";
 import { Lightbulb, Sparkles, Terminal } from "lucide-react";
 
 import { getUpgradeAdviceAction } from "@/app/actions";
-import { INITIAL_PLAYER_DATA, SHIP_TYPES } from "@/lib/constants";
+import { INITIAL_PLAYER_DATA } from "@/lib/constants";
 import type { UpgradeAdviceOutput } from "@/ai/flows/upgrade-advisor";
 import { useToast } from "@/hooks/use-toast";
 
 const formSchema = z.object({
   level: z.coerce.number().min(1, "Level must be at least 1."),
-  shipType: z.enum(SHIP_TYPES),
   money: z.coerce.number().min(0, "Money cannot be negative."),
   ore: z.coerce.number().min(0, "Ore cannot be negative."),
   gas: z.coerce.number().min(0, "Gas cannot be negative."),
@@ -57,7 +49,6 @@ export function UpgradeInterface() {
     resolver: zodResolver(formSchema),
     defaultValues: {
       level: INITIAL_PLAYER_DATA.level,
-      shipType: INITIAL_PLAYER_DATA.shipType,
       money: INITIAL_PLAYER_DATA.resources.money,
       ore: INITIAL_PLAYER_DATA.resources.ore,
       gas: INITIAL_PLAYER_DATA.resources.gas,
@@ -74,9 +65,8 @@ export function UpgradeInterface() {
         ore: values.ore,
         gas: values.gas,
       },
-      shipType: values.shipType,
+      ship: INITIAL_PLAYER_DATA.ship,
       level: values.level,
-      currentUpgrades: INITIAL_PLAYER_DATA.upgrades,
     };
 
     const result = await getUpgradeAdviceAction(input);
@@ -107,7 +97,7 @@ export function UpgradeInterface() {
           <div>
             <h3 className="text-lg font-medium mb-2 font-headline">Current Upgrades</h3>
             <div className="space-y-2">
-              {Object.entries(INITIAL_PLAYER_DATA.upgrades).map(([name, level]) => (
+              {Object.entries(INITIAL_PLAYER_DATA.ship.upgrades).map(([name, level]) => (
                 <div key={name} className="flex items-center justify-between p-2 rounded-md bg-background/50">
                   <span className="text-sm font-medium">{name}</span>
                   <Badge variant="default">Level {level}</Badge>
@@ -123,9 +113,12 @@ export function UpgradeInterface() {
               <Sparkles className="h-5 w-5 text-primary" />
               AI Upgrade Advisor
             </h3>
+            <p className="text-sm text-muted-foreground mb-4">
+                Current Ship: {INITIAL_PLAYER_DATA.ship.class} ({INITIAL_PLAYER_DATA.ship.role})
+            </p>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4">
                   <FormField
                     control={form.control}
                     name="level"
@@ -135,30 +128,6 @@ export function UpgradeInterface() {
                         <FormControl>
                           <Input type="number" {...field} />
                         </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="shipType"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Ship Type</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select ship type" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {SHIP_TYPES.map((type) => (
-                              <SelectItem key={type} value={type}>
-                                {type}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
                         <FormMessage />
                       </FormItem>
                     )}
