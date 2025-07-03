@@ -47,7 +47,7 @@ const ZOOM_SENSITIVITY = 0.001;
 // Combat & Resource Constants
 const PLAYER_COLLISION_RADIUS = 20;
 const ENEMY_COLLISION_RADIUS = 20;
-const FRIGATE_COLLISION_RADIUS = 40;
+const FRIGATE_COLLISION_RADIUS = 30;
 const STAFF_COLLISION_RADIUS = 15;
 const DEBRIS_COLLISION_RADIUS = 20;
 const STATION_COLLISION_RADIUS = 75;
@@ -438,23 +438,19 @@ export function GameContainer() {
       const aimAngle = Math.atan2(mousePosition.current.y - shipScreenY, mousePosition.current.x - shipScreenX) * (180 / Math.PI);
       setAimRotation(aimAngle); // Aiming reticle always follows mouse
       
-      const currentTarget = enemiesRef.current.find(e => e.id === targetIdRef.current);
-
-      let targetRotation = playerRotationRef.current;
-
       if (autoMoveTargetRef.current) {
         const distanceToTarget = Math.hypot(autoMoveTargetRef.current.x - playerPositionRef.current.x, autoMoveTargetRef.current.y - playerPositionRef.current.y);
         if (distanceToTarget > 10) {
             const angleToTarget = Math.atan2(autoMoveTargetRef.current.y - playerPositionRef.current.y, autoMoveTargetRef.current.x - playerPositionRef.current.x);
-            targetRotation = angleToTarget * (180 / Math.PI);
+            setPlayerRotation(angleToTarget * (180 / Math.PI));
         } else {
             setAutoMoveTarget(null); // Stop when destination is reached
         }
       } else if (isLeftMouseDown.current) {
         // When player holds left click, orient the ship to the cursor for steering
-        targetRotation = aimAngle;
+        setPlayerRotation(aimAngle);
       }
-      setPlayerRotation(targetRotation);
+      // If neither is active, rotation remains unchanged from its last value
 
 
       // --- PLAYER MOVEMENT ---
@@ -474,7 +470,6 @@ export function GameContainer() {
       }
       else if (cruiseStateRef.current === 'cruising') {
         // In cruise mode, player ship moves forward automatically based on its current rotation.
-        // No additional player input is needed for thrust.
         const cruiseRad = playerRotationRef.current * (Math.PI / 180);
         accelVec.x = Math.cos(cruiseRad) * currentAccel;
         accelVec.y = Math.sin(cruiseRad) * currentAccel;
@@ -534,6 +529,7 @@ export function GameContainer() {
 
       
       // --- PLAYER SHOOTING ---
+      const currentTarget = enemiesRef.current.find(e => e.id === targetIdRef.current);
       const canShoot = playerDataRef.current.energy >= ENERGY_PER_SHOT && (shipMode === 'normal' || shipMode === 'stealth') && cruiseStateRef.current === 'idle';
       const isShooting = (currentTarget || keysPressed.current.has(' ')) && canShoot;
       if (isShooting && timestamp - lastFiredTimestamp.current > FIRE_RATE_MS) {
@@ -851,7 +847,6 @@ export function GameContainer() {
 
   const renderEnemy = (enemy: EnemyState) => {
     const props = {
-      key: enemy.id,
       x: enemy.x,
       y: enemy.y,
       health: enemy.health,
@@ -860,11 +855,11 @@ export function GameContainer() {
     };
     switch (enemy.type) {
       case 'chasseur':
-        return <EnemyShip {...props} />;
+        return <EnemyShip key={enemy.id} {...props} />;
       case 'frigate':
-        return <FrigateShip {...props} />;
+        return <FrigateShip key={enemy.id} {...props} />;
       case 'staff':
-        return <StaffShip {...props} />;
+        return <StaffShip key={enemy.id} {...props} />;
       default:
         return null;
     }

@@ -66,11 +66,10 @@ export function Radar({ playerPosition, enemies, stations, asteroids, radarRange
     const getEnemyIcon = (enemy: EnemyState) => {
         switch(enemy.type) {
             case 'chasseur':
-                return <RadarDot color="bg-red-500" pulse />;
             case 'frigate':
-                return <RadarDot color="bg-orange-500" type="square" size="w-3 h-3" pulse />;
+                return <RadarDot color="bg-red-500" pulse />;
             case 'staff':
-                return <RadarDot color="bg-gray-400" size="w-1 h-3" />;
+                return <RadarDot color="bg-gray-400" type="square" size="w-1.5 h-1.5" />;
             default:
                 return <RadarDot color="bg-red-500" pulse />;
         }
