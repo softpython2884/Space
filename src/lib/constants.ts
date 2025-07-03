@@ -14,7 +14,7 @@ export const INITIAL_PLAYER_DATA: PlayerData = {
   health: 100,
   energy: 70,
   cargo: {
-    current: 150,
+    current: 0,
     max: 200,
   },
   resources: {

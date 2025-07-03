@@ -59,9 +59,9 @@ const ENERGY_REGEN_RATE = 0.02; // Slower regen
 const ENERGY_REGEN_DELAY_MS = 2000; // 2 seconds delay
 const LOW_HEALTH_THRESHOLD = 30;
 
-const ENEMY_AGGRO_RADIUS = 600;
+const ENEMY_AGGRO_RADIUS = 800;
 const ENEMY_FIRE_RATE_MS = 1500;
-const ENEMY_SPEED = 0.5;
+const ENEMY_SPEED = 2.0;
 
 const STEALTH_DETECTION_RADIUS_FAR = 250;
 const STEALTH_DETECTION_RADIUS_NEAR = 100;
@@ -317,6 +317,7 @@ export function GameContainer() {
       switch(shipMode) {
         case 'cruise':
           currentMaxSpeed = MAX_SPEED * 2.5;
+          currentAccel = ACCELERATION * 2.0;
           currentStrafe = STRAFE_ACCELERATION * 0.2; // Poor turning
           break;
         case 'scan':
@@ -637,7 +638,15 @@ export function GameContainer() {
   );
 
   return (
-    <div ref={containerRef} className={cn("relative w-full h-full overflow-hidden bg-gray-900 cursor-crosshair", shipMode === 'stealth' && 'stealth-effect')}>
+    <div
+      ref={containerRef}
+      className={cn(
+        "relative w-full h-full overflow-hidden bg-gray-900 cursor-crosshair",
+        shipMode === 'stealth' && 'stealth-effect',
+        shipMode === 'cruise' && 'cruise-effect',
+        shipMode === 'scan' && 'scan-effect'
+      )}
+    >
       {/* Game World */}
       <div style={{ 
           transform: `translate(${viewSize.width / 2}px, ${viewSize.height / 2}px) scale(${zoom}) translate(${-playerPosition.x}px, ${-playerPosition.y}px)`,

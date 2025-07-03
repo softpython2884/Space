@@ -60,22 +60,62 @@
 
 @layer utilities {
   .stealth-effect {
-    backdrop-filter: brightness(0.7);
+    backdrop-filter: brightness(0.5);
   }
   .stealth-effect::after {
     content: '';
     position: absolute;
     inset: 0;
     pointer-events: none;
-    box-shadow: inset 0 0 150px 30px rgba(100, 0, 0, 0.5);
+    box-shadow: inset 0 0 150px 30px rgba(100, 0, 0, 0.7);
     animation: pulse-red-subtle 3s infinite;
   }
    @keyframes pulse-red-subtle {
     0%, 100% {
-      box-shadow: inset 0 0 150px 30px rgba(100, 0, 0, 0.5);
+      box-shadow: inset 0 0 150px 30px rgba(100, 0, 0, 0.7);
     }
     50% {
-      box-shadow: inset 0 0 160px 40px rgba(130, 0, 0, 0.6);
+      box-shadow: inset 0 0 160px 40px rgba(130, 0, 0, 0.8);
+    }
+  }
+
+  .cruise-effect {
+    backdrop-filter: brightness(0.9);
+  }
+  .cruise-effect::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    box-shadow: inset 0 0 150px 30px rgba(138, 43, 226, 0.4);
+    animation: pulse-violet-subtle 3s infinite;
+  }
+   @keyframes pulse-violet-subtle {
+    0%, 100% {
+      box-shadow: inset 0 0 150px 30px rgba(138, 43, 226, 0.4);
+    }
+    50% {
+      box-shadow: inset 0 0 160px 40px rgba(148, 0, 211, 0.5);
+    }
+  }
+
+  .scan-effect {
+    backdrop-filter: brightness(0.95);
+  }
+  .scan-effect::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    box-shadow: inset 0 0 150px 30px rgba(64, 224, 208, 0.4);
+    animation: pulse-turquoise-subtle 3s infinite;
+  }
+   @keyframes pulse-turquoise-subtle {
+    0%, 100% {
+      box-shadow: inset 0 0 150px 30px rgba(64, 224, 208, 0.4);
+    }
+    50% {
+      box-shadow: inset 0 0 160px 40px rgba(0, 206, 209, 0.5);
     }
   }
 }
