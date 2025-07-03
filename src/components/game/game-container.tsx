@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -58,7 +59,7 @@ const FRIGATE_COLLISION_RADIUS = 30;
 const STAFF_COLLISION_RADIUS = 25;
 const DEBRIS_COLLISION_RADIUS = 20;
 const STATION_COLLISION_RADIUS = 75;
-const ASTEROID_COLLISION_RADIUS = 0.4; // More accurate hitbox
+const ASTEROID_COLLISION_RADIUS = 0.5; // More accurate hitbox
 
 const PLAYER_PROJECTILE_DAMAGE = 10;
 const ENEMY_PROJECTILE_DAMAGE = 5;
@@ -377,25 +378,30 @@ export function GameContainer() {
   };
 
   const handleBuyUpgrade = (upgrade: keyof PlayerUpgrades) => {
-    setPlayerData(prev => {
-        const currentLevel = prev.upgrades[upgrade];
-        if (currentLevel >= UPGRADE_COSTS[upgrade].length) {
-            toast({ title: "Max level reached" });
-            return prev;
-        }
+    const currentData = playerDataRef.current;
+    const currentLevel = currentData.upgrades[upgrade];
 
-        const cost = UPGRADE_COSTS[upgrade][currentLevel];
-        if (prev.resources.money < cost) {
-            toast({ variant: 'destructive', title: "Not enough credits" });
-            return prev;
-        }
+    if (currentLevel >= UPGRADE_COSTS[upgrade].length) {
+        toast({ title: "Max level reached" });
+        return;
+    }
 
-        const newUpgrades = { ...prev.upgrades, [upgrade]: currentLevel + 1 };
-        const newResources = { ...prev.resources, money: prev.resources.money - cost };
+    const cost = UPGRADE_COSTS[upgrade][currentLevel];
+    if (currentData.resources.money < cost) {
+        toast({ variant: 'destructive', title: "Not enough credits" });
+        return;
+    }
 
-        toast({ title: "Upgrade successful!", description: `${upgrade} is now level ${currentLevel + 1}` });
-        return { ...prev, upgrades: newUpgrades, resources: newResources };
-    });
+    const newUpgrades = { ...currentData.upgrades, [upgrade]: currentLevel + 1 };
+    const newResources = { ...currentData.resources, money: currentData.resources.money - cost };
+
+    toast({ title: "Upgrade successful!", description: `${upgrade} is now level ${currentLevel + 1}` });
+    
+    setPlayerData(prev => ({ 
+        ...prev, 
+        upgrades: newUpgrades, 
+        resources: newResources 
+    }));
   };
 
   useEffect(() => {
@@ -615,7 +621,7 @@ export function GameContainer() {
             }
         } else if (type === 'boarding') {
             const targetEnemy = enemiesRef.current.find(e => e.id === targetId);
-            const distanceToTarget = targetEnemy ? Math.hypot(targetEnemy.x - playerPositionRef.current.x, targetEnemy.y - playerPositionRef.current.y) : Infinity;
+            const distanceToTarget = targetEnemy ? Math.hypot(targetEnemy.y - playerPositionRef.current.y, targetEnemy.x - playerPositionRef.current.x) : Infinity;
 
             if (!targetEnemy || distanceToTarget > ACTION_MAX_RANGE * 1.5) {
                 isActionFinished = true;
