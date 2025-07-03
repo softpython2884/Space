@@ -25,11 +25,13 @@ export function FrigateShip({ x, y, health, maxHealth, isTargeted }: FrigateShip
           width="60"
           height="60"
           viewBox="0 0 60 60"
-          className="fill-orange-600/80 stroke-orange-400"
+          className="fill-orange-600/80 stroke-orange-400 -rotate-90"
           style={{ filter: isTargeted ? 'drop-shadow(0 0 8px hsl(30 100% 50%))' : 'none' }}
         >
-          <polygon points="30,5 55,30 50,55 10,55 5,30" strokeWidth="2" />
-          <rect x="25" y="20" width="10" height="20" className="fill-orange-500" />
+          <polygon points="30,5 50,25 45,55 15,55 10,25" strokeWidth="2" />
+          <rect x="27" y="15" width="6" height="15" className="fill-orange-500" />
+          <polygon points="20,20 5,35 15,35" strokeWidth="1.5" />
+          <polygon points="40,20 55,35 45,35" strokeWidth="1.5" />
         </svg>
 
         {/* Health bar */}
