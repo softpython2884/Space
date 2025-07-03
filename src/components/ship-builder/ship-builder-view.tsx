@@ -67,63 +67,104 @@ type PlacedModule = {
 export function ShipBuilderView() {
   const [placedModules, setPlacedModules] = useState<PlacedModule[]>([]);
   const [shipName, setShipName] = useState('Mon Vaisseau Personnalisé');
-  const [cellSize, setCellSize] = useState(24); // Default to 1.5rem * 16px/rem
+  const [cellSize, setCellSize] = useState(24);
+  const [draggedItem, setDraggedItem] = useState<{
+    type: 'new';
+    module: Module;
+  } | {
+    type: 'move';
+    instanceId: string;
+    module: Module;
+  } | null>(null);
+  const [ghostPosition, setGhostPosition] = useState<{ row: number; col: number } | null>(null);
 
   useEffect(() => {
     const size = parseFloat(getComputedStyle(document.documentElement).fontSize) * CELL_SIZE_REM;
     setCellSize(size);
   }, []);
 
-  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, module: Module) => {
-    e.dataTransfer.setData('text/plain', module.id);
+  const handlePaletteDragStart = (e: React.DragEvent<HTMLDivElement>, module: Module) => {
+    setDraggedItem({ type: 'new', module });
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleGridDragStart = (e: React.DragEvent<HTMLDivElement>, placedModule: PlacedModule) => {
+    setDraggedItem({ type: 'move', instanceId: placedModule.instanceId, module: placedModule.module });
     e.dataTransfer.effectAllowed = 'move';
   };
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    if (!draggedItem) return;
+
+    const gridRect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - gridRect.left;
+    const y = e.clientY - gridRect.top;
+
+    const col = Math.floor(x / cellSize);
+    const row = Math.floor(y / cellSize);
+    
+    // To prevent rapid state updates, only update if the position changes
+    if (ghostPosition?.row !== row || ghostPosition?.col !== col) {
+      setGhostPosition({ row, col });
+    }
+  };
+  
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    setGhostPosition(null);
+  };
+  
+  const handleDragEnd = () => {
+    setDraggedItem(null);
+    setGhostPosition(null);
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    try {
-      const moduleId = e.dataTransfer.getData('text/plain');
-      if (!moduleId) return;
-      
-      const module = (Object.values(MODULE_PALETTE).flat()).find(m => m.id === moduleId);
+    if (!draggedItem) return;
 
-      if (!module) {
-        console.error("Module not found:", moduleId);
-        return;
+    const gridRect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - gridRect.left;
+    const y = e.clientY - gridRect.top;
+
+    const col = Math.floor(x / cellSize);
+    const row = Math.floor(y / cellSize);
+    
+    const { module } = draggedItem;
+
+    if (row < 0 || col < 0 || row + module.size[1] > GRID_SIZE || col + module.size[0] > GRID_SIZE) {
+      return; // Dropped outside the grid bounds
+    }
+
+    const newModuleRect = { x1: col, y1: row, x2: col + module.size[0], y2: row + module.size[1] };
+    
+    const otherModules = draggedItem.type === 'move'
+      ? placedModules.filter(p => p.instanceId !== draggedItem.instanceId)
+      : placedModules;
+
+    for (const placed of otherModules) {
+      const existingModuleRect = { x1: placed.col, y1: placed.row, x2: placed.col + placed.module.size[0], y2: placed.row + placed.module.size[1] };
+      if (newModuleRect.x1 < existingModuleRect.x2 && newModuleRect.x2 > existingModuleRect.x1 &&
+          newModuleRect.y1 < existingModuleRect.y2 && newModuleRect.y2 > existingModuleRect.y1) {
+        return; // Collision detected
       }
-      
-      const gridRect = e.currentTarget.getBoundingClientRect();
-      const x = e.clientX - gridRect.left;
-      const y = e.clientY - gridRect.top;
-
-      const col = Math.floor(x / cellSize);
-      const row = Math.floor(y / cellSize);
-      
-      if (row < 0 || col < 0 || row + module.size[1] > GRID_SIZE || col + module.size[0] > GRID_SIZE) {
-        return;
-      }
-
-      const newModuleRect = { x1: col, y1: row, x2: col + module.size[0], y2: row + module.size[1] };
-      for (const placed of placedModules) {
-        const existingModuleRect = { x1: placed.col, y1: placed.row, x2: placed.col + placed.module.size[0], y2: placed.row + placed.module.size[1] };
-        if (newModuleRect.x1 < existingModuleRect.x2 && newModuleRect.x2 > existingModuleRect.x1 &&
-            newModuleRect.y1 < existingModuleRect.y2 && newModuleRect.y2 > existingModuleRect.y1) {
-          return;
-        }
-      }
-
+    }
+    
+    if (draggedItem.type === 'new') {
       setPlacedModules(prev => [...prev, {
         instanceId: `${module.id}_${Date.now()}`,
         module,
         row,
         col,
       }]);
-    } catch (error) {
-      console.error("Failed to handle drop:", error);
+    } else { // type is 'move'
+      setPlacedModules(prev => 
+        prev.map(p => 
+          p.instanceId === draggedItem.instanceId 
+            ? { ...p, row, col } 
+            : p
+        )
+      );
     }
   };
 
@@ -196,17 +237,21 @@ export function ShipBuilderView() {
               }}
               onDragOver={handleDragOver}
               onDrop={handleDrop}
+              onDragLeave={handleDragLeave}
             >
               {placedModules.map(pm => (
                 <div 
                     key={pm.instanceId}
-                    className="group absolute flex items-center justify-center bg-primary/20 border border-primary/50 text-primary-foreground hover:bg-primary/40 rounded-sm"
+                    className="group absolute flex items-center justify-center bg-primary/20 border border-primary/50 text-primary-foreground hover:bg-primary/40 rounded-sm cursor-move"
                     style={{
                         left: `${pm.col * CELL_SIZE_REM}rem`,
                         top: `${pm.row * CELL_SIZE_REM}rem`,
                         width: `${pm.module.size[0] * CELL_SIZE_REM}rem`,
                         height: `${pm.module.size[1] * CELL_SIZE_REM}rem`,
                     }}
+                    draggable="true"
+                    onDragStart={(e) => handleGridDragStart(e, pm)}
+                    onDragEnd={handleDragEnd}
                 >
                     <pm.module.icon className="h-2/3 w-2/3 opacity-70 pointer-events-none"/>
                     <Button 
@@ -219,6 +264,17 @@ export function ShipBuilderView() {
                     </Button>
                 </div>
               ))}
+              {ghostPosition && draggedItem && (
+                <div
+                  className="absolute bg-primary/40 border-2 border-dashed border-primary pointer-events-none rounded-sm"
+                  style={{
+                    left: `${ghostPosition.col * CELL_SIZE_REM}rem`,
+                    top: `${ghostPosition.row * CELL_SIZE_REM}rem`,
+                    width: `${draggedItem.module.size[0] * CELL_SIZE_REM}rem`,
+                    height: `${draggedItem.module.size[1] * CELL_SIZE_REM}rem`,
+                  }}
+                />
+              )}
             </div>
         </Card>
       </div>
@@ -281,7 +337,8 @@ export function ShipBuilderView() {
                             key={module.id} 
                             className="p-3 bg-background/50 rounded-lg border border-transparent hover:border-primary cursor-grab transition-all"
                             draggable="true"
-                            onDragStart={(e) => handleDragStart(e, module)}
+                            onDragStart={(e) => handlePaletteDragStart(e, module)}
+                            onDragEnd={handleDragEnd}
                           >
                               <div className="flex items-start gap-3">
                                 <module.icon className="h-6 w-6 text-primary mt-1 flex-shrink-0" />
