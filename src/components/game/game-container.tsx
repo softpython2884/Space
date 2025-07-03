@@ -71,6 +71,12 @@ const STEALTH_DETECTION_RADIUS_NEAR = 100;
 // Cruise Mode Constants
 const CRUISE_CHARGE_TIME = 2000; // 2 seconds
 const CRUISE_DURATION = 4000; // 4 seconds
+const CRUISE_ENERGY_COST = 30;
+const CRUISE_COOLDOWN_MS = 5000; // 5 seconds after cruise ends
+
+// Mode Switching Constants
+const MODE_CHANGE_COOLDOWN_MS = 2000; // 2 seconds between any mode change
+
 
 type ProjectileState = {
   id: number;
@@ -123,6 +129,7 @@ export function GameContainer() {
   const [autoMoveTarget, setAutoMoveTarget] = useState<{ x: number, y: number } | null>(null);
   const [shipMode, setShipMode] = useState<ShipMode>('normal');
   const [cruiseState, setCruiseState] = useState<'idle' | 'charging' | 'cruising'>('idle');
+  const [cooldowns, setCooldowns] = useState({ modeChange: 1, cruise: 1 }); // 1 means available
 
   const [playerData, setPlayerData] = useState<PlayerData>(JSON.parse(JSON.stringify(INITIAL_PLAYER_DATA)));
   const [stellarBaseData, setStellarBaseData] = useState<StellarBaseData>({ shields: 95, hull: 88 });
@@ -134,6 +141,9 @@ export function GameContainer() {
   const containerRef = useRef<HTMLDivElement>(null);
   const lastEnergyUseTimestamp = useRef(0);
   const lastFiredTimestamp = useRef(0);
+
+  const modeChangeAvailableAtRef = useRef(0);
+  const cruiseAvailableAtRef = useRef(0);
   const cruiseChargeStartTimestampRef = useRef<number>(0);
   const cruiseDurationStartTimestampRef = useRef<number>(0);
   
@@ -182,6 +192,9 @@ export function GameContainer() {
     setIsGameOver(false);
     setShipMode('normal');
     setCruiseState('idle');
+    modeChangeAvailableAtRef.current = 0;
+    cruiseAvailableAtRef.current = 0;
+    setCooldowns({ modeChange: 1, cruise: 1 });
   };
 
   // Initial map object setup
@@ -190,8 +203,25 @@ export function GameContainer() {
   }, []);
 
   const handleModeChange = (newMode: ShipMode) => {
-    if (cruiseStateRef.current !== 'idle') return; // Can't change mode during cruise sequence
+    const now = Date.now();
+    if (now < modeChangeAvailableAtRef.current) {
+        console.warn("Mode change is on cooldown.");
+        return;
+    }
+    if (cruiseStateRef.current !== 'idle') return;
 
+    if (newMode === 'cruise') {
+        if (now < cruiseAvailableAtRef.current) {
+            console.warn("Cruise is on cooldown.");
+            return;
+        }
+        if (playerDataRef.current.energy < CRUISE_ENERGY_COST) {
+            console.warn("Not enough energy for cruise.");
+            return;
+        }
+        setPlayerData(d => ({ ...d, energy: Math.max(0, d.energy - CRUISE_ENERGY_COST) }));
+    }
+    
     if (newMode === 'cruise') {
         setShipMode('cruise');
         setCruiseState('charging');
@@ -200,6 +230,8 @@ export function GameContainer() {
     } else {
         setShipMode(newMode);
     }
+
+    modeChangeAvailableAtRef.current = now + MODE_CHANGE_COOLDOWN_MS;
   };
 
   // Setup event listeners
@@ -306,6 +338,19 @@ export function GameContainer() {
       return () => resizeObserver.disconnect();
   }, []);
 
+  // Cooldown UI updater effect
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+        const now = Date.now();
+        const modeChangeProgress = Math.min(1, 1 - (Math.max(0, modeChangeAvailableAtRef.current - now) / MODE_CHANGE_COOLDOWN_MS));
+        const cruiseProgress = Math.min(1, 1 - (Math.max(0, cruiseAvailableAtRef.current - now) / CRUISE_COOLDOWN_MS));
+        setCooldowns({ modeChange: modeChangeProgress, cruise: cruiseProgress });
+    }, 100);
+
+    return () => clearInterval(intervalId);
+  }, []);
+
+
   // Update vessel systems based on player data and ship mode
   useEffect(() => {
     const { health, energy } = playerData;
@@ -358,6 +403,7 @@ export function GameContainer() {
               setCruiseState('idle');
               setShipMode('normal');
               cruiseDurationStartTimestampRef.current = 0;
+              cruiseAvailableAtRef.current = Date.now() + CRUISE_COOLDOWN_MS;
           }
       }
 
@@ -675,7 +721,7 @@ export function GameContainer() {
     }
     
     return () => cancelAnimationFrame(animationFrameId);
-  }, [viewSize, isSettingsOpen, isGameOver, controlScheme, shipMode]);
+  }, [viewSize, isSettingsOpen, isGameOver, controlScheme]);
 
   let radarRange = BASE_RADAR_RANGE;
   if (shipMode === 'scan') {
@@ -780,7 +826,14 @@ export function GameContainer() {
 
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-end gap-4" data-ui-element="true">
         <SpeedIndicator speed={speed} rotation={playerRotation} />
-        <ShipModeSelector currentMode={shipMode} onModeChange={handleModeChange} />
+        <ShipModeSelector
+            currentMode={shipMode} 
+            onModeChange={handleModeChange} 
+            cooldowns={cooldowns}
+            playerEnergy={playerData.energy}
+            cruiseEnergyCost={CRUISE_ENERGY_COST}
+            isCruising={cruiseState !== 'idle'}
+        />
       </div>
 
       <SettingsMenu
