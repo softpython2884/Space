@@ -3,6 +3,8 @@
 export type ShipType = "Combat" | "Mining" | "Support" | "Galleon";
 export type ControlScheme = 'relative' | 'absolute' | 'hybrid';
 export type ShipMode = 'normal' | 'cruise' | 'stealth' | 'scan' | 'shield';
+export type ContextMenuTargetType = 'enemy' | 'asteroid' | 'station';
+export type PlayerActionType = 'mining' | 'boarding' | 'pillaging';
 
 export type ShipSize = 'S' | 'M' | 'L' | 'XL';
 export type ShipRole = 'Combat' | 'Commerce' | 'Mining' | 'Construction' | 'Support';
