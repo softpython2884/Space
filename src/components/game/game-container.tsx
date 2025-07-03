@@ -55,12 +55,12 @@ const FRIGATE_COLLISION_RADIUS = 30;
 const STAFF_COLLISION_RADIUS = 15;
 const DEBRIS_COLLISION_RADIUS = 20;
 const STATION_COLLISION_RADIUS = 75;
-const ASTEROID_COLLISION_RADIUS = 0.35; // Multiplier for asteroid size
+const ASTEROID_COLLISION_RADIUS = 0.3; // Multiplier for asteroid size
 
 const PLAYER_PROJECTILE_DAMAGE = 10;
 const ENEMY_PROJECTILE_DAMAGE = 5;
 
-const ASTEROID_COLLISION_DAMAGE = 15;
+const ASTEROID_COLLISION_DAMAGE = 10;
 const ENEMY_COLLISION_DAMAGE = 25;
 const STATION_COLLISION_DAMAGE = 50;
 
@@ -83,7 +83,7 @@ const CRUISE_ENERGY_COST = 50;
 const CRUISE_COOLDOWN_MS = 5000; // 5 seconds after cruise ends
 
 // Shield Mode Constants
-const SHIELD_ENERGY_DRAIN_RATE = 0.05;
+const SHIELD_ENERGY_DRAIN_RATE = 0.02;
 const SHIELD_DAMAGE_TO_ENERGY_COST = 3;
 
 // Mode Switching Constants
@@ -217,6 +217,9 @@ export function GameContainer() {
   const playerActionRef = useRef(playerAction);
   useEffect(() => { playerActionRef.current = playerAction; }, [playerAction]);
 
+  const zoomRef = useRef(zoom);
+  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+
   const resetGame = () => {
     setPlayerPosition({ x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 });
     setVelocity({ x: 0, y: 0 });
@@ -341,8 +344,8 @@ export function GameContainer() {
         return;
       }
       
-      const clickWorldX = playerPositionRef.current.x + (mousePosition.current.x - viewSize.width / 2) / zoom;
-      const clickWorldY = playerPositionRef.current.y + (mousePosition.current.y - viewSize.height / 2) / zoom;
+      const clickWorldX = playerPositionRef.current.x + (mousePosition.current.x - viewSize.width / 2) / zoomRef.current;
+      const clickWorldY = playerPositionRef.current.y + (mousePosition.current.y - viewSize.height / 2) / zoomRef.current;
       
       if (event.button === 0) { // Left mouse button
         isLeftMouseDown.current = true;
@@ -414,7 +417,7 @@ export function GameContainer() {
       window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, [viewSize, isSettingsOpen, isGameOver, zoom]);
+  }, [viewSize, isSettingsOpen, isGameOver]);
 
   // Resize observer for container size
   useEffect(() => {
@@ -524,9 +527,9 @@ export function GameContainer() {
       }
       
       // --- AIMING & ROTATION ---
-      const shipScreenX = viewSize.width / 2;
-      const shipScreenY = viewSize.height / 2;
-      const aimAngle = Math.atan2(mousePosition.current.y - shipScreenY, mousePosition.current.x - shipScreenX) * (180 / Math.PI);
+      const mouseWorldX = playerPositionRef.current.x + (mousePosition.current.x - viewSize.width / 2) / zoomRef.current;
+      const mouseWorldY = playerPositionRef.current.y + (mousePosition.current.y - viewSize.height / 2) / zoomRef.current;
+      const aimAngle = Math.atan2(mouseWorldY - playerPositionRef.current.y, mouseWorldX - playerPositionRef.current.x) * (180 / Math.PI);
       setAimRotation(aimAngle); // Aiming reticle always follows mouse
       
       if (autoMoveTargetRef.current) {
@@ -548,13 +551,7 @@ export function GameContainer() {
 
       if (!isMovementDisabled) {
         const rotRad = playerRotationRef.current * (Math.PI / 180);
-        if (shipModeRef.current === 'stealth') {
-            if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) accelVec.y -= currentAccel;
-            if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) accelVec.y += currentAccel;
-            if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) accelVec.x -= currentAccel;
-            if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) accelVec.x += currentAccel;
-        }
-        else if (cruiseStateRef.current === 'cruising') {
+        if (cruiseStateRef.current === 'cruising') {
           const cruiseRad = playerRotationRef.current * (Math.PI / 180);
           accelVec.x = Math.cos(cruiseRad) * currentAccel;
           accelVec.y = Math.sin(cruiseRad) * currentAccel;
@@ -615,7 +612,7 @@ export function GameContainer() {
       // --- PLAYER SHOOTING ---
       const currentTarget = enemiesRef.current.find(e => e.id === targetIdRef.current);
       const canShoot = playerDataRef.current.energy >= ENERGY_PER_SHOT && (shipMode === 'normal' || shipMode === 'stealth' || shipMode === 'shield') && cruiseStateRef.current === 'idle';
-      const isShooting = (currentTarget || (isLeftMouseDown.current && !targetIdRef.current)) && canShoot;
+      const isShooting = currentTarget && canShoot;
       if (isShooting && timestamp - lastFiredTimestamp.current > FIRE_RATE_MS) {
         lastFiredTimestamp.current = timestamp;
         lastEnergyUseTimestamp.current = timestamp;
@@ -995,10 +992,14 @@ export function GameContainer() {
         {debris.map((d) => (
             <Debris key={d.id} x={d.x} y={d.y} />
         ))}
+        <PlayerShip 
+          x={playerPosition.x}
+          y={playerPosition.y}
+          rotation={playerRotation} 
+          aimRotation={aimRotation} 
+          isShieldActive={shipMode === 'shield'} 
+        />
       </div>
-      
-      {/* Player Ship is rendered outside the scaled container, so it doesn't change size with zoom */}
-      <PlayerShip rotation={playerRotation} aimRotation={aimRotation} isShieldActive={shipMode === 'shield'} />
       
       {/* UI Overlays & Effects */}
       <MilitaryViewOverlay isOpen={zoom === MIN_ZOOM} />
