@@ -613,7 +613,7 @@ export function GameContainer() {
           let isHit = false;
           for (const proj of playerProjectilesRef.current) {
               if (hitPlayerProjectileIds.has(proj.id)) continue;
-              const distance = Math.hypot(proj.x - updatedEnemy.x, updatedEnemy.y - updatedEnemy.y);
+              const distance = Math.hypot(proj.x - updatedEnemy.x, proj.y - updatedEnemy.y);
               if (distance < collisionRadius) {
                   hitPlayerProjectileIds.add(proj.id);
                   updatedEnemy.health -= PLAYER_PROJECTILE_DAMAGE;
@@ -773,7 +773,6 @@ export function GameContainer() {
           }
           if (collisionOccurred) {
               applyDamage(damage);
-              lastCollisionTimestamp = timestamp;
               setVelocity(v => ({ x: -v.x * 0.5, y: -v.y * 0.5 }));
           }
       }
@@ -881,7 +880,6 @@ export function GameContainer() {
 
   const renderEnemy = (enemy: EnemyState) => {
     const props = {
-      key: enemy.id,
       x: enemy.x,
       y: enemy.y,
       health: enemy.health,
@@ -890,11 +888,11 @@ export function GameContainer() {
     };
     switch (enemy.type) {
       case 'chasseur':
-        return <EnemyShip {...props} />;
+        return <EnemyShip key={enemy.id} {...props} />;
       case 'frigate':
-        return <FrigateShip {...props} />;
+        return <FrigateShip key={enemy.id} {...props} />;
       case 'staff':
-        return <StaffShip {...props} />;
+        return <StaffShip key={enemy.id} {...props} />;
       default:
         return null;
     }
