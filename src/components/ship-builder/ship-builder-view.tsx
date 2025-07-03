@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,6 +27,7 @@ type Module = {
 };
 
 const GRID_SIZE = 32;
+const CELL_SIZE_REM = 1.5;
 
 const MODULE_PALETTE: Record<ModuleCategory, Module[]> = {
   'Coques': [
@@ -56,26 +57,100 @@ const MODULE_PALETTE: Record<ModuleCategory, Module[]> = {
   ]
 };
 
-type ShipCell = {
-  moduleId: string | null;
+type PlacedModule = {
+  instanceId: string;
+  module: Module;
+  row: number;
+  col: number;
 };
 
 export function ShipBuilderView() {
-  const [grid, setGrid] = useState<ShipCell[][]>(
-    Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill({ moduleId: null }))
-  );
+  const [placedModules, setPlacedModules] = useState<PlacedModule[]>([]);
   const [shipName, setShipName] = useState('Mon Vaisseau Personnalisé');
+  const [cellSize, setCellSize] = useState(24); // Default to 1.5rem * 16px/rem
+
+  useEffect(() => {
+    // This ensures we get the correct rem-to-px conversion value on the client
+    const size = parseFloat(getComputedStyle(document.documentElement).fontSize) * CELL_SIZE_REM;
+    setCellSize(size);
+  }, []);
+
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, module: Module) => {
+    e.dataTransfer.setData('application/json', JSON.stringify(module));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    try {
+      const module: Module = JSON.parse(e.dataTransfer.getData('application/json'));
+      
+      const gridRect = e.currentTarget.getBoundingClientRect();
+      const x = e.clientX - gridRect.left;
+      const y = e.clientY - gridRect.top;
+
+      const col = Math.floor(x / cellSize);
+      const row = Math.floor(y / cellSize);
+      
+      if (row < 0 || col < 0 || row + module.size[1] > GRID_SIZE || col + module.size[0] > GRID_SIZE) {
+        // Module is out of bounds
+        return;
+      }
+
+      const newModuleRect = { x1: col, y1: row, x2: col + module.size[0], y2: row + module.size[1] };
+      for (const placed of placedModules) {
+        const existingModuleRect = { x1: placed.col, y1: placed.row, x2: placed.col + placed.module.size[0], y2: placed.row + placed.module.size[1] };
+        if (newModuleRect.x1 < existingModuleRect.x2 && newModuleRect.x2 > existingModuleRect.x1 &&
+            newModuleRect.y1 < existingModuleRect.y2 && newModuleRect.y2 > existingModuleRect.y1) {
+          // Modules cannot overlap
+          return;
+        }
+      }
+
+      setPlacedModules(prev => [...prev, {
+        instanceId: `${module.id}_${Date.now()}`,
+        module,
+        row,
+        col,
+      }]);
+    } catch (error) {
+      console.error("Failed to handle drop:", error);
+    }
+  };
+
+  const handleRemoveModule = (instanceId: string) => {
+    setPlacedModules(prev => prev.filter(p => p.instanceId !== instanceId));
+  };
+
+  const stats = useMemo(() => {
+    return placedModules.reduce((acc, { module }) => {
+      acc.cost += module.cost;
+      acc.powerGenerated += Math.max(0, module.power);
+      acc.powerConsumed += Math.abs(Math.min(0, module.power));
+      acc.mass += module.mass;
+      return acc;
+    }, { cost: 0, powerGenerated: 0, powerConsumed: 0, mass: 0 });
+  }, [placedModules]);
 
   const handleExport = () => {
     const shipDesign = {
       name: shipName,
-      grid,
-      // We will add more stats and data here later
+      modules: placedModules.map(pm => ({
+          moduleId: pm.module.id,
+          row: pm.row,
+          col: pm.col,
+      })),
+      stats: {
+        ...stats,
+        powerNet: stats.powerGenerated - stats.powerConsumed,
+      },
     };
     const json = JSON.stringify(shipDesign, null, 2);
-    console.log(json);
     
-    // Create a blob and download it
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -86,8 +161,8 @@ export function ShipBuilderView() {
   };
   
   const handleClear = () => {
-    setGrid(Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill({ moduleId: null })));
-  }
+    setPlacedModules([]);
+  };
 
   return (
     <div className="flex h-screen w-full bg-background p-4 gap-4">
@@ -106,16 +181,38 @@ export function ShipBuilderView() {
         </Card>
         <Card className="flex-grow bg-secondary/20 border-secondary p-4 flex items-center justify-center overflow-auto">
             <div 
-              className="grid bg-black/30 border border-dashed border-primary/30"
+              className="relative bg-black/30 border border-dashed border-primary/30"
               style={{
-                  gridTemplateColumns: `repeat(${GRID_SIZE}, 1.5rem)`,
-                  gridTemplateRows: `repeat(${GRID_SIZE}, 1.5rem)`,
-                  width: `${GRID_SIZE * 1.5}rem`,
-                  height: `${GRID_SIZE * 1.5}rem`,
+                  width: `${GRID_SIZE * CELL_SIZE_REM}rem`,
+                  height: `${GRID_SIZE * CELL_SIZE_REM}rem`,
+                  backgroundImage: `linear-gradient(to right, hsl(var(--primary) / 0.1) 1px, transparent 1px),
+                                    linear-gradient(to bottom, hsl(var(--primary) / 0.1) 1px, transparent 1px)`,
+                  backgroundSize: `${CELL_SIZE_REM}rem ${CELL_SIZE_REM}rem`,
               }}
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
             >
-              {grid.flat().map((cell, index) => (
-                <div key={index} className="border border-primary/10 hover:bg-primary/20 transition-colors" />
+              {placedModules.map(pm => (
+                <div 
+                    key={pm.instanceId}
+                    className="group absolute flex items-center justify-center bg-primary/20 border border-primary/50 text-primary-foreground hover:bg-primary/40 rounded-sm"
+                    style={{
+                        left: `${pm.col * CELL_SIZE_REM}rem`,
+                        top: `${pm.row * CELL_SIZE_REM}rem`,
+                        width: `${pm.module.size[0] * CELL_SIZE_REM}rem`,
+                        height: `${pm.module.size[1] * CELL_SIZE_REM}rem`,
+                    }}
+                >
+                    <pm.module.icon className="h-2/3 w-2/3 opacity-70 pointer-events-none"/>
+                    <Button 
+                        variant="destructive" 
+                        size="icon" 
+                        className="absolute -top-2 -right-2 h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                        onClick={() => handleRemoveModule(pm.instanceId)}
+                    >
+                        <Trash2 className="h-3 w-3" />
+                    </Button>
+                </div>
               ))}
             </div>
         </Card>
@@ -140,9 +237,14 @@ export function ShipBuilderView() {
              </div>
              <Separator />
              <div className="space-y-2 text-sm">
-                <div className="flex justify-between"><span>Coût Total:</span> <span className="font-mono text-primary">0 Crédits</span></div>
-                <div className="flex justify-between"><span>Énergie:</span> <span className="font-mono text-primary">0 / 0</span></div>
-                <div className="flex justify-between"><span>Masse:</span> <span className="font-mono text-primary">0 tonnes</span></div>
+                <div className="flex justify-between"><span>Coût Total:</span> <span className="font-mono text-primary">{stats.cost} Crédits</span></div>
+                <div className="flex justify-between">
+                  <span>Énergie (Nette/Gén.):</span> 
+                  <span className={`font-mono ${stats.powerGenerated - stats.powerConsumed < 0 ? 'text-red-500' : 'text-primary'}`}>
+                    {stats.powerGenerated - stats.powerConsumed} / {stats.powerGenerated}
+                  </span>
+                </div>
+                <div className="flex justify-between"><span>Masse:</span> <span className="font-mono text-primary">{stats.mass} tonnes</span></div>
              </div>
              <Separator />
              <div className="flex gap-2">
@@ -170,7 +272,12 @@ export function ShipBuilderView() {
                     <AccordionContent>
                       <div className="space-y-2">
                         {MODULE_PALETTE[category].map(module => (
-                          <div key={module.id} className="p-3 bg-background/50 rounded-lg border border-transparent hover:border-primary cursor-grab transition-all">
+                          <div 
+                            key={module.id} 
+                            className="p-3 bg-background/50 rounded-lg border border-transparent hover:border-primary cursor-grab transition-all"
+                            draggable="true"
+                            onDragStart={(e) => handleDragStart(e, module)}
+                          >
                               <div className="flex items-start gap-3">
                                 <module.icon className="h-6 w-6 text-primary mt-1 flex-shrink-0" />
                                 <div className="flex-grow">
