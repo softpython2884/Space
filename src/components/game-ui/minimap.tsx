@@ -57,7 +57,7 @@ export function Minimap({ playerPosition, playerRotation, enemies, mapWidth, map
               style={{
                 backgroundImage: 'url(https://placehold.co/512x512)',
                 backgroundPosition: `${(playerPosition.x / mapWidth) * 100}% ${(playerPosition.y / mapHeight) * 100}%`,
-                transform: `scale(1.5) rotate(${playerRotation}deg)`,
+                transform: `scale(1.5)`,
               }}
               data-ai-hint="star map space"
             />
@@ -65,7 +65,7 @@ export function Minimap({ playerPosition, playerRotation, enemies, mapWidth, map
             {/* Player Icon at the center */}
             <div
                 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 transition-transform"
-                style={{ transform: `translateX(-50%) translateY(-50%) rotate(${playerRotation}deg)` }}
+                style={{ transform: `rotate(${playerRotation + 90}deg)` }}
             >
                 {getDirectionalIcon(true)}
             </div>
