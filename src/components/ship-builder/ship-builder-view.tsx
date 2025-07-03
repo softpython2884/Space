@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { 
   Codepen, Download, Trash2, Shield, Target, Zap, Snowflake, BrainCircuit, Ghost, Radar, Container, Power, ChevronsUpDown, LocateFixed, Crosshair, AppWindow
 } from 'lucide-react';
@@ -59,7 +61,7 @@ const MODULE_PALETTE: Record<ModuleCategory, Module[]> = {
 
 type PlacedModule = {
   instanceId: string;
-  module: Module;
+  moduleId: string;
   row: number;
   col: number;
 };
@@ -70,26 +72,41 @@ export function ShipBuilderView() {
   const [cellSize, setCellSize] = useState(24);
   const [draggedItem, setDraggedItem] = useState<{
     type: 'new';
-    module: Module;
+    moduleId: string;
   } | {
     type: 'move';
     instanceId: string;
-    module: Module;
+    moduleId: string;
   } | null>(null);
   const [ghostPosition, setGhostPosition] = useState<{ row: number; col: number } | null>(null);
+  const [isSymmetryEnabled, setIsSymmetryEnabled] = useState(false);
 
   useEffect(() => {
     const size = parseFloat(getComputedStyle(document.documentElement).fontSize) * CELL_SIZE_REM;
     setCellSize(size);
   }, []);
 
+  const allModules: Record<string, Module> = useMemo(() => 
+    Object.values(MODULE_PALETTE).flat().reduce((acc, module) => {
+        acc[module.id] = module;
+        return acc;
+    }, {} as Record<string, Module>)
+  , []);
+
+  const getModuleById = (id: string) => allModules[id];
+  
+  const placedModuleDetails = useMemo(() => {
+    return placedModules.map(pm => ({ ...pm, module: getModuleById(pm.moduleId) }));
+  }, [placedModules, allModules]);
+
+
   const handlePaletteDragStart = (e: React.DragEvent<HTMLDivElement>, module: Module) => {
-    setDraggedItem({ type: 'new', module });
+    setDraggedItem({ type: 'new', moduleId: module.id });
     e.dataTransfer.effectAllowed = 'move';
   };
 
   const handleGridDragStart = (e: React.DragEvent<HTMLDivElement>, placedModule: PlacedModule) => {
-    setDraggedItem({ type: 'move', instanceId: placedModule.instanceId, module: placedModule.module });
+    setDraggedItem({ type: 'move', instanceId: placedModule.instanceId, moduleId: placedModule.moduleId });
     e.dataTransfer.effectAllowed = 'move';
   };
 
@@ -104,7 +121,6 @@ export function ShipBuilderView() {
     const col = Math.floor(x / cellSize);
     const row = Math.floor(y / cellSize);
     
-    // To prevent rapid state updates, only update if the position changes
     if (ghostPosition?.row !== row || ghostPosition?.col !== col) {
       setGhostPosition({ row, col });
     }
@@ -121,51 +137,60 @@ export function ShipBuilderView() {
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (!draggedItem) return;
+    if (!draggedItem || !ghostPosition) return;
+  
+    const { row, col } = ghostPosition;
+    const module = getModuleById(draggedItem.moduleId);
+    if (!module) return;
+  
+    if (row < 0 || col < 0 || row + module.size[1] > GRID_SIZE || col + module.size[0] > GRID_SIZE) return;
+  
+    const isColliding = (r: number, c: number, modulesToCheck: PlacedModule[]) => {
+      const moduleToCheck = getModuleById(draggedItem.moduleId);
+      if (!moduleToCheck) return true;
+      const newModuleRect = { x1: c, y1: r, x2: c + moduleToCheck.size[0], y2: r + moduleToCheck.size[1] };
+      for (const placed of modulesToCheck) {
+        const placedModule = getModuleById(placed.moduleId);
+        if (!placedModule) continue;
+        const existingModuleRect = { x1: placed.col, y1: placed.row, x2: placed.col + placedModule.size[0], y2: placed.row + placedModule.size[1] };
+        if (newModuleRect.x1 < existingModuleRect.x2 && newModuleRect.x2 > existingModuleRect.x1 &&
+            newModuleRect.y1 < existingModuleRect.y2 && newModuleRect.y2 > existingModuleRect.y1) {
+          return true;
+        }
+      }
+      return false;
+    };
+  
+    if (draggedItem.type === 'move') {
+      const otherModules = placedModules.filter(p => p.instanceId !== draggedItem.instanceId);
+      if (isColliding(row, col, otherModules)) return;
+      setPlacedModules(prev => prev.map(p => p.instanceId === draggedItem.instanceId ? { ...p, row, col } : p));
+    } else if (draggedItem.type === 'new') {
+      if (isSymmetryEnabled) {
+        const mirroredCol = GRID_SIZE - col - module.size[0];
+        if (mirroredCol < 0 || (mirroredCol + module.size[0]) > GRID_SIZE) return; // Out of bounds
+        
+        if (isColliding(row, col, placedModules)) return;
+        if (isColliding(row, mirroredCol, placedModules)) return;
 
-    const gridRect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - gridRect.left;
-    const y = e.clientY - gridRect.top;
+        // Check self-collision on centerline
+        const newModuleRect = { x1: col, y1: row, x2: col + module.size[0], y2: row + module.size[1] };
+        const mirroredModuleRect = { x1: mirroredCol, y1: row, x2: mirroredCol + module.size[0], y2: row + module.size[1] };
+        if (newModuleRect.x1 < mirroredModuleRect.x2 && newModuleRect.x2 > mirroredModuleRect.x1) return;
 
-    const col = Math.floor(x / cellSize);
-    const row = Math.floor(y / cellSize);
-    
-    const { module } = draggedItem;
+        setPlacedModules(prev => [...prev, 
+          { instanceId: `${module.id}_${Date.now()}`, moduleId: module.id, row, col },
+          { instanceId: `${module.id}_${Date.now()+1}`, moduleId: module.id, row, col: mirroredCol }
+        ]);
 
-    if (row < 0 || col < 0 || row + module.size[1] > GRID_SIZE || col + module.size[0] > GRID_SIZE) {
-      return; // Dropped outside the grid bounds
-    }
-
-    const newModuleRect = { x1: col, y1: row, x2: col + module.size[0], y2: row + module.size[1] };
-    
-    const otherModules = draggedItem.type === 'move'
-      ? placedModules.filter(p => p.instanceId !== draggedItem.instanceId)
-      : placedModules;
-
-    for (const placed of otherModules) {
-      const existingModuleRect = { x1: placed.col, y1: placed.row, x2: placed.col + placed.module.size[0], y2: placed.row + placed.module.size[1] };
-      if (newModuleRect.x1 < existingModuleRect.x2 && newModuleRect.x2 > existingModuleRect.x1 &&
-          newModuleRect.y1 < existingModuleRect.y2 && newModuleRect.y2 > existingModuleRect.y1) {
-        return; // Collision detected
+      } else {
+        if (isColliding(row, col, placedModules)) return;
+        setPlacedModules(prev => [...prev, { instanceId: `${module.id}_${Date.now()}`, moduleId: module.id, row, col }]);
       }
     }
-    
-    if (draggedItem.type === 'new') {
-      setPlacedModules(prev => [...prev, {
-        instanceId: `${module.id}_${Date.now()}`,
-        module,
-        row,
-        col,
-      }]);
-    } else { // type is 'move'
-      setPlacedModules(prev => 
-        prev.map(p => 
-          p.instanceId === draggedItem.instanceId 
-            ? { ...p, row, col } 
-            : p
-        )
-      );
-    }
+  
+    setGhostPosition(null);
+    setDraggedItem(null);
   };
 
   const handleRemoveModule = (instanceId: string) => {
@@ -173,20 +198,20 @@ export function ShipBuilderView() {
   };
 
   const stats = useMemo(() => {
-    return placedModules.reduce((acc, { module }) => {
+    return placedModuleDetails.reduce((acc, { module }) => {
       acc.cost += module.cost;
       acc.powerGenerated += Math.max(0, module.power);
       acc.powerConsumed += Math.abs(Math.min(0, module.power));
       acc.mass += module.mass;
       return acc;
     }, { cost: 0, powerGenerated: 0, powerConsumed: 0, mass: 0 });
-  }, [placedModules]);
+  }, [placedModuleDetails]);
 
   const handleExport = () => {
     const shipDesign = {
       name: shipName,
       modules: placedModules.map(pm => ({
-          moduleId: pm.module.id,
+          moduleId: pm.moduleId,
           row: pm.row,
           col: pm.col,
       })),
@@ -209,6 +234,8 @@ export function ShipBuilderView() {
   const handleClear = () => {
     setPlacedModules([]);
   };
+
+  const draggedModule = draggedItem ? getModuleById(draggedItem.moduleId) : null;
 
   return (
     <div className="flex h-screen w-full bg-background p-4 gap-4">
@@ -238,8 +265,13 @@ export function ShipBuilderView() {
               onDragOver={handleDragOver}
               onDrop={handleDrop}
               onDragLeave={handleDragLeave}
+              onDragEnd={handleDragEnd}
             >
-              {placedModules.map(pm => (
+              {/* Center Guides */}
+              <div className="absolute top-0 left-1/2 w-px h-full bg-primary/20 border-r border-dashed border-primary/30 pointer-events-none" />
+              <div className="absolute left-0 top-1/2 h-px w-full bg-primary/20 border-b border-dashed border-primary/30 pointer-events-none" />
+
+              {placedModuleDetails.map(pm => (
                 <div 
                     key={pm.instanceId}
                     className="group absolute flex items-center justify-center bg-primary/20 border border-primary/50 text-primary-foreground hover:bg-primary/40 rounded-sm cursor-move"
@@ -251,7 +283,6 @@ export function ShipBuilderView() {
                     }}
                     draggable="true"
                     onDragStart={(e) => handleGridDragStart(e, pm)}
-                    onDragEnd={handleDragEnd}
                 >
                     <pm.module.icon className="h-2/3 w-2/3 opacity-70 pointer-events-none"/>
                     <Button 
@@ -264,16 +295,31 @@ export function ShipBuilderView() {
                     </Button>
                 </div>
               ))}
-              {ghostPosition && draggedItem && (
-                <div
-                  className="absolute bg-primary/40 border-2 border-dashed border-primary pointer-events-none rounded-sm"
-                  style={{
-                    left: `${ghostPosition.col * CELL_SIZE_REM}rem`,
-                    top: `${ghostPosition.row * CELL_SIZE_REM}rem`,
-                    width: `${draggedItem.module.size[0] * CELL_SIZE_REM}rem`,
-                    height: `${draggedItem.module.size[1] * CELL_SIZE_REM}rem`,
-                  }}
-                />
+              
+              {/* Ghost Preview */}
+              {ghostPosition && draggedModule && (
+                <>
+                  <div
+                    className="absolute bg-primary/40 border-2 border-dashed border-primary pointer-events-none rounded-sm"
+                    style={{
+                      left: `${ghostPosition.col * CELL_SIZE_REM}rem`,
+                      top: `${ghostPosition.row * CELL_SIZE_REM}rem`,
+                      width: `${draggedModule.size[0] * CELL_SIZE_REM}rem`,
+                      height: `${draggedModule.size[1] * CELL_SIZE_REM}rem`,
+                    }}
+                  />
+                  {isSymmetryEnabled && draggedItem?.type === 'new' && (
+                     <div
+                      className="absolute bg-primary/20 border-2 border-dashed border-primary/50 pointer-events-none rounded-sm"
+                      style={{
+                        left: `${(GRID_SIZE - ghostPosition.col - draggedModule.size[0]) * CELL_SIZE_REM}rem`,
+                        top: `${ghostPosition.row * CELL_SIZE_REM}rem`,
+                        width: `${draggedModule.size[0] * CELL_SIZE_REM}rem`,
+                        height: `${draggedModule.size[1] * CELL_SIZE_REM}rem`,
+                      }}
+                    />
+                  )}
+                </>
               )}
             </div>
         </Card>
@@ -295,6 +341,14 @@ export function ShipBuilderView() {
                   onChange={(e) => setShipName(e.target.value)}
                   className="mt-1"
                 />
+             </div>
+             <div className="flex items-center space-x-2 pt-2">
+                <Switch 
+                    id="symmetry-mode"
+                    checked={isSymmetryEnabled}
+                    onCheckedChange={setIsSymmetryEnabled}
+                />
+                <Label htmlFor="symmetry-mode">Mode Symétrie (X)</Label>
              </div>
              <Separator />
              <div className="space-y-2 text-sm">
