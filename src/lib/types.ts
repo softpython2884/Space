@@ -2,7 +2,7 @@
 
 export type ShipType = "Combat" | "Mining" | "Support" | "Galleon";
 export type ControlScheme = 'relative' | 'absolute' | 'hybrid';
-export type ShipMode = 'normal' | 'cruise' | 'stealth' | 'scan';
+export type ShipMode = 'normal' | 'cruise' | 'stealth' | 'scan' | 'shield';
 
 export type ShipSize = 'S' | 'M' | 'L' | 'XL';
 export type ShipRole = 'Combat' | 'Commerce' | 'Mining' | 'Construction' | 'Support';
