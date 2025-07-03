@@ -112,10 +112,10 @@ export type EnemyState = EnemyStateType;
 
 const generateInitialEnemies = (): EnemyState[] => [
     // Chasseurs
-    { id: 1, type: 'chasseur', x: MAP_WIDTH / 2 + 1000, y: MAP_HEIGHT / 2, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0 },
+    { id: 1, type: 'chasseur', x: MAP_WIDTH / 2 + 1000, y: MAP_HEIGHT / 2 + 1000, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0 },
     { id: 2, type: 'chasseur', x: MAP_WIDTH / 2 - 1100, y: MAP_HEIGHT / 2 - 800, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0 },
     // Frigate
-    { id: 3, type: 'frigate', x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 + 1200, vx: 0, vy: 0, health: 300, maxHealth: 300, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 10, lastEnergyUseTimestamp: 0 },
+    { id: 3, type: 'frigate', x: MAP_WIDTH / 2 + 200, y: MAP_HEIGHT / 2 + 1200, vx: 0, vy: 0, health: 300, maxHealth: 300, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 10, lastEnergyUseTimestamp: 0 },
     // Staff
     { id: 4, type: 'staff', x: 850, y: 850, vx: 0.5, vy: -0.5, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: 0, maxEnergy: 0, cargo: 20, lastEnergyUseTimestamp: 0 },
     { id: 5, type: 'staff', x: 2000, y: 2200, vx: -0.5, vy: 0.5, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: 0, maxEnergy: 0, cargo: 20, lastEnergyUseTimestamp: 0 },
@@ -321,7 +321,7 @@ export function GameContainer() {
             setContextMenu(null);
             return;
         }
-        if (isSettingsOpen || isGameOver || playerAction) return;
+        if (isSettingsOpen || isGameOver || playerActionRef.current) return;
         keysPressed.current.add(event.key.toLowerCase());
         
         const isMovementKey = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(event.key.toLowerCase());
@@ -336,7 +336,7 @@ export function GameContainer() {
     const handleContextMenu = (event: MouseEvent) => event.preventDefault();
     
     const handleMouseDown = (event: MouseEvent) => {
-      if (isSettingsOpen || isGameOver || playerAction) return;
+      if (isSettingsOpen || isGameOver || playerActionRef.current) return;
       if ((event.target as HTMLElement).closest('[data-ui-element="true"]')) {
         return;
       }
@@ -346,22 +346,25 @@ export function GameContainer() {
       
       if (event.button === 0) { // Left mouse button
         isLeftMouseDown.current = true;
-        setContextMenu(null); // Close context menu on left click
+        setContextMenu(null);
 
-        // Check for enemy click (targeting)
         for (const enemy of enemiesRef.current) {
             const distance = Math.hypot(clickWorldX - enemy.x, clickWorldY - enemy.y);
             if (distance < ENEMY_CLICK_RADIUS) {
                 setTargetId(enemy.id === targetIdRef.current ? null : enemy.id);
-                setAutoMoveTarget(null); // Stop auto-move if targeting an enemy
-                return; // Prevent left click from steering if a target is clicked
+                setAutoMoveTarget(null);
+                return; 
             }
         }
+      } else if (event.button === 1) { // Middle mouse button
+        event.preventDefault();
+        setAutoMoveTarget({ x: clickWorldX, y: clickWorldY });
+        setTargetId(null);
+        setContextMenu(null);
       } else if (event.button === 2) { // Right mouse button
         event.preventDefault();
         setContextMenu(null);
 
-        // Check for entity click
         for (const enemy of enemiesRef.current) {
           const distance = Math.hypot(clickWorldX - enemy.x, clickWorldY - enemy.y);
           if (distance < ENEMY_CLICK_RADIUS * 2) {
@@ -376,7 +379,6 @@ export function GameContainer() {
             return;
           }
         }
-        // Add station logic here if needed
       }
     };
     
@@ -412,7 +414,7 @@ export function GameContainer() {
       window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, [viewSize, isSettingsOpen, isGameOver, zoom, playerAction]);
+  }, [viewSize, isSettingsOpen, isGameOver, zoom]);
 
   // Resize observer for container size
   useEffect(() => {
@@ -481,7 +483,6 @@ export function GameContainer() {
             setPlayerAction(null);
           }
         }
-        // No other game logic runs while an action is in progress
         animationFrameId = requestAnimationFrame(gameLoop);
         return;
       }
@@ -537,85 +538,78 @@ export function GameContainer() {
             setAutoMoveTarget(null); // Stop when destination is reached
         }
       } else if (isLeftMouseDown.current) {
-        // When player holds left click, orient the ship to the cursor for steering
         setPlayerRotation(aimAngle);
       }
-      // If neither is active, rotation remains unchanged from its last value
 
 
-      // --- PLAYER MOVEMENT ---
-      const rotRad = playerRotationRef.current * (Math.PI / 180);
-      const cos = Math.cos(rotRad);
-      const sin = Math.sin(rotRad);
-      
+      // --- PLAYER MOVEMENT (REFACTORED FOR SMOOTHNESS) ---
       let accelVec = { x: 0, y: 0 };
-      
-      let isMovementDisabled = shipMode === 'scan' || cruiseStateRef.current === 'charging';
+      const isMovementDisabled = shipModeRef.current === 'scan' || cruiseStateRef.current === 'charging' || !!playerActionRef.current;
 
-      if (shipMode === 'stealth') {
-          if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) accelVec.y -= currentAccel;
-          if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) accelVec.y += currentAccel;
-          if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) accelVec.x -= currentAccel;
-          if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) accelVec.x += currentAccel;
-      }
-      else if (cruiseStateRef.current === 'cruising') {
-        // In cruise mode, player ship moves forward automatically based on its current rotation.
-        const cruiseRad = playerRotationRef.current * (Math.PI / 180);
-        accelVec.x = Math.cos(cruiseRad) * currentAccel;
-        accelVec.y = Math.sin(cruiseRad) * currentAccel;
-      } else if (autoMoveTargetRef.current && !isMovementDisabled) {
-        const distanceToTarget = Math.hypot(autoMoveTargetRef.current.x - playerPositionRef.current.x, autoMoveTargetRef.current.y - playerPositionRef.current.y);
-        if (distanceToTarget > 10) {
-            const angleToTarget = Math.atan2(autoMoveTargetRef.current.y - playerPositionRef.current.y, autoMoveTargetRef.current.x - playerPositionRef.current.x);
-            accelVec.x += Math.cos(angleToTarget) * currentAccel;
-            accelVec.y += Math.sin(angleToTarget) * currentAccel;
-        } else {
-            setAutoMoveTarget(null);
+      if (!isMovementDisabled) {
+        const rotRad = playerRotationRef.current * (Math.PI / 180);
+        if (shipModeRef.current === 'stealth') {
+            if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) accelVec.y -= currentAccel;
+            if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) accelVec.y += currentAccel;
+            if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) accelVec.x -= currentAccel;
+            if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) accelVec.x += currentAccel;
         }
-      } else if (!isMovementDisabled) {
-        switch (controlScheme) {
-            case 'relative':
-              if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) { accelVec.x += cos * currentAccel; accelVec.y += sin * currentAccel; }
-              if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) { accelVec.x -= cos * REVERSE_ACCELERATION; accelVec.y -= sin * REVERSE_ACCELERATION; }
-              if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) { accelVec.x += sin * currentStrafe; accelVec.y -= cos * currentStrafe; }
-              if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) { accelVec.x -= sin * currentStrafe; accelVec.y += cos * currentStrafe; }
-              break;
-            case 'absolute':
-              if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) accelVec.y -= currentAccel;
-              if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) accelVec.y += currentAccel;
-              if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) accelVec.x -= currentAccel;
-              if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) accelVec.x += currentAccel;
-              break;
-            case 'hybrid':
-              if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) { accelVec.x += cos * currentAccel; accelVec.y += sin * currentAccel; }
-              if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) { accelVec.x -= cos * REVERSE_ACCELERATION; accelVec.y -= sin * REVERSE_ACCELERATION; }
-              if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) accelVec.x -= currentStrafe;
-              if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) accelVec.x += currentStrafe;
-              break;
+        else if (cruiseStateRef.current === 'cruising') {
+          const cruiseRad = playerRotationRef.current * (Math.PI / 180);
+          accelVec.x = Math.cos(cruiseRad) * currentAccel;
+          accelVec.y = Math.sin(cruiseRad) * currentAccel;
+        } else if (autoMoveTargetRef.current) {
+          const distanceToTarget = Math.hypot(autoMoveTargetRef.current.x - playerPositionRef.current.x, autoMoveTargetRef.current.y - playerPositionRef.current.y);
+          if (distanceToTarget > 10) {
+              const angleToTarget = Math.atan2(autoMoveTargetRef.current.y - playerPositionRef.current.y, autoMoveTargetRef.current.x - playerPositionRef.current.x);
+              accelVec.x += Math.cos(angleToTarget) * currentAccel;
+              accelVec.y += Math.sin(angleToTarget) * currentAccel;
+          } else {
+              setAutoMoveTarget(null);
+          }
+        } else {
+            const cos = Math.cos(rotRad);
+            const sin = Math.sin(rotRad);
+            switch (controlScheme) {
+                case 'relative':
+                  if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) { accelVec.x += cos * currentAccel; accelVec.y += sin * currentAccel; }
+                  if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) { accelVec.x -= cos * REVERSE_ACCELERATION; accelVec.y -= sin * REVERSE_ACCELERATION; }
+                  if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) { accelVec.x += sin * currentStrafe; accelVec.y -= cos * currentStrafe; }
+                  if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) { accelVec.x -= sin * currentStrafe; accelVec.y += cos * currentStrafe; }
+                  break;
+                case 'absolute':
+                  if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) accelVec.y -= currentAccel;
+                  if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) accelVec.y += currentAccel;
+                  if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) accelVec.x -= currentAccel;
+                  if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) accelVec.x += currentAccel;
+                  break;
+                case 'hybrid':
+                  if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) { accelVec.x += cos * currentAccel; accelVec.y += sin * currentAccel; }
+                  if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) { accelVec.x -= cos * REVERSE_ACCELERATION; accelVec.y -= sin * REVERSE_ACCELERATION; }
+                  if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) accelVec.x -= currentStrafe;
+                  if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) accelVec.x += currentStrafe;
+                  break;
+            }
         }
       }
       
-      let newVelocity = {x:0, y:0};
-      setVelocity(v => {
-        const newVx = (v.x + accelVec.x) * FRICTION;
-        const newVy = (v.y + accelVec.y) * FRICTION;
-        const currentSpeed = Math.hypot(newVx, newVy);
-        if (currentSpeed > currentMaxSpeed) {
-          newVelocity = { x: (newVx / currentSpeed) * currentMaxSpeed, y: (newVy / currentSpeed) * currentMaxSpeed };
-        } else {
-          newVelocity = { x: newVx, y: newVy };
-        }
-        return newVelocity;
-      });
-      
-      const currentSpeed = Math.hypot(newVelocity.x, newVelocity.y);
-      setSpeed(currentSpeed);
+      let newVx = (velocityRef.current.x + accelVec.x) * FRICTION;
+      let newVy = (velocityRef.current.y + accelVec.y) * FRICTION;
+      const calculatedSpeed = Math.hypot(newVx, newVy);
 
+      if (calculatedSpeed > currentMaxSpeed) {
+        newVx = (newVx / calculatedSpeed) * currentMaxSpeed;
+        newVy = (newVy / calculatedSpeed) * currentMaxSpeed;
+      }
+      
+      const newVelocity = { x: newVx, y: newVy };
+      
+      setVelocity(newVelocity);
+      setSpeed(Math.hypot(newVelocity.x, newVelocity.y));
       setPlayerPosition(p => ({
         x: Math.max(40, Math.min(MAP_WIDTH - 40, p.x + newVelocity.x)),
         y: Math.max(40, Math.min(MAP_HEIGHT - 40, p.y + newVelocity.y)),
       }));
-      
 
       
       // --- PLAYER SHOOTING ---
@@ -814,7 +808,7 @@ export function GameContainer() {
       if (timestamp - lastCollisionTimestamp > 1000) {
           let collisionOccurred = false;
           let damage = 0;
-          const speedFactor = 0.5 + (currentSpeed / (currentMaxSpeed || MAX_SPEED)) * 0.5;
+          const speedFactor = 0.5 + (speed / (currentMaxSpeed || MAX_SPEED)) * 0.5;
           for (const asteroid of asteroids) {
               const distance = Math.hypot(asteroid.x - playerPositionRef.current.x, asteroid.y - playerPositionRef.current.y);
               if (distance < (asteroid.size * ASTEROID_COLLISION_RADIUS) + PLAYER_COLLISION_RADIUS) {
@@ -977,7 +971,6 @@ export function GameContainer() {
     <div
       ref={containerRef}
       className={containerClass}
-      data-ui-element="true"
     >
       {/* Game World */}
       <div style={{ 
