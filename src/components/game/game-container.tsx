@@ -277,29 +277,30 @@ export function GameContainer() {
       }
       
       if (event.button === 0) { // Left mouse button
+        isLeftMouseDown.current = true; // Set state for game loop
+
         const clickWorldX = playerPositionRef.current.x + (mousePosition.current.x - viewSize.width / 2) / zoom;
         const clickWorldY = playerPositionRef.current.y + (mousePosition.current.y - viewSize.height / 2) / zoom;
 
-        // 1. Check for enemy click (targeting)
-        let clickedOnEnemy = false;
+        // Check for enemy click (targeting)
         for (const enemy of enemiesRef.current) {
             const distance = Math.hypot(clickWorldX - enemy.x, clickWorldY - enemy.y);
             if (distance < ENEMY_CLICK_RADIUS) {
                 setTargetId(enemy.id === targetIdRef.current ? null : enemy.id);
                 setAutoMoveTarget(null); // Stop auto-move if targeting an enemy
-                clickedOnEnemy = true;
                 break;
             }
         }
-
-        // 2. If not clicking an enemy, set auto-move target
-        if (!clickedOnEnemy) {
-            setAutoMoveTarget({ x: clickWorldX, y: clickWorldY });
-        }
+      } else if (event.button === 1) { // Middle mouse button
+        event.preventDefault(); // Prevent default browser behavior for middle click
+        const clickWorldX = playerPositionRef.current.x + (mousePosition.current.x - viewSize.width / 2) / zoom;
+        const clickWorldY = playerPositionRef.current.y + (mousePosition.current.y - viewSize.height / 2) / zoom;
+        setAutoMoveTarget({ x: clickWorldX, y: clickWorldY });
       }
     };
+    
     const handleMouseUp = (event: MouseEvent) => {
-      // if (event.button === 0) isLeftMouseDown.current = false;
+      if (event.button === 0) isLeftMouseDown.current = false;
     };
     
     const handleWheel = (event: WheelEvent) => {
@@ -433,22 +434,25 @@ export function GameContainer() {
       const currentTarget = enemiesRef.current.find(e => e.id === targetIdRef.current);
       const isGivingManualThrust = keysPressed.current.has('w') || keysPressed.current.has('arrowup') || keysPressed.current.has('s') || keysPressed.current.has('arrowdown');
 
+      let targetRotation = playerRotationRef.current;
+
       if (autoMoveTargetRef.current) {
         const distanceToTarget = Math.hypot(autoMoveTargetRef.current.x - playerPositionRef.current.x, autoMoveTargetRef.current.y - playerPositionRef.current.y);
         if (distanceToTarget > 10) {
             const angleToTarget = Math.atan2(autoMoveTargetRef.current.y - playerPositionRef.current.y, autoMoveTargetRef.current.x - playerPositionRef.current.x);
-            setPlayerRotation(angleToTarget * (180 / Math.PI));
+            targetRotation = angleToTarget * (180 / Math.PI);
         } else {
             setAutoMoveTarget(null); // Stop when destination is reached
         }
       } else if (currentTarget) {
         const angleToTarget = Math.atan2(currentTarget.y - playerPositionRef.current.y, currentTarget.x - playerPositionRef.current.x) * (180 / Math.PI);
-        setPlayerRotation(angleToTarget);
-      } else if (isGivingManualThrust) {
-        // When player uses WASD to move, orient the ship to the cursor for steering
-        setPlayerRotation(aimAngle);
+        targetRotation = angleToTarget;
+      } else if (isLeftMouseDown.current || isGivingManualThrust) {
+        // When player holds left click OR uses WASD to move, orient the ship to the cursor for steering
+        targetRotation = aimAngle;
       }
-      // Otherwise, maintain current rotation, allowing looking around without turning.
+      setPlayerRotation(targetRotation);
+
 
       // --- PLAYER MOVEMENT ---
       const rotRad = playerRotationRef.current * (Math.PI / 180);
