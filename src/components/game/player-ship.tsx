@@ -10,13 +10,13 @@ interface PlayerShipProps {
 
 export function PlayerShip({ rotation, aimRotation }: PlayerShipProps) {
   return (
-    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 grid place-items-center w-36 h-36">
+    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 grid place-items-center w-36 h-36 z-10 pointer-events-none">
         <AimIndicator rotation={aimRotation} />
         <motion.div
           className="row-start-1 col-start-1"
           style={{ willChange: 'transform' }}
           animate={{ rotate: rotation + 90 }} // +90 to align SVG's 'up' with atan2's 'right' is 0
-          transition={{ type: "spring", stiffness: 700, damping: 30 }}
+          transition={{ type: "linear", duration: 0 }}
         >
           <svg
             width="40"

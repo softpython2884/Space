@@ -12,7 +12,7 @@ export function GameOverOverlay({ isOpen, onRestart }: GameOverOverlayProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="absolute inset-0 bg-black/80 z-20 flex flex-col items-center justify-center gap-6">
+    <div className="absolute inset-0 bg-black/80 z-50 flex flex-col items-center justify-center gap-6">
       <h1 className="text-7xl font-bold text-red-500 font-headline animate-pulse">
         GAME OVER
       </h1>
