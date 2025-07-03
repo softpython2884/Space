@@ -94,7 +94,7 @@ export function Radar({ playerPosition, enemies, stations, asteroids, radarRange
             </div>
 
             <div className="absolute bottom-2 text-xs text-primary/70 tracking-widest font-mono">
-                RANGE: {radarRange}
+                RANGE: {Math.round(radarRange)}
             </div>
         </div>
     );
