@@ -70,13 +70,12 @@ export function ShipBuilderView() {
   const [cellSize, setCellSize] = useState(24); // Default to 1.5rem * 16px/rem
 
   useEffect(() => {
-    // This ensures we get the correct rem-to-px conversion value on the client
     const size = parseFloat(getComputedStyle(document.documentElement).fontSize) * CELL_SIZE_REM;
     setCellSize(size);
   }, []);
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>, module: Module) => {
-    e.dataTransfer.setData('application/json', JSON.stringify(module));
+    e.dataTransfer.setData('text/plain', module.id);
     e.dataTransfer.effectAllowed = 'move';
   };
 
@@ -87,7 +86,15 @@ export function ShipBuilderView() {
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     try {
-      const module: Module = JSON.parse(e.dataTransfer.getData('application/json'));
+      const moduleId = e.dataTransfer.getData('text/plain');
+      if (!moduleId) return;
+      
+      const module = (Object.values(MODULE_PALETTE).flat()).find(m => m.id === moduleId);
+
+      if (!module) {
+        console.error("Module not found:", moduleId);
+        return;
+      }
       
       const gridRect = e.currentTarget.getBoundingClientRect();
       const x = e.clientX - gridRect.left;
@@ -97,7 +104,6 @@ export function ShipBuilderView() {
       const row = Math.floor(y / cellSize);
       
       if (row < 0 || col < 0 || row + module.size[1] > GRID_SIZE || col + module.size[0] > GRID_SIZE) {
-        // Module is out of bounds
         return;
       }
 
@@ -106,7 +112,6 @@ export function ShipBuilderView() {
         const existingModuleRect = { x1: placed.col, y1: placed.row, x2: placed.col + placed.module.size[0], y2: placed.row + placed.module.size[1] };
         if (newModuleRect.x1 < existingModuleRect.x2 && newModuleRect.x2 > existingModuleRect.x1 &&
             newModuleRect.y1 < existingModuleRect.y2 && newModuleRect.y2 > existingModuleRect.y1) {
-          // Modules cannot overlap
           return;
         }
       }
