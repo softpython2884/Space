@@ -275,36 +275,26 @@ export function GameContainer() {
       if ((event.target as HTMLElement).closest('[data-ui-element="true"]')) {
         return;
       }
-      setAutoMoveTarget(null);
-
-      if (event.button === 1) { // Middle mouse button
-          event.preventDefault();
-          const targetWorldX = playerPositionRef.current.x + (mousePosition.current.x - viewSize.width / 2) / zoom;
-          const targetWorldY = playerPositionRef.current.y + (mousePosition.current.y - viewSize.height / 2) / zoom;
-          setAutoMoveTarget({ x: targetWorldX, y: targetWorldY });
-          return;
-      }
-
-      if (event.button === 0) {
-        // isLeftMouseDown.current = true; // This is now disabled for shooting
-        
+      
+      if (event.button === 0) { // Left mouse button
         const clickWorldX = playerPositionRef.current.x + (mousePosition.current.x - viewSize.width / 2) / zoom;
         const clickWorldY = playerPositionRef.current.y + (mousePosition.current.y - viewSize.height / 2) / zoom;
-        
+
+        // 1. Check for enemy click (targeting)
         let clickedOnEnemy = false;
         for (const enemy of enemiesRef.current) {
             const distance = Math.hypot(clickWorldX - enemy.x, clickWorldY - enemy.y);
             if (distance < ENEMY_CLICK_RADIUS) {
                 setTargetId(enemy.id === targetIdRef.current ? null : enemy.id);
+                setAutoMoveTarget(null); // Stop auto-move if targeting an enemy
                 clickedOnEnemy = true;
                 break;
             }
         }
+
+        // 2. If not clicking an enemy, set auto-move target
         if (!clickedOnEnemy) {
-            // Deselect if clicking on empty space, but not if just shooting
-            if (!keysPressed.current.has(' ')) {
-                 setTargetId(null);
-            }
+            setAutoMoveTarget({ x: clickWorldX, y: clickWorldY });
         }
       }
     };
@@ -433,6 +423,32 @@ export function GameContainer() {
           currentMaxSpeed = MAX_SPEED * 0.8;
           currentAccel = ACCELERATION * 0.8;
       }
+      
+      // --- AIMING & ROTATION ---
+      const shipScreenX = viewSize.width / 2;
+      const shipScreenY = viewSize.height / 2;
+      const aimAngle = Math.atan2(mousePosition.current.y - shipScreenY, mousePosition.current.x - shipScreenX) * (180 / Math.PI);
+      setAimRotation(aimAngle); // Aiming reticle always follows mouse
+      
+      const currentTarget = enemiesRef.current.find(e => e.id === targetIdRef.current);
+      const isGivingManualThrust = keysPressed.current.has('w') || keysPressed.current.has('arrowup') || keysPressed.current.has('s') || keysPressed.current.has('arrowdown');
+
+      if (autoMoveTargetRef.current) {
+        const distanceToTarget = Math.hypot(autoMoveTargetRef.current.x - playerPositionRef.current.x, autoMoveTargetRef.current.y - playerPositionRef.current.y);
+        if (distanceToTarget > 10) {
+            const angleToTarget = Math.atan2(autoMoveTargetRef.current.y - playerPositionRef.current.y, autoMoveTargetRef.current.x - playerPositionRef.current.x);
+            setPlayerRotation(angleToTarget * (180 / Math.PI));
+        } else {
+            setAutoMoveTarget(null); // Stop when destination is reached
+        }
+      } else if (currentTarget) {
+        const angleToTarget = Math.atan2(currentTarget.y - playerPositionRef.current.y, currentTarget.x - playerPositionRef.current.x) * (180 / Math.PI);
+        setPlayerRotation(angleToTarget);
+      } else if (isGivingManualThrust) {
+        // When player uses WASD to move, orient the ship to the cursor for steering
+        setPlayerRotation(aimAngle);
+      }
+      // Otherwise, maintain current rotation, allowing looking around without turning.
 
       // --- PLAYER MOVEMENT ---
       const rotRad = playerRotationRef.current * (Math.PI / 180);
@@ -441,9 +457,18 @@ export function GameContainer() {
       
       let accelVec = { x: 0, y: 0 };
       
-      const isMovementDisabled = shipMode === 'scan' || cruiseStateRef.current === 'charging';
-
-      if (cruiseStateRef.current === 'cruising') {
+      let isMovementDisabled = shipMode === 'scan' || cruiseStateRef.current === 'charging';
+      if (shipMode === 'stealth' && (controlScheme === 'relative' || controlScheme === 'hybrid')) {
+          isMovementDisabled = true; // Simplified stealth: can't move with ship-relative controls
+      }
+      if (shipMode === 'stealth') {
+          // Allow absolute movement in stealth, but no rotation-based thrust
+          if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) accelVec.y -= currentAccel;
+          if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) accelVec.y += currentAccel;
+          if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) accelVec.x -= currentAccel;
+          if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) accelVec.x += currentAccel;
+      }
+      else if (cruiseStateRef.current === 'cruising') {
         const cruiseRad = playerRotationRef.current * (Math.PI / 180);
         accelVec.x = Math.cos(cruiseRad) * currentAccel;
         accelVec.y = Math.sin(cruiseRad) * currentAccel;
@@ -451,7 +476,6 @@ export function GameContainer() {
         const distanceToTarget = Math.hypot(autoMoveTargetRef.current.x - playerPositionRef.current.x, autoMoveTargetRef.current.y - playerPositionRef.current.y);
         if (distanceToTarget > 10) {
             const angleToTarget = Math.atan2(autoMoveTargetRef.current.y - playerPositionRef.current.y, autoMoveTargetRef.current.x - playerPositionRef.current.x);
-            setPlayerRotation(angleToTarget * (180 / Math.PI));
             accelVec.x += Math.cos(angleToTarget) * currentAccel;
             accelVec.y += Math.sin(angleToTarget) * currentAccel;
         } else {
@@ -502,23 +526,6 @@ export function GameContainer() {
       }));
       
 
-      // --- AIMING & ROTATION ---
-      const shipScreenX = viewSize.width / 2;
-      const shipScreenY = viewSize.height / 2;
-      const aimAngle = Math.atan2(mousePosition.current.y - shipScreenY, mousePosition.current.x - shipScreenX) * (180 / Math.PI);
-      setAimRotation(aimAngle);
-      
-      const currentTarget = enemiesRef.current.find(e => e.id === targetIdRef.current);
-
-      if (autoMoveTargetRef.current) {
-        // Rotation is handled by auto-move logic
-      } else if (currentTarget) {
-        const angleToTarget = Math.atan2(currentTarget.y - playerPositionRef.current.y, currentTarget.x - playerPositionRef.current.x) * (180 / Math.PI);
-        setPlayerRotation(angleToTarget);
-      } else {
-        // When no target is locked and not auto-moving, always aim with cursor
-        setPlayerRotation(aimAngle);
-      }
       
       // --- PLAYER SHOOTING ---
       const canShoot = playerDataRef.current.energy >= ENERGY_PER_SHOT && (shipMode === 'normal' || shipMode === 'stealth') && cruiseStateRef.current === 'idle';
@@ -526,7 +533,7 @@ export function GameContainer() {
       if (isShooting && timestamp - lastFiredTimestamp.current > FIRE_RATE_MS) {
         lastFiredTimestamp.current = timestamp;
         lastEnergyUseTimestamp.current = timestamp;
-        setPlayerProjectiles(prev => [...prev, { id: timestamp, x: playerPositionRef.current.x, y: playerPositionRef.current.y, rotation: playerRotationRef.current }]);
+        setPlayerProjectiles(prev => [...prev, { id: timestamp, x: playerPositionRef.current.x, y: playerPositionRef.current.y, rotation: aimRotation }]);
         setPlayerData(d => ({ ...d, energy: d.energy - ENERGY_PER_SHOT }));
       }
 
@@ -798,7 +805,7 @@ export function GameContainer() {
   if (shipMode === 'scan') {
       radarRange = BASE_RADAR_RANGE * 2;
   } else if (shipMode === 'stealth') {
-      radarRange = STEALTH_DETECTION_RADIUS_NEAR * 3.5;
+      radarRange = STEALTH_AGGRO_RADIUS;
   }
 
   const visibleEnemies = React.useMemo(() => 
@@ -842,7 +849,7 @@ export function GameContainer() {
         {enemyProjectiles.map((p) => (
           <Projectile key={p.id} x={p.x} y={p.y} rotation={p.rotation} isEnemy />
         ))}
-        {visibleEnemies.map((e) => (
+        {enemies.map((e) => (
             <EnemyShip key={e.id} x={e.x} y={e.y} health={e.health} maxHealth={e.maxHealth} isTargeted={e.id === targetId} />
         ))}
         {asteroids.map((a) => (
@@ -851,7 +858,7 @@ export function GameContainer() {
         {stations.map((s) => (
             <SpaceStation key={s.id} x={s.x} y={s.y} />
         ))}
-        {visibleDebris.map((d) => (
+        {debris.map((d) => (
             <Debris key={d.id} x={d.x} y={d.y} />
         ))}
       </div>
