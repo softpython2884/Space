@@ -18,6 +18,13 @@ export interface Resources {
   gas: number;
 }
 
+export interface PlayerUpgrades {
+  maxHealth: number;
+  energyRecharge: number;
+  nanobots: number;
+  cargoCapacity: number;
+}
+
 export interface ShipData {
     class: PlayerShipClass;
     role: ShipRole;
@@ -35,6 +42,7 @@ export interface PlayerData {
     max: number;
   };
   resources: Resources;
+  upgrades: PlayerUpgrades;
 }
 
 export type VesselSystemStatus = 'Online' | 'Ready' | 'Optimal' | 'Offline' | 'Damaged';
