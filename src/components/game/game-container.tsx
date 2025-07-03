@@ -16,6 +16,7 @@ import { ChatBox } from '@/components/game-ui/chat-box';
 import { StellarBaseStatus } from '@/components/game-ui/stellar-base-status';
 import { VesselSystems } from '@/components/game-ui/vessel-systems';
 import type { ControlScheme } from '@/lib/types';
+import { ClientOnly } from '@/components/client-only';
 
 const ACCELERATION = 0.1;
 const STRAFE_ACCELERATION = 0.05;
@@ -391,7 +392,9 @@ export function GameContainer() {
       
       <div className="absolute bottom-4 left-4 z-10 flex flex-col items-start gap-4">
           <StellarBaseStatus />
-          <ChatBox />
+          <ClientOnly>
+            <ChatBox />
+          </ClientOnly>
       </div>
 
       <div className="absolute bottom-4 right-4 z-10">
