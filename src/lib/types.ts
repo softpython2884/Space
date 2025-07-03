@@ -1,5 +1,6 @@
 export type ShipType = "Combat" | "Mining" | "Support" | "Galleon";
 export type ControlScheme = 'relative' | 'absolute' | 'hybrid';
+export type ShipMode = 'normal' | 'cruise' | 'stealth' | 'scan';
 
 export type ShipSize = 'S' | 'M' | 'L' | 'XL';
 export type ShipRole = 'Combat' | 'Commerce' | 'Mining' | 'Construction' | 'Support';
@@ -41,4 +42,36 @@ export interface VesselSystemsData {
 export interface StellarBaseData {
   shields: number;
   hull: number;
+}
+
+export type EnemyState = {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  health: number;
+  maxHealth: number;
+  lastShotTimestamp: number;
+};
+
+export type AsteroidState = {
+  id: number;
+  x: number;
+  y: number;
+  size: number;
+  rotation: number;
+}
+
+export type StationState = {
+  id: number;
+  x: number;
+  y: number;
+}
+
+export type Debris = {
+  id: number;
+  x: number;
+  y: number;
+  amount: number;
 }

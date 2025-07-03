@@ -7,6 +7,7 @@ import { Projectile } from './projectile';
 import { EnemyShip } from './enemy-ship';
 import { Asteroid } from './asteroid';
 import { SpaceStation } from './space-station';
+import { Debris } from './debris';
 import { Radar } from '../game-ui/radar';
 import { SpeedIndicator } from '../game-ui/speed-indicator';
 import { SettingsMenu } from '../game-ui/settings-menu';
@@ -15,15 +16,17 @@ import { ResourceDisplay } from '@/components/game-ui/resource-display';
 import { ChatBox } from '@/components/game-ui/chat-box';
 import { StellarBaseStatus } from '@/components/game-ui/stellar-base-status';
 import { VesselSystems } from '@/components/game-ui/vessel-systems';
+import { ShipModeSelector } from '@/components/game-ui/ship-mode-selector';
 import { INITIAL_PLAYER_DATA } from '@/lib/constants';
-import type { ControlScheme, PlayerData, StellarBaseData, VesselSystemsData } from '@/lib/types';
+import type { ControlScheme, PlayerData, StellarBaseData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState as EnemyStateType, AsteroidState, StationState } from '@/lib/types';
 import { ClientOnly } from '@/components/client-only';
 import { GameOverOverlay } from './game-over-overlay';
+import { cn } from '@/lib/utils';
 
-const ACCELERATION = 0.1;
-const STRAFE_ACCELERATION = 0.05;
+let ACCELERATION = 0.1;
+let STRAFE_ACCELERATION = 0.05;
 const REVERSE_ACCELERATION = 0.06;
-const MAX_SPEED = 6;
+let MAX_SPEED = 6;
 const FRICTION = 0.98;
 
 const PROJECTILE_SPEED = 8;
@@ -32,7 +35,7 @@ const MAP_HEIGHT = 3000;
 const FIRE_RATE_MS = 250; 
 const ENEMY_CLICK_RADIUS = 30;
 
-const RADAR_RANGE = 1200;
+const BASE_RADAR_RANGE = 1200;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 1.5;
 const ZOOM_SENSITIVITY = 0.001;
@@ -40,6 +43,7 @@ const ZOOM_SENSITIVITY = 0.001;
 // Combat & Resource Constants
 const PLAYER_COLLISION_RADIUS = 20;
 const ENEMY_COLLISION_RADIUS = 20;
+const DEBRIS_COLLISION_RADIUS = 20;
 const ASTEROID_COLLISION_RADIUS = 40; // This is a base, but we'll use asteroid.size
 const STATION_COLLISION_RADIUS = 75;
 
@@ -57,7 +61,10 @@ const LOW_HEALTH_THRESHOLD = 30;
 
 const ENEMY_AGGRO_RADIUS = 600;
 const ENEMY_FIRE_RATE_MS = 1500;
+const ENEMY_SPEED = 0.5;
 
+const STEALTH_DETECTION_RADIUS_FAR = 250;
+const STEALTH_DETECTION_RADIUS_NEAR = 100;
 
 type ProjectileState = {
   id: number;
@@ -66,35 +73,14 @@ type ProjectileState = {
   rotation: number;
 };
 
-export type EnemyState = {
-  id: number;
-  x: number;
-  y: number;
-  health: number;
-  maxHealth: number;
-  lastShotTimestamp: number;
-};
-
-export type AsteroidState = {
-  id: number;
-  x: number;
-  y: number;
-  size: number;
-  rotation: number;
-}
-
-export type StationState = {
-  id: number;
-  x: number;
-  y: number;
-}
+export type EnemyState = EnemyStateType;
 
 const generateInitialEnemies = (): EnemyState[] => [
-    { id: 1, x: MAP_WIDTH / 2 + 300, y: MAP_HEIGHT / 2, health: 100, maxHealth: 100, lastShotTimestamp: 0 },
-    { id: 2, x: MAP_WIDTH / 2 - 400, y: MAP_HEIGHT / 2 - 200, health: 100, maxHealth: 100, lastShotTimestamp: 0 },
-    { id: 3, x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 + 500, health: 100, maxHealth: 100, lastShotTimestamp: 0 },
-    { id: 4, x: MAP_WIDTH / 2 + 500, y: MAP_HEIGHT / 2 - 300, health: 100, maxHealth: 100, lastShotTimestamp: 0 },
-    { id: 5, x: MAP_WIDTH - 500, y: 500, health: 100, maxHealth: 100, lastShotTimestamp: 0 }, // Out of initial radar range
+    { id: 1, x: MAP_WIDTH / 2 + 300, y: MAP_HEIGHT / 2, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0 },
+    { id: 2, x: MAP_WIDTH / 2 - 400, y: MAP_HEIGHT / 2 - 200, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0 },
+    { id: 3, x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 + 500, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0 },
+    { id: 4, x: MAP_WIDTH / 2 + 500, y: MAP_HEIGHT / 2 - 300, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0 },
+    { id: 5, x: MAP_WIDTH - 500, y: 500, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0 }, // Out of initial radar range
 ];
 
 const generateInitialAsteroids = (): AsteroidState[] => [
@@ -120,6 +106,7 @@ export function GameContainer() {
   const [enemies, setEnemies] = useState<EnemyState[]>([]);
   const [asteroids, setAsteroids] = useState<AsteroidState[]>([]);
   const [stations, setStations] = useState<StationState[]>([]);
+  const [debris, setDebris] = useState<DebrisType[]>([]);
   const [targetId, setTargetId] = useState<number | null>(null);
   const [viewSize, setViewSize] = useState({ width: 0, height: 0 });
   
@@ -128,6 +115,7 @@ export function GameContainer() {
   const [controlScheme, setControlScheme] = useState<ControlScheme>('hybrid');
   const [zoom, setZoom] = useState(1);
   const [autoMoveTarget, setAutoMoveTarget] = useState<{ x: number, y: number } | null>(null);
+  const [shipMode, setShipMode] = useState<ShipMode>('normal');
   
   const [playerData, setPlayerData] = useState<PlayerData>(JSON.parse(JSON.stringify(INITIAL_PLAYER_DATA)));
   const [stellarBaseData, setStellarBaseData] = useState<StellarBaseData>({ shields: 95, hull: 88 });
@@ -138,6 +126,7 @@ export function GameContainer() {
   const isLeftMouseDown = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastEnergyUseTimestamp = useRef(0);
+  const lastFiredTimestamp = useRef(0);
   
   const playerPositionRef = useRef(playerPosition);
   useEffect(() => { playerPositionRef.current = playerPosition; }, [playerPosition]);
@@ -176,9 +165,11 @@ export function GameContainer() {
     setEnemies(generateInitialEnemies());
     setAsteroids(generateInitialAsteroids());
     setStations(generateInitialStations());
+    setDebris([]);
     setTargetId(null);
     setPlayerData(JSON.parse(JSON.stringify(INITIAL_PLAYER_DATA)));
     setIsGameOver(false);
+    setShipMode('normal');
   };
 
   // Initial map object setup
@@ -284,7 +275,7 @@ export function GameContainer() {
       return () => resizeObserver.disconnect();
   }, []);
 
-  // Update vessel systems based on player data
+  // Update vessel systems based on player data and ship mode
   useEffect(() => {
     const { health, energy } = playerData;
     const newSystems: VesselSystemsData = {
@@ -293,16 +284,18 @@ export function GameContainer() {
         power: 'Optimal',
     };
 
-    if (health < 50) newSystems.shields = 'Damaged';
-    if (health <= 0) newSystems.shields = 'Offline';
+    if (shipMode === 'cruise' || shipMode === 'scan') newSystems.weapons = 'Offline';
+    else if (energy < ENERGY_PER_SHOT) newSystems.weapons = 'Offline';
 
-    if (energy < ENERGY_PER_SHOT) newSystems.weapons = 'Offline';
+    if (shipMode === 'stealth') newSystems.shields = 'Offline';
+    else if (health < 50) newSystems.shields = 'Damaged';
+    if (health <= 0) newSystems.shields = 'Offline';
     
     if (energy <= 0) newSystems.power = 'Offline';
     else if (energy < 40) newSystems.power = 'Damaged';
 
     setVesselSystems(newSystems);
-  }, [playerData]);
+  }, [playerData, shipMode]);
 
   // Main game loop
   useEffect(() => {
@@ -316,6 +309,24 @@ export function GameContainer() {
         return;
       }
 
+      // --- SHIP MODE LOGIC ---
+      let currentMaxSpeed = MAX_SPEED;
+      let currentAccel = ACCELERATION;
+      let currentStrafe = STRAFE_ACCELERATION;
+      
+      switch(shipMode) {
+        case 'cruise':
+          currentMaxSpeed = MAX_SPEED * 2.5;
+          currentStrafe = STRAFE_ACCELERATION * 0.2; // Poor turning
+          break;
+        case 'scan':
+          // No movement handled below
+          break;
+        case 'stealth':
+          // Potentially modify speed/accel here if desired
+          break;
+      }
+
       // --- PLAYER MOVEMENT ---
       const rotRad = playerRotationRef.current * (Math.PI / 180);
       const cos = Math.cos(rotRad);
@@ -323,35 +334,35 @@ export function GameContainer() {
       
       let accelVec = { x: 0, y: 0 };
       
-      if (autoMoveTargetRef.current) {
+      if (autoMoveTargetRef.current && shipMode !== 'scan') {
         const distanceToTarget = Math.hypot(autoMoveTargetRef.current.x - playerPositionRef.current.x, autoMoveTargetRef.current.y - playerPositionRef.current.y);
         if (distanceToTarget > 10) {
             const angleToTarget = Math.atan2(autoMoveTargetRef.current.y - playerPositionRef.current.y, autoMoveTargetRef.current.x - playerPositionRef.current.x);
             setPlayerRotation(angleToTarget * (180 / Math.PI));
-            accelVec.x += Math.cos(angleToTarget) * ACCELERATION;
-            accelVec.y += Math.sin(angleToTarget) * ACCELERATION;
+            accelVec.x += Math.cos(angleToTarget) * currentAccel;
+            accelVec.y += Math.sin(angleToTarget) * currentAccel;
         } else {
             setAutoMoveTarget(null);
         }
-      } else {
+      } else if (shipMode !== 'scan') {
         switch (controlScheme) {
             case 'relative':
-              if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) { accelVec.x += cos * ACCELERATION; accelVec.y += sin * ACCELERATION; }
+              if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) { accelVec.x += cos * currentAccel; accelVec.y += sin * currentAccel; }
               if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) { accelVec.x -= cos * REVERSE_ACCELERATION; accelVec.y -= sin * REVERSE_ACCELERATION; }
-              if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) { accelVec.x += sin * STRAFE_ACCELERATION; accelVec.y -= cos * STRAFE_ACCELERATION; }
-              if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) { accelVec.x -= sin * STRAFE_ACCELERATION; accelVec.y += cos * STRAFE_ACCELERATION; }
+              if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) { accelVec.x += sin * currentStrafe; accelVec.y -= cos * currentStrafe; }
+              if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) { accelVec.x -= sin * currentStrafe; accelVec.y += cos * currentStrafe; }
               break;
             case 'absolute':
-              if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) accelVec.y -= ACCELERATION;
-              if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) accelVec.y += ACCELERATION;
-              if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) accelVec.x -= ACCELERATION;
-              if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) accelVec.x += ACCELERATION;
+              if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) accelVec.y -= currentAccel;
+              if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) accelVec.y += currentAccel;
+              if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) accelVec.x -= currentAccel;
+              if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) accelVec.x += currentAccel;
               break;
             case 'hybrid':
-              if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) { accelVec.x += cos * ACCELERATION; accelVec.y += sin * ACCELERATION; }
+              if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) { accelVec.x += cos * currentAccel; accelVec.y += sin * currentAccel; }
               if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) { accelVec.x -= cos * REVERSE_ACCELERATION; accelVec.y -= sin * REVERSE_ACCELERATION; }
-              if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) accelVec.x -= STRAFE_ACCELERATION;
-              if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) accelVec.x += STRAFE_ACCELERATION;
+              if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) accelVec.x -= currentStrafe;
+              if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) accelVec.x += currentStrafe;
               break;
         }
       }
@@ -361,8 +372,8 @@ export function GameContainer() {
         const newVx = (v.x + accelVec.x) * FRICTION;
         const newVy = (v.y + accelVec.y) * FRICTION;
         const currentSpeed = Math.hypot(newVx, newVy);
-        if (currentSpeed > MAX_SPEED) {
-          newVelocity = { x: (newVx / currentSpeed) * MAX_SPEED, y: (newVy / currentSpeed) * MAX_SPEED };
+        if (currentSpeed > currentMaxSpeed) {
+          newVelocity = { x: (newVx / currentSpeed) * currentMaxSpeed, y: (newVy / currentSpeed) * currentMaxSpeed };
         } else {
           newVelocity = { x: newVx, y: newVy };
         }
@@ -372,10 +383,12 @@ export function GameContainer() {
       const currentSpeed = Math.hypot(newVelocity.x, newVelocity.y);
       setSpeed(currentSpeed);
 
-      setPlayerPosition(p => ({
-        x: Math.max(40, Math.min(MAP_WIDTH - 40, p.x + newVelocity.x)),
-        y: Math.max(40, Math.min(MAP_HEIGHT - 40, p.y + newVelocity.y)),
-      }));
+      if (shipMode !== 'scan') {
+        setPlayerPosition(p => ({
+          x: Math.max(40, Math.min(MAP_WIDTH - 40, p.x + newVelocity.x)),
+          y: Math.max(40, Math.min(MAP_HEIGHT - 40, p.y + newVelocity.y)),
+        }));
+      }
 
       // --- AIMING & ROTATION ---
       const shipScreenX = viewSize.width / 2;
@@ -395,11 +408,12 @@ export function GameContainer() {
       }
       
       // --- PLAYER SHOOTING ---
-      const canShoot = playerDataRef.current.energy >= ENERGY_PER_SHOT;
+      const canShoot = playerDataRef.current.energy >= ENERGY_PER_SHOT && shipMode !== 'cruise' && shipMode !== 'scan';
       const isShooting = (currentTarget || keysPressed.current.has(' ')) && canShoot;
       if (isShooting && timestamp - lastPlayerShotTimestamp > FIRE_RATE_MS) {
         lastPlayerShotTimestamp = timestamp;
         lastEnergyUseTimestamp.current = timestamp;
+        lastFiredTimestamp.current = timestamp;
         setPlayerProjectiles(prev => [...prev, { id: timestamp, x: playerPositionRef.current.x, y: playerPositionRef.current.y, rotation: playerRotationRef.current }]);
         setPlayerData(d => ({ ...d, energy: d.energy - ENERGY_PER_SHOT }));
       }
@@ -427,14 +441,45 @@ export function GameContainer() {
 
       // --- ENEMY AI & SHOOTING ---
       const newEnemyProjectiles: ProjectileState[] = [];
-      setEnemies(enemies => enemies.map(enemy => {
+      setEnemies(currentEnemies => currentEnemies.map(enemy => {
         const distanceToPlayer = Math.hypot(enemy.x - playerPositionRef.current.x, enemy.y - playerPositionRef.current.y);
-        if (distanceToPlayer < ENEMY_AGGRO_RADIUS && timestamp - enemy.lastShotTimestamp > ENEMY_FIRE_RATE_MS) {
-            const angleToPlayer = Math.atan2(playerPositionRef.current.y - enemy.y, playerPositionRef.current.x - enemy.x) * (180 / Math.PI);
-            newEnemyProjectiles.push({ id: timestamp + enemy.id, x: enemy.x, y: enemy.y, rotation: angleToPlayer });
-            return { ...enemy, lastShotTimestamp: timestamp };
+        
+        let isPlayerVisible = true;
+        if(shipMode === 'stealth') {
+          const justFired = timestamp - lastFiredTimestamp.current < 1000;
+          if (justFired && distanceToPlayer < STEALTH_DETECTION_RADIUS_FAR) {
+            isPlayerVisible = true;
+          } else if (distanceToPlayer < STEALTH_DETECTION_RADIUS_NEAR) {
+            isPlayerVisible = true;
+          } else {
+            isPlayerVisible = false;
+          }
+        } else if (shipMode === 'scan') {
+          // Player is more visible, so aggro radius is larger
         }
-        return enemy;
+
+        const aggroRadius = shipMode === 'scan' ? ENEMY_AGGRO_RADIUS * 1.5 : ENEMY_AGGRO_RADIUS;
+
+        let newVx = enemy.vx;
+        let newVy = enemy.vy;
+
+        if (isPlayerVisible && distanceToPlayer < aggroRadius) {
+            const angleToPlayer = Math.atan2(playerPositionRef.current.y - enemy.y, playerPositionRef.current.x - enemy.x);
+            // Move towards player
+            newVx = Math.cos(angleToPlayer) * ENEMY_SPEED;
+            newVy = Math.sin(angleToPlayer) * ENEMY_SPEED;
+
+            if (timestamp - enemy.lastShotTimestamp > ENEMY_FIRE_RATE_MS) {
+                newEnemyProjectiles.push({ id: timestamp + enemy.id, x: enemy.x, y: enemy.y, rotation: angleToPlayer * (180 / Math.PI) });
+                return { ...enemy, lastShotTimestamp: timestamp, vx: newVx, vy: newVy, x: enemy.x + newVx, y: enemy.y + newVy };
+            }
+        } else {
+            // No target, drift slowly
+            newVx *= FRICTION;
+            newVy *= FRICTION;
+        }
+
+        return { ...enemy, vx: newVx, vy: newVy, x: enemy.x + newVx, y: enemy.y + newVy };
       }));
       if (newEnemyProjectiles.length > 0) {
         setEnemyProjectiles(prev => [...prev, ...newEnemyProjectiles]);
@@ -446,7 +491,7 @@ export function GameContainer() {
       if (timestamp - lastCollisionTimestamp > collisionCooldown) {
           let collisionOccurred = false;
           let damage = 0;
-          const speedFactor = 0.5 + (currentSpeed / MAX_SPEED) * 0.5;
+          const speedFactor = 0.5 + (currentSpeed / currentMaxSpeed) * 0.5;
 
           // Player vs. Asteroids
           for (const asteroid of asteroids) {
@@ -491,6 +536,7 @@ export function GameContainer() {
       
       // Player Projectiles vs. Enemies
       const hitPlayerProjectileIds = new Set<number>();
+      const killedEnemies: EnemyState[] = [];
       const updatedEnemies = enemiesRef.current.map(enemy => {
           let newHealth = enemy.health;
           for (const proj of playerProjectilesRef.current) {
@@ -501,6 +547,9 @@ export function GameContainer() {
                   newHealth -= PLAYER_PROJECTILE_DAMAGE;
               }
           }
+          if (newHealth <= 0) {
+              killedEnemies.push(enemy);
+          }
           return { ...enemy, health: newHealth };
       }).filter(enemy => {
         if (enemy.health <= 0 && enemy.id === targetIdRef.current) {
@@ -508,6 +557,16 @@ export function GameContainer() {
         }
         return enemy.health > 0
       });
+
+      if (killedEnemies.length > 0) {
+          const newDebris = killedEnemies.map(e => ({
+              id: e.id + timestamp,
+              x: e.x,
+              y: e.y,
+              amount: Math.floor(Math.random() * 21) + 5, // 5 to 25
+          }));
+          setDebris(d => [...d, ...newDebris]);
+      }
       setEnemies(updatedEnemies);
 
       if (hitPlayerProjectileIds.size > 0) {
@@ -529,6 +588,21 @@ export function GameContainer() {
         setPlayerData(d => ({ ...d, health: Math.max(0, playerHealth) }));
         setEnemyProjectiles(prev => prev.filter(p => !hitEnemyProjectileIds.has(p.id)));
       }
+      
+      // Player vs. Debris
+      const collectedDebrisIds = new Set<number>();
+      let cargo = playerDataRef.current.cargo;
+      setDebris(currentDebris => currentDebris.filter(d => {
+        const distance = Math.hypot(d.x - playerPositionRef.current.x, d.y - playerPositionRef.current.y);
+        if (distance < DEBRIS_COLLISION_RADIUS + PLAYER_COLLISION_RADIUS) {
+            if (cargo.current < cargo.max) {
+                cargo.current = Math.min(cargo.max, cargo.current + d.amount);
+            }
+            return false;
+        }
+        return true;
+      }));
+      setPlayerData(d => ({ ...d, cargo: { ...cargo } }));
 
       // --- GAME OVER CHECK ---
       if (playerDataRef.current.health <= 0) {
@@ -543,20 +617,27 @@ export function GameContainer() {
     }
     
     return () => cancelAnimationFrame(animationFrameId);
-  }, [viewSize, isSettingsOpen, isGameOver, controlScheme]);
+  }, [viewSize, isSettingsOpen, isGameOver, controlScheme, shipMode]);
+
+  const radarRange = shipMode === 'scan' ? BASE_RADAR_RANGE * 2 : BASE_RADAR_RANGE;
 
   const visibleEnemies = React.useMemo(() => 
-    enemies.filter(e => Math.hypot(e.x - playerPosition.x, e.y - playerPosition.y) < RADAR_RANGE),
-    [enemies, playerPosition.x, playerPosition.y]
+    enemies.filter(e => Math.hypot(e.x - playerPosition.x, e.y - playerPosition.y) < radarRange),
+    [enemies, playerPosition.x, playerPosition.y, radarRange]
   );
   
   const visibleAsteroids = React.useMemo(() =>
-    asteroids.filter(a => Math.hypot(a.x - playerPosition.x, a.y - playerPosition.y) < RADAR_RANGE),
-    [asteroids, playerPosition.x, playerPosition.y]
+    asteroids.filter(a => Math.hypot(a.x - playerPosition.x, a.y - playerPosition.y) < radarRange),
+    [asteroids, playerPosition.x, playerPosition.y, radarRange]
+  );
+  
+  const visibleDebris = React.useMemo(() =>
+    debris.filter(d => Math.hypot(d.x - playerPosition.x, d.y - playerPosition.y) < radarRange),
+    [debris, playerPosition.x, playerPosition.y, radarRange]
   );
 
   return (
-    <div ref={containerRef} className="relative w-full h-full overflow-hidden bg-gray-900 cursor-crosshair">
+    <div ref={containerRef} className={cn("relative w-full h-full overflow-hidden bg-gray-900 cursor-crosshair", shipMode === 'stealth' && 'stealth-effect')}>
       {/* Game World */}
       <div style={{ 
           transform: `translate(${viewSize.width / 2}px, ${viewSize.height / 2}px) scale(${zoom}) translate(${-playerPosition.x}px, ${-playerPosition.y}px)`,
@@ -578,6 +659,9 @@ export function GameContainer() {
         ))}
         {stations.map((s) => (
             <SpaceStation key={s.id} x={s.x} y={s.y} />
+        ))}
+        {visibleDebris.map((d) => (
+            <Debris key={d.id} x={d.x} y={d.y} />
         ))}
       </div>
       
@@ -609,17 +693,18 @@ export function GameContainer() {
       </div>
 
       <div className="absolute bottom-4 right-4 z-10 flex flex-col items-center gap-4">
-        <Radar 
+        {shipMode !== 'stealth' && <Radar 
             playerPosition={playerPosition}
             enemies={visibleEnemies}
             stations={stations}
             asteroids={visibleAsteroids}
-            radarRange={RADAR_RANGE}
-        />
+            radarRange={radarRange}
+        />}
       </div>
 
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10">
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-end gap-4">
         <SpeedIndicator speed={speed} rotation={playerRotation} />
+        <ShipModeSelector currentMode={shipMode} onModeChange={setShipMode} />
       </div>
 
       <SettingsMenu
