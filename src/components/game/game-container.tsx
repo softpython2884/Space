@@ -18,6 +18,7 @@ import { VesselSystems } from '@/components/game-ui/vessel-systems';
 import { INITIAL_PLAYER_DATA } from '@/lib/constants';
 import type { ControlScheme, PlayerData, StellarBaseData, VesselSystemsData } from '@/lib/types';
 import { ClientOnly } from '@/components/client-only';
+import { GameOverOverlay } from './game-over-overlay';
 
 const ACCELERATION = 0.1;
 const STRAFE_ACCELERATION = 0.05;
@@ -30,12 +31,23 @@ const MAP_WIDTH = 3000;
 const MAP_HEIGHT = 3000;
 const FIRE_RATE_MS = 250; 
 const ENEMY_CLICK_RADIUS = 30;
-const PROJECTILE_DAMAGE = 10;
-const ENEMY_COLLISION_RADIUS = 20;
 
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 1.5;
 const ZOOM_SENSITIVITY = 0.001;
+
+// Combat & Resource Constants
+const PLAYER_COLLISION_RADIUS = 20;
+const ENEMY_COLLISION_RADIUS = 20;
+const ASTEROID_COLLISION_RADIUS = 40;
+const PLAYER_PROJECTILE_DAMAGE = 10;
+const ENEMY_PROJECTILE_DAMAGE = 5;
+const ASTEROID_COLLISION_DAMAGE = 15;
+const ENERGY_PER_SHOT = 2;
+const ENERGY_REGEN_RATE = 0.05;
+const ENEMY_AGGRO_RADIUS = 600;
+const ENEMY_FIRE_RATE_MS = 1500;
+
 
 type ProjectileState = {
   id: number;
@@ -50,6 +62,7 @@ export type EnemyState = {
   y: number;
   health: number;
   maxHealth: number;
+  lastShotTimestamp: number;
 };
 
 export type AsteroidState = {
@@ -66,13 +79,33 @@ export type StationState = {
   y: number;
 }
 
+const generateInitialEnemies = (): EnemyState[] => [
+    { id: 1, x: MAP_WIDTH / 2 + 300, y: MAP_HEIGHT / 2, health: 100, maxHealth: 100, lastShotTimestamp: 0 },
+    { id: 2, x: MAP_WIDTH / 2 - 400, y: MAP_HEIGHT / 2 - 200, health: 100, maxHealth: 100, lastShotTimestamp: 0 },
+    { id: 3, x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 + 500, health: 100, maxHealth: 100, lastShotTimestamp: 0 },
+    { id: 4, x: MAP_WIDTH / 2 + 500, y: MAP_HEIGHT / 2 - 300, health: 100, maxHealth: 100, lastShotTimestamp: 0 },
+];
+
+const generateInitialAsteroids = (): AsteroidState[] => [
+    { id: 1, x: 1000, y: 1200, size: 80, rotation: 30 },
+    { id: 2, x: 1800, y: 900, size: 120, rotation: 90 },
+    { id: 3, x: 2200, y: 2000, size: 100, rotation: 180 },
+    { id: 4, x: 500, y: 2500, size: 90, rotation: 270 },
+];
+
+const generateInitialStations = (): StationState[] => [
+    { id: 1, x: 750, y: 750 },
+];
+
+
 export function GameContainer() {
   const [playerPosition, setPlayerPosition] = useState({ x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 });
   const [velocity, setVelocity] = useState({ x: 0, y: 0 });
   const [speed, setSpeed] = useState(0);
   const [playerRotation, setPlayerRotation] = useState(0);
   const [aimRotation, setAimRotation] = useState(0);
-  const [projectiles, setProjectiles] = useState<ProjectileState[]>([]);
+  const [playerProjectiles, setPlayerProjectiles] = useState<ProjectileState[]>([]);
+  const [enemyProjectiles, setEnemyProjectiles] = useState<ProjectileState[]>([]);
   const [enemies, setEnemies] = useState<EnemyState[]>([]);
   const [asteroids, setAsteroids] = useState<AsteroidState[]>([]);
   const [stations, setStations] = useState<StationState[]>([]);
@@ -80,11 +113,12 @@ export function GameContainer() {
   const [viewSize, setViewSize] = useState({ width: 0, height: 0 });
   
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isGameOver, setIsGameOver] = useState(false);
   const [controlScheme, setControlScheme] = useState<ControlScheme>('hybrid');
   const [zoom, setZoom] = useState(1);
   const [autoMoveTarget, setAutoMoveTarget] = useState<{ x: number, y: number } | null>(null);
-
-  const [playerData, setPlayerData] = useState<PlayerData>(INITIAL_PLAYER_DATA);
+  
+  const [playerData, setPlayerData] = useState<PlayerData>(JSON.parse(JSON.stringify(INITIAL_PLAYER_DATA)));
   const [stellarBaseData, setStellarBaseData] = useState<StellarBaseData>({ shields: 95, hull: 88 });
   const [vesselSystems, setVesselSystems] = useState<VesselSystemsData>({ shields: 'Online', weapons: 'Ready', power: 'Optimal' });
 
@@ -108,29 +142,36 @@ export function GameContainer() {
   const enemiesRef = useRef(enemies);
   useEffect(() => { enemiesRef.current = enemies; }, [enemies]);
 
-  const projectilesRef = useRef(projectiles);
-  useEffect(() => { projectilesRef.current = projectiles; }, [projectiles]);
+  const playerProjectilesRef = useRef(playerProjectiles);
+  useEffect(() => { playerProjectilesRef.current = playerProjectiles; }, [playerProjectiles]);
+  
+  const enemyProjectilesRef = useRef(enemyProjectiles);
+  useEffect(() => { enemyProjectilesRef.current = enemyProjectiles }, [enemyProjectiles]);
 
   const autoMoveTargetRef = useRef(autoMoveTarget);
   useEffect(() => { autoMoveTargetRef.current = autoMoveTarget; }, [autoMoveTarget]);
 
+  const playerDataRef = useRef(playerData);
+  useEffect(() => { playerDataRef.current = playerData; }, [playerData]);
+
+
+  const resetGame = () => {
+    setPlayerPosition({ x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 });
+    setVelocity({ x: 0, y: 0 });
+    setPlayerRotation(0);
+    setPlayerProjectiles([]);
+    setEnemyProjectiles([]);
+    setEnemies(generateInitialEnemies());
+    setAsteroids(generateInitialAsteroids());
+    setStations(generateInitialStations());
+    setTargetId(null);
+    setPlayerData(JSON.parse(JSON.stringify(INITIAL_PLAYER_DATA)));
+    setIsGameOver(false);
+  };
+
   // Initial map object setup
   useEffect(() => {
-    setEnemies([
-        { id: 1, x: MAP_WIDTH / 2 + 300, y: MAP_HEIGHT / 2, health: 100, maxHealth: 100 },
-        { id: 2, x: MAP_WIDTH / 2 - 400, y: MAP_HEIGHT / 2 - 200, health: 100, maxHealth: 100 },
-        { id: 3, x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 + 500, health: 100, maxHealth: 100 },
-        { id: 4, x: MAP_WIDTH / 2 + 500, y: MAP_HEIGHT / 2 - 300, health: 100, maxHealth: 100 },
-    ]);
-    setAsteroids([
-      { id: 1, x: 1000, y: 1200, size: 80, rotation: 30 },
-      { id: 2, x: 1800, y: 900, size: 120, rotation: 90 },
-      { id: 3, x: 2200, y: 2000, size: 100, rotation: 180 },
-      { id: 4, x: 500, y: 2500, size: 90, rotation: 270 },
-    ]);
-    setStations([
-      { id: 1, x: 750, y: 750 },
-    ]);
+    resetGame();
   }, []);
 
   // Setup event listeners
@@ -141,7 +182,7 @@ export function GameContainer() {
             setAutoMoveTarget(null);
             return;
         }
-        if (isSettingsOpen) return;
+        if (isSettingsOpen || isGameOver) return;
         keysPressed.current.add(event.key.toLowerCase());
         
         const isMovementKey = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(event.key.toLowerCase());
@@ -156,7 +197,7 @@ export function GameContainer() {
     const handleContextMenu = (event: MouseEvent) => event.preventDefault();
     
     const handleMouseDown = (event: MouseEvent) => {
-      if (isSettingsOpen) return;
+      if (isSettingsOpen || isGameOver) return;
       setAutoMoveTarget(null);
 
       if (event.button === 1) { // Middle mouse button
@@ -192,7 +233,7 @@ export function GameContainer() {
     };
     
     const handleWheel = (event: WheelEvent) => {
-        if (isSettingsOpen) return;
+        if (isSettingsOpen || isGameOver) return;
         event.preventDefault();
         setZoom(prevZoom => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prevZoom - event.deltaY * ZOOM_SENSITIVITY)));
     };
@@ -219,7 +260,7 @@ export function GameContainer() {
       window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, [viewSize, isSettingsOpen, zoom]);
+  }, [viewSize, isSettingsOpen, isGameOver, zoom]);
 
   // Resize observer for container size
   useEffect(() => {
@@ -231,18 +272,39 @@ export function GameContainer() {
       return () => resizeObserver.disconnect();
   }, []);
 
+  // Update vessel systems based on player data
+  useEffect(() => {
+    const { health, energy } = playerData;
+    const newSystems: VesselSystemsData = {
+        shields: 'Online',
+        weapons: 'Ready',
+        power: 'Optimal',
+    };
+
+    if (health < 50) newSystems.shields = 'Damaged';
+    if (health <= 0) newSystems.shields = 'Offline';
+
+    if (energy < 20) newSystems.weapons = 'Offline';
+    
+    if (energy < 10) newSystems.power = 'Offline';
+    else if (energy < 40) newSystems.power = 'Damaged';
+
+    setVesselSystems(newSystems);
+  }, [playerData]);
+
   // Main game loop
   useEffect(() => {
     let animationFrameId: number;
-    let lastShotTimestamp = 0;
+    let lastPlayerShotTimestamp = 0;
+    let lastAsteroidCollisionTimestamp = 0;
 
     const gameLoop = (timestamp: number) => {
-      if (isSettingsOpen) {
+      if (isSettingsOpen || isGameOver) {
         animationFrameId = requestAnimationFrame(gameLoop);
         return;
       }
 
-      // --- MOVEMENT ---
+      // --- PLAYER MOVEMENT ---
       const rotRad = playerRotationRef.current * (Math.PI / 180);
       const cos = Math.cos(rotRad);
       const sin = Math.sin(rotRad);
@@ -316,15 +378,27 @@ export function GameContainer() {
         }
       }
       
-      // --- SHOOTING ---
-      const isShooting = currentTarget || keysPressed.current.has(' ');
-      if (isShooting && timestamp - lastShotTimestamp > FIRE_RATE_MS) {
-        lastShotTimestamp = timestamp;
-        setProjectiles(prev => [...prev, { id: timestamp, x: playerPositionRef.current.x, y: playerPositionRef.current.y, rotation: playerRotationRef.current }]);
+      // --- PLAYER SHOOTING ---
+      const canShoot = playerDataRef.current.energy >= ENERGY_PER_SHOT;
+      const isShooting = (currentTarget || keysPressed.current.has(' ')) && canShoot;
+      if (isShooting && timestamp - lastPlayerShotTimestamp > FIRE_RATE_MS) {
+        lastPlayerShotTimestamp = timestamp;
+        setPlayerProjectiles(prev => [...prev, { id: timestamp, x: playerPositionRef.current.x, y: playerPositionRef.current.y, rotation: playerRotationRef.current }]);
+        setPlayerData(d => ({ ...d, energy: d.energy - ENERGY_PER_SHOT }));
       }
+
+      // --- PLAYER STATS REGEN ---
+      setPlayerData(d => ({ ...d, energy: Math.min(100, d.energy + ENERGY_REGEN_RATE) }));
       
       // --- PROJECTILE MOVEMENT ---
-      setProjectiles(prev => prev
+      setPlayerProjectiles(prev => prev
+          .map(p => {
+              const rad = p.rotation * (Math.PI / 180);
+              return { ...p, x: p.x + Math.cos(rad) * PROJECTILE_SPEED, y: p.y + Math.sin(rad) * PROJECTILE_SPEED };
+          })
+          .filter(p => p.x > -10 && p.x < MAP_WIDTH + 10 && p.y > -10 && p.y < MAP_HEIGHT + 10)
+      );
+      setEnemyProjectiles(prev => prev
           .map(p => {
               const rad = p.rotation * (Math.PI / 180);
               return { ...p, x: p.x + Math.cos(rad) * PROJECTILE_SPEED, y: p.y + Math.sin(rad) * PROJECTILE_SPEED };
@@ -332,16 +406,33 @@ export function GameContainer() {
           .filter(p => p.x > -10 && p.x < MAP_WIDTH + 10 && p.y > -10 && p.y < MAP_HEIGHT + 10)
       );
 
-      // --- ENEMY & PROJECTILE COLLISION ---
-      const hitProjectiles = new Set<number>();
+      // --- ENEMY AI & SHOOTING ---
+      const newEnemyProjectiles: ProjectileState[] = [];
+      setEnemies(enemies => enemies.map(enemy => {
+        const distanceToPlayer = Math.hypot(enemy.x - playerPositionRef.current.x, enemy.y - playerPositionRef.current.y);
+        if (distanceToPlayer < ENEMY_AGGRO_RADIUS && timestamp - enemy.lastShotTimestamp > ENEMY_FIRE_RATE_MS) {
+            const angleToPlayer = Math.atan2(playerPositionRef.current.y - enemy.y, playerPositionRef.current.x - enemy.x) * (180 / Math.PI);
+            newEnemyProjectiles.push({ id: timestamp + enemy.id, x: enemy.x, y: enemy.y, rotation: angleToPlayer });
+            return { ...enemy, lastShotTimestamp: timestamp };
+        }
+        return enemy;
+      }));
+      if (newEnemyProjectiles.length > 0) {
+        setEnemyProjectiles(prev => [...prev, ...newEnemyProjectiles]);
+      }
+
+
+      // --- COLLISION DETECTION ---
+      // Player Projectiles vs. Enemies
+      const hitPlayerProjectileIds = new Set<number>();
       const updatedEnemies = enemiesRef.current.map(enemy => {
           let newHealth = enemy.health;
-          for (const proj of projectilesRef.current) {
-              if (hitProjectiles.has(proj.id)) continue;
+          for (const proj of playerProjectilesRef.current) {
+              if (hitPlayerProjectileIds.has(proj.id)) continue;
               const distance = Math.hypot(proj.x - enemy.x, proj.y - enemy.y);
               if (distance < ENEMY_COLLISION_RADIUS) {
-                  hitProjectiles.add(proj.id);
-                  newHealth -= PROJECTILE_DAMAGE;
+                  hitPlayerProjectileIds.add(proj.id);
+                  newHealth -= PLAYER_PROJECTILE_DAMAGE;
               }
           }
           return { ...enemy, health: newHealth };
@@ -353,16 +444,55 @@ export function GameContainer() {
       });
       setEnemies(updatedEnemies);
 
-      if (hitProjectiles.size > 0) {
-          setProjectiles(prev => prev.filter(p => !hitProjectiles.has(p.id)));
+      if (hitPlayerProjectileIds.size > 0) {
+          setPlayerProjectiles(prev => prev.filter(p => !hitPlayerProjectileIds.has(p.id)));
       }
 
-      animationFrameId = requestAnimationFrame(gameLoop);
+      // Enemy Projectiles vs. Player
+      const hitEnemyProjectileIds = new Set<number>();
+      let playerHealth = playerDataRef.current.health;
+      for (const proj of enemyProjectilesRef.current) {
+        if (hitEnemyProjectileIds.has(proj.id)) continue;
+        const distance = Math.hypot(proj.x - playerPositionRef.current.x, proj.y - playerPositionRef.current.y);
+        if (distance < PLAYER_COLLISION_RADIUS) {
+          hitEnemyProjectileIds.add(proj.id);
+          playerHealth -= ENEMY_PROJECTILE_DAMAGE;
+        }
+      }
+      if (hitEnemyProjectileIds.size > 0) {
+        setPlayerData(d => ({ ...d, health: Math.max(0, playerHealth) }));
+        setEnemyProjectiles(prev => prev.filter(p => !hitEnemyProjectileIds.has(p.id)));
+      }
+      
+      // Player vs. Asteroids
+      const collisionCooldown = 1000; // 1 second invulnerability after collision
+      if (timestamp - lastAsteroidCollisionTimestamp > collisionCooldown) {
+        for (const asteroid of asteroids) {
+            const distance = Math.hypot(asteroid.x - playerPositionRef.current.x, asteroid.y - playerPositionRef.current.y);
+            if (distance < ASTEROID_COLLISION_RADIUS + PLAYER_COLLISION_RADIUS) {
+                setPlayerData(d => ({ ...d, health: Math.max(0, d.health - ASTEROID_COLLISION_DAMAGE) }));
+                lastAsteroidCollisionTimestamp = timestamp;
+                // Optional: apply some knockback
+                setVelocity(v => ({ x: -v.x * 0.5, y: -v.y * 0.5 }));
+                break;
+            }
+        }
+      }
+
+      // --- GAME OVER CHECK ---
+      if (playerDataRef.current.health <= 0) {
+        setIsGameOver(true);
+      } else {
+        animationFrameId = requestAnimationFrame(gameLoop);
+      }
     };
     
-    if(viewSize.width > 0) animationFrameId = requestAnimationFrame(gameLoop);
+    if(viewSize.width > 0 && !isGameOver) {
+      animationFrameId = requestAnimationFrame(gameLoop);
+    }
+    
     return () => cancelAnimationFrame(animationFrameId);
-  }, [viewSize, isSettingsOpen, controlScheme]);
+  }, [viewSize, isSettingsOpen, isGameOver, controlScheme]);
 
   return (
     <div ref={containerRef} className="relative w-full h-full overflow-hidden bg-gray-900 cursor-crosshair">
@@ -373,8 +503,11 @@ export function GameContainer() {
           transformOrigin: 'top left'
       }}>
         <GameMap width={MAP_WIDTH} height={MAP_HEIGHT} />
-        {projectiles.map((p) => (
+        {playerProjectiles.map((p) => (
           <Projectile key={p.id} x={p.x} y={p.y} rotation={p.rotation} />
+        ))}
+        {enemyProjectiles.map((p) => (
+          <Projectile key={p.id} x={p.x} y={p.y} rotation={p.rotation} isEnemy />
         ))}
         {enemies.map((e) => (
             <EnemyShip key={e.id} x={e.x} y={e.y} health={e.health} maxHealth={e.maxHealth} isTargeted={e.id === targetId} />
@@ -429,6 +562,8 @@ export function GameContainer() {
         controlScheme={controlScheme}
         onControlSchemeChange={setControlScheme}
       />
+
+      <GameOverOverlay isOpen={isGameOver} onRestart={resetGame} />
     </div>
   );
 }
