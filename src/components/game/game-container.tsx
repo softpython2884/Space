@@ -5,9 +5,16 @@ import { PlayerShip } from './player-ship';
 import { GameMap } from './game-map';
 import { Projectile } from './projectile';
 import { EnemyShip } from './enemy-ship';
+import { Asteroid } from './asteroid';
+import { SpaceStation } from './space-station';
 import { Minimap } from '../game-ui/minimap';
 import { SpeedIndicator } from '../game-ui/speed-indicator';
 import { SettingsMenu } from '../game-ui/settings-menu';
+import { PlayerStatus } from '@/components/game-ui/player-status';
+import { ResourceDisplay } from '@/components/game-ui/resource-display';
+import { ChatBox } from '@/components/game-ui/chat-box';
+import { StellarBaseStatus } from '@/components/game-ui/stellar-base-status';
+import { VesselSystems } from '@/components/game-ui/vessel-systems';
 import type { ControlScheme } from '@/lib/types';
 
 const ACCELERATION = 0.1;
@@ -43,6 +50,20 @@ export type EnemyState = {
   maxHealth: number;
 };
 
+export type AsteroidState = {
+  id: number;
+  x: number;
+  y: number;
+  size: number;
+  rotation: number;
+}
+
+export type StationState = {
+  id: number;
+  x: number;
+  y: number;
+}
+
 export function GameContainer() {
   const [playerPosition, setPlayerPosition] = useState({ x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 });
   const [velocity, setVelocity] = useState({ x: 0, y: 0 });
@@ -51,6 +72,8 @@ export function GameContainer() {
   const [aimRotation, setAimRotation] = useState(0);
   const [projectiles, setProjectiles] = useState<ProjectileState[]>([]);
   const [enemies, setEnemies] = useState<EnemyState[]>([]);
+  const [asteroids, setAsteroids] = useState<AsteroidState[]>([]);
+  const [stations, setStations] = useState<StationState[]>([]);
   const [targetId, setTargetId] = useState<number | null>(null);
   const [viewSize, setViewSize] = useState({ width: 0, height: 0 });
   
@@ -85,13 +108,22 @@ export function GameContainer() {
   const autoMoveTargetRef = useRef(autoMoveTarget);
   useEffect(() => { autoMoveTargetRef.current = autoMoveTarget; }, [autoMoveTarget]);
 
-  // Initial enemy setup
+  // Initial map object setup
   useEffect(() => {
     setEnemies([
         { id: 1, x: MAP_WIDTH / 2 + 300, y: MAP_HEIGHT / 2, health: 100, maxHealth: 100 },
         { id: 2, x: MAP_WIDTH / 2 - 400, y: MAP_HEIGHT / 2 - 200, health: 100, maxHealth: 100 },
         { id: 3, x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 + 500, health: 100, maxHealth: 100 },
         { id: 4, x: MAP_WIDTH / 2 + 500, y: MAP_HEIGHT / 2 - 300, health: 100, maxHealth: 100 },
+    ]);
+    setAsteroids([
+      { id: 1, x: 1000, y: 1200, size: 80, rotation: 30 },
+      { id: 2, x: 1800, y: 900, size: 120, rotation: 90 },
+      { id: 3, x: 2200, y: 2000, size: 100, rotation: 180 },
+      { id: 4, x: 500, y: 2500, size: 90, rotation: 270 },
+    ]);
+    setStations([
+      { id: 1, x: 750, y: 750 },
     ]);
   }, []);
 
@@ -323,6 +355,7 @@ export function GameContainer() {
 
   return (
     <div ref={containerRef} className="relative w-full h-full overflow-hidden bg-gray-900 cursor-crosshair">
+      {/* Game World */}
       <div style={{ 
           transform: `translate(${viewSize.width / 2}px, ${viewSize.height / 2}px) scale(${zoom}) translate(${-playerPosition.x}px, ${-playerPosition.y}px)`,
           willChange: 'transform',
@@ -335,28 +368,54 @@ export function GameContainer() {
         {enemies.map((e) => (
             <EnemyShip key={e.id} x={e.x} y={e.y} health={e.health} maxHealth={e.maxHealth} isTargeted={e.id === targetId} />
         ))}
+        {asteroids.map((a) => (
+            <Asteroid key={a.id} x={a.x} y={a.y} size={a.size} rotation={a.rotation} />
+        ))}
+        {stations.map((s) => (
+            <SpaceStation key={s.id} x={s.x} y={s.y} />
+        ))}
       </div>
+      
+      {/* Player */}
       <PlayerShip rotation={playerRotation} aimRotation={aimRotation} />
       
       {/* UI Overlays */}
+      <div className="absolute top-4 left-4 z-10">
+        <VesselSystems />
+      </div>
+
+      <div className="absolute top-4 right-4 z-10 flex flex-col gap-4">
+        <PlayerStatus />
+        <ResourceDisplay />
+      </div>
+      
+      <div className="absolute bottom-4 left-4 z-10 flex flex-col items-start gap-4">
+          <StellarBaseStatus />
+          <ChatBox />
+      </div>
+
+      <div className="absolute bottom-4 right-4 z-10">
+        <Minimap 
+          playerPosition={playerPosition} 
+          playerRotation={playerRotation}
+          enemies={enemies}
+          asteroids={asteroids}
+          stations={stations}
+          mapWidth={MAP_WIDTH}
+          mapHeight={MAP_HEIGHT}
+        />
+      </div>
+
+      <div className="absolute bottom-4 left-1/2 -transform-x-1/2 z-10">
+        <SpeedIndicator speed={speed} rotation={playerRotation} />
+      </div>
+
       <SettingsMenu
         isOpen={isSettingsOpen}
         onOpenChange={setIsSettingsOpen}
         controlScheme={controlScheme}
         onControlSchemeChange={setControlScheme}
       />
-      <div className="absolute bottom-4 right-4 z-10">
-        <Minimap 
-          playerPosition={playerPosition} 
-          playerRotation={playerRotation}
-          enemies={enemies}
-          mapWidth={MAP_WIDTH}
-          mapHeight={MAP_HEIGHT}
-        />
-      </div>
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10">
-        <SpeedIndicator speed={speed} rotation={playerRotation} />
-      </div>
     </div>
   );
 }
