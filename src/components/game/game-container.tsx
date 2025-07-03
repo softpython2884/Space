@@ -19,7 +19,7 @@ import { VesselSystems } from '@/components/game-ui/vessel-systems';
 import { ShipModeSelector } from '@/components/game-ui/ship-mode-selector';
 import { CruiseStreaks } from '@/components/game/cruise-streaks';
 import { INITIAL_PLAYER_DATA } from '@/lib/constants';
-import type { ControlScheme, PlayerData, StellarBaseData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState as EnemyStateType, AsteroidState, StationState } from '@/lib/types';
+import type { ControlScheme, PlayerData, StellarBaseData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState as EnemyStateType, AsteroidState, StationState, EnemyAiState } from '@/lib/types';
 import { ClientOnly } from '@/components/client-only';
 import { GameOverOverlay } from './game-over-overlay';
 import { MilitaryViewOverlay } from './military-view-overlay';
@@ -82,6 +82,8 @@ const ENEMY_MAX_ENERGY = 100;
 const ENEMY_ENERGY_PER_SHOT = 10;
 const ENEMY_ENERGY_REGEN_RATE = 0.05;
 const ENEMY_ENERGY_REGEN_DELAY_MS = 3000;
+const ENEMY_SEARCH_DURATION_MS = 5000; // Time an enemy will search for the player
+const ENEMY_FLEE_HEALTH_THRESHOLD = 0.3; // 30% health
 
 
 type ProjectileState = {
@@ -94,11 +96,11 @@ type ProjectileState = {
 export type EnemyState = EnemyStateType;
 
 const generateInitialEnemies = (): EnemyState[] => [
-    { id: 1, x: MAP_WIDTH / 2 + 300, y: MAP_HEIGHT / 2, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, isAggro: false, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0 },
-    { id: 2, x: MAP_WIDTH / 2 - 400, y: MAP_HEIGHT / 2 - 200, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, isAggro: false, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0 },
-    { id: 3, x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 + 500, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, isAggro: false, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0 },
-    { id: 4, x: MAP_WIDTH / 2 + 500, y: MAP_HEIGHT / 2 - 300, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, isAggro: false, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0 },
-    { id: 5, x: MAP_WIDTH - 500, y: 500, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, isAggro: false, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0 }, // Out of initial radar range
+    { id: 1, x: MAP_WIDTH / 2 + 300, y: MAP_HEIGHT / 2, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0 },
+    { id: 2, x: MAP_WIDTH / 2 - 400, y: MAP_HEIGHT / 2 - 200, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0 },
+    { id: 3, x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 + 500, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0 },
+    { id: 4, x: MAP_WIDTH / 2 + 500, y: MAP_HEIGHT / 2 - 300, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0 },
+    { id: 5, x: MAP_WIDTH - 500, y: 500, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0 }, // Out of initial radar range
 ];
 
 const generateInitialAsteroids = (): AsteroidState[] => [
@@ -513,10 +515,9 @@ export function GameContainer() {
       } else if (currentTarget) {
         const angleToTarget = Math.atan2(currentTarget.y - playerPositionRef.current.y, currentTarget.x - playerPositionRef.current.x) * (180 / Math.PI);
         setPlayerRotation(angleToTarget);
-      } else if (shipModeRef.current !== 'stealth' && isLeftMouseDown.current && cruiseStateRef.current === 'idle') {
+      } else {
+        // When no target is locked and not auto-moving, always aim with cursor
         setPlayerRotation(aimAngle);
-      } else if (shipModeRef.current === 'stealth') {
-         setPlayerRotation(aimAngle);
       }
       
       // --- PLAYER SHOOTING ---
@@ -575,8 +576,10 @@ export function GameContainer() {
               }
           }
 
-          if (isHit) {
-              updatedEnemy.isAggro = true;
+          if (isHit && updatedEnemy.aiState === 'patrolling') {
+            updatedEnemy.aiState = 'chasing';
+            updatedEnemy.stateChangeTimestamp = timestamp;
+            updatedEnemy.lastKnownPlayerPosition = { ...playerPositionRef.current };
           }
 
           if (updatedEnemy.health <= 0) {
@@ -592,32 +595,83 @@ export function GameContainer() {
               return null;
           }
 
-          // AI behavior for alive enemies
+          // AI STATE MACHINE
           const distanceToPlayer = Math.hypot(updatedEnemy.x - playerPositionRef.current.x, updatedEnemy.y - playerPositionRef.current.y);
-          
-          let aggroRadius = ENEMY_AGGRO_RADIUS;
-          if (shipModeRef.current === 'scan') aggroRadius = ENEMY_AGGRO_RADIUS * 1.5;
-          else if (shipModeRef.current === 'stealth') aggroRadius = STEALTH_AGGRO_RADIUS;
-          
-          const shouldBeAggro = updatedEnemy.isAggro || distanceToPlayer < aggroRadius;
-          
-          if (shouldBeAggro) {
-              if (!updatedEnemy.isAggro) updatedEnemy.isAggro = true;
-              
-              const angleToPlayer = Math.atan2(playerPositionRef.current.y - updatedEnemy.y, playerPositionRef.current.x - updatedEnemy.x);
-              
-              updatedEnemy.vx = Math.cos(angleToPlayer) * ENEMY_SPEED;
-              updatedEnemy.vy = Math.sin(angleToPlayer) * ENEMY_SPEED;
 
-              if (timestamp - updatedEnemy.lastShotTimestamp > ENEMY_FIRE_RATE_MS && updatedEnemy.energy >= ENEMY_ENERGY_PER_SHOT) {
-                  newEnemyProjectiles.push({ id: timestamp + updatedEnemy.id, x: updatedEnemy.x, y: updatedEnemy.y, rotation: angleToPlayer * (180 / Math.PI) });
-                  updatedEnemy.lastShotTimestamp = timestamp;
-                  updatedEnemy.energy -= ENEMY_ENERGY_PER_SHOT;
-                  updatedEnemy.lastEnergyUseTimestamp = timestamp;
-              }
-          } else {
-              updatedEnemy.vx *= FRICTION;
-              updatedEnemy.vy *= FRICTION;
+          let aggroRadius = ENEMY_AGGRO_RADIUS;
+          if (shipModeRef.current === 'scan') aggroRadius *= 1.5;
+          else if (shipModeRef.current === 'stealth') aggroRadius = STEALTH_AGGRO_RADIUS;
+
+          const canSeePlayer = distanceToPlayer < aggroRadius;
+
+          const shouldFlee = (updatedEnemy.health / updatedEnemy.maxHealth) < ENEMY_FLEE_HEALTH_THRESHOLD && updatedEnemy.energy < (ENEMY_ENERGY_PER_SHOT * 2);
+          if (shouldFlee && updatedEnemy.aiState !== 'fleeing') {
+              updatedEnemy.aiState = 'fleeing';
+              updatedEnemy.stateChangeTimestamp = timestamp;
+          }
+
+          switch (updatedEnemy.aiState) {
+              case 'patrolling':
+                  if (canSeePlayer) {
+                      updatedEnemy.aiState = 'chasing';
+                      updatedEnemy.stateChangeTimestamp = timestamp;
+                  } else {
+                      updatedEnemy.vx *= FRICTION;
+                      updatedEnemy.vy *= FRICTION;
+                  }
+                  break;
+
+              case 'chasing':
+                  if (canSeePlayer) {
+                      updatedEnemy.lastKnownPlayerPosition = { ...playerPositionRef.current };
+                      const angleToPlayer = Math.atan2(playerPositionRef.current.y - updatedEnemy.y, playerPositionRef.current.x - updatedEnemy.x);
+                      
+                      updatedEnemy.vx = Math.cos(angleToPlayer) * ENEMY_SPEED;
+                      updatedEnemy.vy = Math.sin(angleToPlayer) * ENEMY_SPEED;
+
+                      if (timestamp - updatedEnemy.lastShotTimestamp > ENEMY_FIRE_RATE_MS && updatedEnemy.energy >= ENEMY_ENERGY_PER_SHOT) {
+                          newEnemyProjectiles.push({ id: timestamp + updatedEnemy.id, x: updatedEnemy.x, y: updatedEnemy.y, rotation: angleToPlayer * (180 / Math.PI) });
+                          updatedEnemy.lastShotTimestamp = timestamp;
+                          updatedEnemy.energy -= ENEMY_ENERGY_PER_SHOT;
+                          updatedEnemy.lastEnergyUseTimestamp = timestamp;
+                      }
+                  } else {
+                      updatedEnemy.aiState = 'searching';
+                      updatedEnemy.stateChangeTimestamp = timestamp;
+                  }
+                  break;
+
+              case 'searching':
+                  if (canSeePlayer) {
+                      updatedEnemy.aiState = 'chasing';
+                      updatedEnemy.stateChangeTimestamp = timestamp;
+                  } else if (timestamp - updatedEnemy.stateChangeTimestamp > ENEMY_SEARCH_DURATION_MS) {
+                      updatedEnemy.aiState = 'patrolling';
+                      updatedEnemy.lastKnownPlayerPosition = null;
+                      updatedEnemy.stateChangeTimestamp = timestamp;
+                  } else if (updatedEnemy.lastKnownPlayerPosition) {
+                      const distanceToLKP = Math.hypot(updatedEnemy.lastKnownPlayerPosition.x - updatedEnemy.x, updatedEnemy.lastKnownPlayerPosition.y - updatedEnemy.y);
+                      if (distanceToLKP > 20) {
+                           const angleToLKP = Math.atan2(updatedEnemy.lastKnownPlayerPosition.y - updatedEnemy.y, updatedEnemy.lastKnownPlayerPosition.x - updatedEnemy.x);
+                           updatedEnemy.vx = Math.cos(angleToLKP) * ENEMY_SPEED * 0.5;
+                           updatedEnemy.vy = Math.sin(angleToLKP) * ENEMY_SPEED * 0.5;
+                      } else {
+                          updatedEnemy.vx *= FRICTION;
+                          updatedEnemy.vy *= FRICTION;
+                      }
+                  }
+                  break;
+              
+              case 'fleeing':
+                  const angleFromPlayer = Math.atan2(updatedEnemy.y - playerPositionRef.current.y, updatedEnemy.x - playerPositionRef.current.x);
+                  updatedEnemy.vx = Math.cos(angleFromPlayer) * ENEMY_SPEED * 1.2;
+                  updatedEnemy.vy = Math.sin(angleFromPlayer) * ENEMY_SPEED * 1.2;
+                  
+                  if (distanceToPlayer > aggroRadius * 1.5 && (updatedEnemy.health / updatedEnemy.maxHealth) > (ENEMY_FLEE_HEALTH_THRESHOLD + 0.2)) {
+                      updatedEnemy.aiState = 'patrolling';
+                      updatedEnemy.stateChangeTimestamp = timestamp;
+                  }
+                  break;
           }
           
           updatedEnemy.x += updatedEnemy.vx;
