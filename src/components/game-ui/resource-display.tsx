@@ -1,10 +1,8 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { INITIAL_PLAYER_DATA } from "@/lib/constants";
 import { CircleDollarSign, Mountain, Flame } from "lucide-react";
+import type { Resources } from "@/lib/types";
 
-export function ResourceDisplay() {
-  const { resources } = INITIAL_PLAYER_DATA;
-
+export function ResourceDisplay({ resources }: { resources: Resources }) {
   return (
     <Card className="w-80 bg-black/60 border-primary/50 text-foreground backdrop-blur-sm">
       <CardContent className="p-3 flex justify-around items-center gap-2">

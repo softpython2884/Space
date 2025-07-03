@@ -19,3 +19,16 @@ export interface PlayerData {
   resources: Resources;
   upgrades: Record<string, number>;
 }
+
+export type VesselSystemStatus = 'Online' | 'Ready' | 'Optimal' | 'Offline' | 'Damaged';
+
+export interface VesselSystemsData {
+  shields: VesselSystemStatus;
+  weapons: VesselSystemStatus;
+  power: VesselSystemStatus;
+}
+
+export interface StellarBaseData {
+  shields: number;
+  hull: number;
+}

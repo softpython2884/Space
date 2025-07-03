@@ -85,11 +85,11 @@ export function Minimap({ playerPosition, playerRotation, enemies, asteroids, st
         <Card className="w-56 h-56 bg-black/60 border-primary/50 backdrop-blur-sm rounded-full overflow-hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
         <CardContent className="p-0 relative w-full h-full">
             <div
-              className="absolute inset-0 bg-cover bg-center transition-transform"
+              className="absolute inset-0 bg-cover bg-center"
               style={{
                 backgroundImage: 'url(https://placehold.co/512x512)',
                 backgroundPosition: `${(playerPosition.x / mapWidth) * 100}% ${(playerPosition.y / mapHeight) * 100}%`,
-                transform: `scale(1.5) rotate(${playerRotation}deg)`,
+                transform: `scale(1.5)`,
               }}
               data-ai-hint="star map space"
             />
@@ -97,6 +97,7 @@ export function Minimap({ playerPosition, playerRotation, enemies, asteroids, st
             {/* Player Icon at the center */}
             <div
                 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+                style={{ transform: `translate(-50%, -50%) rotate(${playerRotation}deg)` }}
             >
                 {getDirectionalIcon(true)}
             </div>

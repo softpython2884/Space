@@ -10,7 +10,7 @@ interface PlayerShipProps {
 
 export function PlayerShip({ rotation, aimRotation }: PlayerShipProps) {
   return (
-    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 grid place-items-center w-32 h-32">
+    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 grid place-items-center w-36 h-36">
         <AimIndicator rotation={aimRotation} />
         <motion.div
           className="row-start-1 col-start-1"

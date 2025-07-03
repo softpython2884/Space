@@ -1,8 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Shield, Wrench } from "lucide-react";
+import type { StellarBaseData } from "@/lib/types";
 
-export function StellarBaseStatus() {
+export function StellarBaseStatus({ data }: { data: StellarBaseData }) {
   return (
     <Card className="w-96 bg-black/60 border-primary/50 text-foreground backdrop-blur-sm">
       <CardHeader className="p-3">
@@ -15,9 +16,9 @@ export function StellarBaseStatus() {
                 <Shield className="h-4 w-4 text-blue-500" />
                 <span className="font-medium">Shields</span>
               </div>
-              <span className="text-muted-foreground">95%</span>
+              <span className="text-muted-foreground">{data.shields}%</span>
             </div>
-            <Progress value={95} className="h-2" />
+            <Progress value={data.shields} className="h-2" />
         </div>
         <div className="grid gap-2">
             <div className="flex items-center justify-between text-xs">
@@ -25,9 +26,9 @@ export function StellarBaseStatus() {
                 <Wrench className="h-4 w-4 text-gray-400" />
                 <span className="font-medium">Hull Integrity</span>
                </div>
-              <span className="ml-auto text-muted-foreground">88%</span>
+              <span className="ml-auto text-muted-foreground">{data.hull}%</span>
             </div>
-            <Progress value={88} className="h-2" />
+            <Progress value={data.hull} className="h-2" />
         </div>
       </CardContent>
     </Card>
