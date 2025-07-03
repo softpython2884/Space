@@ -20,7 +20,7 @@ export function PlayerShip({ x, y, rotation, aimRotation, isShieldActive }: Play
         willChange: 'transform',
       }}
     >
-      <div className="relative -translate-x-1/2 -translate-y-1/2 grid place-items-center w-36 h-36 z-10">
+      <div className="relative -translate-x-1/2 -translate-y-1/2 grid place-items-center z-10">
         {isShieldActive && (
           <motion.div
             className="absolute row-start-1 col-start-1"
