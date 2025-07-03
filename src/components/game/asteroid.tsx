@@ -15,7 +15,7 @@ const shapes = [
 ];
 
 export function Asteroid({ x, y, size, rotation }: AsteroidProps) {
-    const shape = shapes[size % shapes.length]; // use size to pick a shape deterministically
+    const shape = shapes[Math.floor(rotation) % shapes.length]; // use rotation to pick a shape deterministically
 
     return (
         <div
