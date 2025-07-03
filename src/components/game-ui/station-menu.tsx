@@ -7,16 +7,18 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription }
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { PlayerData, PlayerUpgrades, PlayerShipClass } from "@/lib/types";
+import type { PlayerData, PlayerUpgrades, PlayerShipClass, StationState } from "@/lib/types";
 import { UPGRADE_COSTS, UPGRADE_VALUES, RESOURCE_PRICES } from "@/lib/constants";
-import { CircleDollarSign, Mountain, Flame, Heart, Zap, ChevronsUp, Warehouse, Bot } from "lucide-react";
+import { CircleDollarSign, Mountain, Flame, Heart, Zap, ChevronsUp, Warehouse, Bot, Wrench } from "lucide-react";
 
 interface StationMenuProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   playerData: PlayerData;
+  stationData: StationState | null;
   onSellResource: (resource: 'ore' | 'gas', amount: number) => void;
   onBuyUpgrade: (upgrade: keyof PlayerUpgrades) => void;
+  onRepairHull: (amount: number, cost: number) => void;
 }
 
 const UpgradeCard = ({ title, icon: Icon, level, maxLevel, cost, onUpgrade, canAfford }: {
@@ -74,7 +76,11 @@ const playerShips: {name: PlayerShipClass, description: string}[] = [
     { name: 'Mineur', description: 'Équipé pour une extraction de ressources rapide et efficace.' },
 ];
 
-export function StationMenu({ isOpen, onOpenChange, playerData, onSellResource, onBuyUpgrade }: StationMenuProps) {
+export function StationMenu({ isOpen, onOpenChange, playerData, stationData, onSellResource, onBuyUpgrade, onRepairHull }: StationMenuProps) {
+
+  const repairAmount = 100;
+  const repairCost = 50;
+  const canRepair = stationData && stationData.health < stationData.maxHealth && playerData.resources.money >= repairCost;
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -96,8 +102,8 @@ export function StationMenu({ isOpen, onOpenChange, playerData, onSellResource, 
             <TabsContent value="commerce">
                 <Card className="bg-transparent border-0">
                     <CardHeader>
-                        <CardTitle>Trade Hub</CardTitle>
-                        <CardDescription>Sell your mined resources for credits.</CardDescription>
+                        <CardTitle>Trade & Repair Hub</CardTitle>
+                        <CardDescription>Sell resources and repair the station hull.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
                         <div className="flex justify-around p-4 rounded-lg bg-background/50">
@@ -116,7 +122,6 @@ export function StationMenu({ isOpen, onOpenChange, playerData, onSellResource, 
                         </div>
 
                         <Separator />
-
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <Card className="bg-background/30">
                                 <CardHeader>
@@ -137,6 +142,25 @@ export function StationMenu({ isOpen, onOpenChange, playerData, onSellResource, 
                                 </CardFooter>
                             </Card>
                         </div>
+                        <Separator />
+                         <Card className="bg-background/30">
+                            <CardHeader>
+                                <CardTitle className="text-lg flex items-center gap-2"><Wrench /> Station Hull Repair</CardTitle>
+                                {stationData && (
+                                  <>
+                                    <Progress value={(stationData.health / stationData.maxHealth) * 100} className="h-2 my-1" />
+                                    <CardDescription>
+                                        Current Hull: {Math.round(stationData.health)} / {stationData.maxHealth}. Contribute to the station's integrity.
+                                    </CardDescription>
+                                  </>
+                                )}
+                            </CardHeader>
+                            <CardFooter>
+                                <Button className="w-full" onClick={() => onRepairHull(repairAmount, repairCost)} disabled={!canRepair}>
+                                    Repair {repairAmount} HP ({repairCost} credits)
+                                </Button>
+                            </CardFooter>
+                        </Card>
                     </CardContent>
                 </Card>
             </TabsContent>
