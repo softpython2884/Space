@@ -21,6 +21,9 @@ export function PlayerShip({ rotation }: PlayerShipProps) {
         className="fill-cyan-400 stroke-cyan-200"
         style={{ filter: 'drop-shadow(0 0 8px hsl(var(--primary)))' }}
       >
+        {/* Direction arrow */}
+        <polygon points="25,0 28,8 22,8" className="fill-primary stroke-primary" strokeWidth="1" />
+        {/* Ship body */}
         <polygon points="25,5 45,45 25,35 5,45" strokeWidth="2" />
       </svg>
     </motion.div>
