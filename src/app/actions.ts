@@ -9,9 +9,13 @@ const UpgradeAdviceInputSchema = z.object({
     ore: z.number(),
     gas: z.number(),
   }),
-  shipType: z.enum(['Combat', 'Mining', 'Support', 'Galleon']),
+  ship: z.object({
+      class: z.any(),
+      role: z.any(),
+      size: z.any(),
+      upgrades: z.record(z.string(), z.number()),
+  }),
   level: z.number(),
-  currentUpgrades: z.record(z.string(), z.number()).optional(),
 });
 
 export async function getUpgradeAdviceAction(

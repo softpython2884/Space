@@ -1,15 +1,26 @@
 export type ShipType = "Combat" | "Mining" | "Support" | "Galleon";
 export type ControlScheme = 'relative' | 'absolute' | 'hybrid';
 
+export type ShipSize = 'S' | 'M' | 'L' | 'XL';
+export type ShipRole = 'Combat' | 'Commerce' | 'Mining' | 'Construction' | 'Support';
+export type ShipClass = 'Fighter' | 'Frigate' | 'Destroyer' | 'Corvette' | 'Galleon' | 'Hauler' | 'Miner';
+
 export interface Resources {
   money: number;
   ore: number;
   gas: number;
 }
 
+export interface ShipData {
+    class: ShipClass;
+    role: ShipRole;
+    size: ShipSize;
+    upgrades: Record<string, number>;
+}
+
 export interface PlayerData {
   level: number;
-  shipType: ShipType;
+  ship: ShipData;
   health: number;
   energy: number;
   cargo: {
@@ -17,7 +28,6 @@ export interface PlayerData {
     max: number;
   };
   resources: Resources;
-  upgrades: Record<string, number>;
 }
 
 export type VesselSystemStatus = 'Online' | 'Ready' | 'Optimal' | 'Offline' | 'Damaged';

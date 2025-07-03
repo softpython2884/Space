@@ -17,9 +17,13 @@ const UpgradeAdviceInputSchema = z.object({
     ore: z.number().describe('The amount of ore the player has.'),
     gas: z.number().describe('The amount of gas the player has.'),
   }).describe('The player current resources'),
-  shipType: z.enum(['Combat', 'Mining', 'Support', 'Galleon']).describe('The type of spaceship the player is using.'),
+  ship: z.object({
+      class: z.string().describe("The class of the ship, e.g., 'Fighter' or 'Galleon'"),
+      role: z.string().describe("The primary role of the ship, e.g., 'Combat' or 'Mining'"),
+      size: z.string().describe("The size category of the ship, e.g., 'S' for Small"),
+      upgrades: z.record(z.string(), z.number()).describe('A list of the players current upgrades and their levels')
+  }).describe("The player's current ship configuration."),
   level: z.number().describe('The current level of the player.'),
-  currentUpgrades: z.record(z.string(), z.number()).optional().describe('A list of the players current upgrades and their levels')
 });
 export type UpgradeAdviceInput = z.infer<typeof UpgradeAdviceInputSchema>;
 
@@ -44,15 +48,15 @@ const prompt = ai.definePrompt({
   prompt: `You are an expert in spaceship upgrades in the Cosmic Clash Arena game. Analyze the player's current situation and suggest the most impactful upgrades.
 
 Player Level: {{{level}}}
-Ship Type: {{{shipType}}}
-Available Resources: Money: {{{resources.money}}}, Ore: {{{resources.ore}}}, Gas: {{{resources.gas}}}}
+Ship Details: Class: {{{ship.class}}}, Role: {{{ship.role}}}, Size: {{{ship.size}}}
+Available Resources: Money: {{{resources.money}}}, Ore: {{{resources.ore}}}, Gas: {{{resources.gas}}}
 
-Consider the player's level, ship type, and available resources to recommend upgrades that will significantly improve their performance in the game.
+Consider the player's level, ship details, and available resources to recommend upgrades that will significantly improve their performance in the game.
 Reason about the advantages of each upgrade and how it will help the player, given their current situation. Consider what the player has already upgraded.
 
 Suggest the best upgrades that will give the player the most advantage, and explain your reasoning for each suggestion.
 
-Here is a list of current upgrades: {{#each currentUpgrades}}{{{@key}}}: {{{this}}} {{/each}}.
+Here is a list of current upgrades: {{#each ship.upgrades}}{{{@key}}}: {{{this}}} {{/each}}.
 
 Focus on the upgrades that will provide the biggest performance improvements, given the resources available.`,
 });
