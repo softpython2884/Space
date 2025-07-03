@@ -1,28 +1,43 @@
-import { Dashboard } from "@/components/dashboard";
-import { Map } from "@/components/map";
-import { UpgradeInterface } from "@/components/upgrade-interface";
-import { Rocket } from "lucide-react";
+import { PlayerStatus } from '@/components/game-ui/player-status';
+import { ResourceDisplay } from '@/components/game-ui/resource-display';
+import { Minimap } from '@/components/game-ui/minimap';
+import { ChatBox } from '@/components/game-ui/chat-box';
+import { StellarBaseStatus } from '@/components/game-ui/stellar-base-status';
+import { VesselSystems } from '@/components/game-ui/vessel-systems';
+import Image from 'next/image';
 
 export default function Home() {
   return (
-    <div className="flex min-h-screen w-full flex-col bg-background">
-      <header className="sticky top-0 z-10 flex h-16 items-center gap-4 border-b bg-background/80 px-4 backdrop-blur-sm md:px-6">
-        <Rocket className="h-8 w-8 text-primary" />
-        <h1 className="text-2xl font-bold tracking-tighter font-headline text-foreground">
-          Cosmic Clash Arena
-        </h1>
-      </header>
-      <main className="flex-1 p-4 md:p-8">
-        <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-3">
-          <div className="lg:col-span-1 flex flex-col gap-8">
-            <UpgradeInterface />
-          </div>
-          <div className="lg:col-span-2 flex flex-col gap-8">
-            <Dashboard />
-            <Map />
-          </div>
-        </div>
-      </main>
-    </div>
+    <main className="relative h-screen w-screen overflow-hidden bg-black font-body text-foreground">
+      {/* Fullscreen Map Background */}
+      <Image
+        src="https://placehold.co/1920x1080"
+        alt="Main star map"
+        data-ai-hint="star map space"
+        layout="fill"
+        objectFit="cover"
+        className="z-0"
+      />
+      <div className="absolute inset-0 bg-black/30" /> {/* Overlay for better text readability */}
+
+      {/* UI Elements */}
+      <div className="absolute top-4 left-4">
+        <VesselSystems />
+      </div>
+
+      <div className="absolute top-4 right-4 flex flex-col gap-4">
+        <PlayerStatus />
+        <ResourceDisplay />
+      </div>
+      
+      <div className="absolute bottom-4 left-4 flex flex-col items-start gap-4">
+          <StellarBaseStatus />
+          <ChatBox />
+      </div>
+
+      <div className="absolute bottom-4 right-4">
+        <Minimap />
+      </div>
+    </main>
   );
 }
