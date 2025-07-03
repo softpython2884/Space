@@ -15,7 +15,6 @@ import { ResourceDisplay } from '@/components/game-ui/resource-display';
 import { ChatBox } from '@/components/game-ui/chat-box';
 import { StellarBaseStatus } from '@/components/game-ui/stellar-base-status';
 import { VesselSystems } from '@/components/game-ui/vessel-systems';
-import { ShipSchematic } from '@/components/game-ui/ship-schematic';
 import { INITIAL_PLAYER_DATA } from '@/lib/constants';
 import type { ControlScheme, PlayerData, StellarBaseData, VesselSystemsData } from '@/lib/types';
 import { ClientOnly } from '@/components/client-only';
@@ -394,7 +393,6 @@ export function GameContainer() {
       {/* UI Overlays */}
       <div className="absolute top-1/2 -translate-y-1/2 left-4 z-10 flex flex-col gap-4">
         <VesselSystems systems={vesselSystems} />
-        <ShipSchematic />
       </div>
 
       <div className="absolute top-4 right-4 z-10 flex flex-col gap-4">
