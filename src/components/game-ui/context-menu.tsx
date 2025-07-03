@@ -9,13 +9,13 @@ interface ContextMenuProps {
   x: number;
   y: number;
   targetType: ContextMenuTargetType;
-  onAction: (action: PlayerActionType | 'open_station_menu', targetId: number) => void;
+  onAction: (action: PlayerActionType | 'open_station_menu') => void;
   onClose: () => void;
 }
 
 export function ContextMenu({ x, y, targetType, onAction, onClose }: ContextMenuProps) {
-    const handleActionClick = (action: PlayerActionType | 'open_station_menu', targetId: number) => {
-        onAction(action, targetId);
+    const handleActionClick = (action: PlayerActionType | 'open_station_menu') => {
+        onAction(action);
         onClose();
     };
 
@@ -28,25 +28,25 @@ export function ContextMenu({ x, y, targetType, onAction, onClose }: ContextMenu
           <Card className="bg-black/80 border-primary/50 backdrop-blur-sm w-48">
               <CardContent className="p-2 flex flex-col gap-1">
                   {targetType === 'asteroid' && (
-                      <Button variant="ghost" className="justify-start" onClick={() => handleActionClick('mining', 0)}>
+                      <Button variant="ghost" className="justify-start" onClick={() => handleActionClick('mining')}>
                           <Mountain className="mr-2 h-4 w-4" />
                           Mine
                       </Button>
                   )}
                   {targetType === 'enemy' && (
                       <>
-                          <Button variant="ghost" className="justify-start" onClick={() => handleActionClick('pillaging', 0)}>
+                          <Button variant="ghost" className="justify-start" onClick={() => handleActionClick('pillaging')}>
                               <Skull className="mr-2 h-4 w-4" />
                               Pillage
                           </Button>
-                          <Button variant="ghost" className="justify-start" onClick={() => handleActionClick('boarding', 0)}>
+                          <Button variant="ghost" className="justify-start" onClick={() => handleActionClick('boarding')}>
                               <Anchor className="mr-2 h-4 w-4" />
                               Board
                           </Button>
                       </>
                   )}
                   {targetType === 'station' && (
-                        <Button variant="ghost" className="justify-start" onClick={() => handleActionClick('open_station_menu', 0)}>
+                        <Button variant="ghost" className="justify-start" onClick={() => handleActionClick('open_station_menu')}>
                             <LogIn className="mr-2 h-4 w-4" />
                             Open Station Menu
                         </Button>

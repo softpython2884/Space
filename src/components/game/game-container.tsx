@@ -25,7 +25,7 @@ import type { ControlScheme, PlayerData, StellarBaseData, VesselSystemsData, Shi
 import { ClientOnly } from '@/components/client-only';
 import { GameOverOverlay } from './game-over-overlay';
 import { MilitaryViewOverlay } from './military-view-overlay';
-import { ContextMenu } from './context-menu';
+import { ContextMenu } from '../game-ui/context-menu';
 import { ActionProgress } from '../game-ui/action-progress';
 import { StationMenu } from '../game-ui/station-menu';
 import { PlayerUpgradesDisplay } from '../game-ui/player-upgrades';
@@ -58,7 +58,7 @@ const FRIGATE_COLLISION_RADIUS = 30;
 const STAFF_COLLISION_RADIUS = 25;
 const DEBRIS_COLLISION_RADIUS = 20;
 const STATION_COLLISION_RADIUS = 75;
-const ASTEROID_COLLISION_RADIUS = 0.25; // Reduced from 0.3 for more forgiving hitboxes
+const ASTEROID_COLLISION_RADIUS = 0.4; // More accurate hitbox
 
 const PLAYER_PROJECTILE_DAMAGE = 10;
 const ENEMY_PROJECTILE_DAMAGE = 5;
@@ -140,7 +140,7 @@ const generateInitialAsteroids = (): AsteroidState[] => [
 ];
 
 const generateInitialStations = (): StationState[] => [
-    { id: 1, x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 },
+    { id: 1, x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2, health: 5000, maxHealth: 5000 },
 ];
 
 
@@ -268,20 +268,28 @@ export function GameContainer() {
     if (playerActionRef.current) return;
 
     if (action === 'open_station_menu') {
-        setIsStationMenuOpen(true);
+        const station = stationsRef.current.find(s => s.id === targetId);
+        if (station) {
+            const distance = Math.hypot(station.x - playerPositionRef.current.x, station.y - playerPositionRef.current.y);
+            if (distance < STATION_INTERACTION_RADIUS) {
+                setIsStationMenuOpen(true);
+            }
+        }
         return;
     }
 
     const targetEnemy = enemiesRef.current.find(e => e.id === targetId);
+    const targetAsteroid = asteroidsRef.current.find(a => a.id === targetId);
 
     switch(action) {
       case 'mining':
-        setPlayerAction({ type: 'mining', targetId, startTime: Date.now(), duration: MINING_DURATION_MS });
+        if (targetAsteroid) {
+            setPlayerAction({ type: 'mining', targetId, startTime: Date.now(), duration: MINING_DURATION_MS });
+        }
         break;
       case 'pillaging':
         if (targetEnemy) {
           if (playerDataRef.current.energy < PILLAGE_ENERGY_COST) {
-            // toast({ variant: "destructive", title: "Not enough energy to pillage." });
             return;
           }
           setPlayerData(d => ({ ...d, energy: d.energy - PILLAGE_ENERGY_COST }));
@@ -292,11 +300,9 @@ export function GameContainer() {
       case 'boarding':
         if (targetEnemy) {
             if (targetEnemy.isAlly) {
-                // toast({ title: "Target is already an ally." });
                 return;
             }
           if (playerDataRef.current.energy < BOARDING_ENERGY_COST) {
-            // toast({ variant: "destructive", title: "Not enough energy to board." });
             return;
           }
           setPlayerData(d => ({ ...d, energy: d.energy - BOARDING_ENERGY_COST }));
@@ -310,7 +316,6 @@ export function GameContainer() {
   const handleModeChange = (newMode: ShipMode) => {
     const now = Date.now();
     if (now < modeChangeAvailableAtRef.current) {
-        toast({ title: "Mode change is on cooldown." });
         return;
     }
     if (cruiseStateRef.current !== 'idle') return;
@@ -318,18 +323,15 @@ export function GameContainer() {
 
     if (newMode === 'cruise') {
         if (now < cruiseAvailableAtRef.current) {
-            toast({ title: "Cruise is on cooldown." });
             return;
         }
         if (playerDataRef.current.energy < CRUISE_ENERGY_COST) {
-            toast({ variant: "destructive", title: "Not enough energy for cruise." });
             return;
         }
         setPlayerData(d => ({ ...d, energy: Math.max(0, d.energy - CRUISE_ENERGY_COST) }));
     }
 
     if (newMode === 'shield' && playerDataRef.current.energy <= 0) {
-        toast({ variant: "destructive", title: "Not enough energy to activate shield." });
         return;
     }
     
@@ -431,7 +433,6 @@ export function GameContainer() {
 
         let enemyClicked = false;
         for (const enemy of enemiesRef.current) {
-            if (enemy.isAlly) continue;
             const distance = Math.hypot(clickWorldX - enemy.x, clickWorldY - enemy.y);
             if (distance < ENEMY_CLICK_RADIUS) {
                 setTargetId(enemy.id === targetIdRef.current ? null : enemy.id);
@@ -703,7 +704,7 @@ export function GameContainer() {
         } else {
             const cos = Math.cos(rotRad);
             const sin = Math.sin(rotRad);
-            const moveControlScheme = shipModeRef.current === 'stealth' ? 'absolute' : controlScheme;
+            const moveControlScheme = shipModeRef.current === 'stealth' ? 'hybrid' : controlScheme;
             switch (moveControlScheme) {
                 case 'relative':
                   if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) { accelVec.x += cos * currentAccel; accelVec.y += sin * currentAccel; }
@@ -827,19 +828,19 @@ export function GameContainer() {
 
           let isHit = false;
           // Allies cannot be hit by player, enemies can't be hit by other enemies.
-          if (!updatedEnemy.isAlly) {
-            for (const proj of playerProjectilesRef.current) {
-                if (hitPlayerProjectileIds.has(proj.id)) continue;
-                const distance = Math.hypot(proj.x - updatedEnemy.x, proj.y - updatedEnemy.y);
-                if (distance < collisionRadius) {
-                    hitPlayerProjectileIds.add(proj.id);
+          for (const proj of playerProjectilesRef.current) {
+              if (hitPlayerProjectileIds.has(proj.id)) continue;
+              const distance = Math.hypot(proj.x - updatedEnemy.x, proj.y - updatedEnemy.y);
+              if (distance < collisionRadius) {
+                  hitPlayerProjectileIds.add(proj.id);
+                  if (!updatedEnemy.isAlly) {
                     updatedEnemy.health -= PLAYER_PROJECTILE_DAMAGE;
-                    isHit = true;
-                }
-            }
+                  }
+                  isHit = true;
+              }
           }
 
-          if (isHit && updatedEnemy.aiState === 'patrolling' && updatedEnemy.type !== 'staff') {
+          if (isHit && updatedEnemy.aiState === 'patrolling' && updatedEnemy.type !== 'staff' && !updatedEnemy.isAlly) {
             updatedEnemy.aiState = 'chasing';
             updatedEnemy.stateChangeTimestamp = timestamp;
             updatedEnemy.lastKnownPlayerPosition = { ...playerPositionRef.current };
@@ -850,7 +851,11 @@ export function GameContainer() {
                   id: updatedEnemy.id + timestamp,
                   x: updatedEnemy.x,
                   y: updatedEnemy.y,
-                  resources: { ore: Math.floor(Math.random() * 21) + 5 + updatedEnemy.cargo }
+                  resources: { 
+                    money: Math.floor(Math.random() * 51) + 20, 
+                    ore: Math.floor(Math.random() * 21) + 5 + updatedEnemy.cargo, 
+                    gas: Math.floor(Math.random() * 11) + 1 
+                  }
               });
               if (updatedEnemy.id === targetIdRef.current) setTargetId(null);
               return null;
@@ -889,9 +894,12 @@ export function GameContainer() {
                         const preferredDistance = ENEMY_AGGRO_RADIUS * 0.6;
                         const rammingHealthAdvantage = updatedEnemy.health > playerDataRef.current.health * 1.5;
 
-                        if (distanceToPlayer > preferredDistance || rammingHealthAdvantage) {
+                        if (distanceToPlayer > preferredDistance && !rammingHealthAdvantage) {
                              updatedEnemy.vx = Math.cos(angleToPlayer) * ENEMY_SPEED;
                              updatedEnemy.vy = Math.sin(angleToPlayer) * ENEMY_SPEED;
+                        } else if (rammingHealthAdvantage) {
+                            updatedEnemy.vx = Math.cos(angleToPlayer) * ENEMY_SPEED;
+                            updatedEnemy.vy = Math.sin(angleToPlayer) * ENEMY_SPEED;
                         } else {
                              updatedEnemy.vx *= FRICTION;
                              updatedEnemy.vy *= FRICTION;
@@ -981,7 +989,6 @@ export function GameContainer() {
           }
           for (let i = 0; i < processedEnemies.length; i++) {
               let enemy = processedEnemies[i];
-              if (enemy.isAlly) continue;
               let enemyRadius = ENEMY_COLLISION_RADIUS;
               if (enemy.type === 'frigate') enemyRadius = FRIGATE_COLLISION_RADIUS;
               else if (enemy.type === 'staff') enemyRadius = STAFF_COLLISION_RADIUS;
@@ -1163,6 +1170,12 @@ export function GameContainer() {
   };
   
   const maxHealth = UPGRADE_VALUES.maxHealth[playerData.upgrades.maxHealth];
+  
+  const mainStation = stations.find(s => s.id === 1);
+  const currentStellarBaseData = mainStation ? {
+      shields: 95, // Static for now
+      hull: (mainStation.health / mainStation.maxHealth) * 100,
+  } : stellarBaseData;
 
   return (
     <div
@@ -1226,7 +1239,7 @@ export function GameContainer() {
       </div>
       
       <div className="absolute bottom-4 left-4 z-10 flex flex-col items-start gap-4" data-ui-element="true">
-          <StellarBaseStatus data={stellarBaseData} />
+          <StellarBaseStatus data={currentStellarBaseData} />
           <ClientOnly>
             <ChatBox />
           </ClientOnly>

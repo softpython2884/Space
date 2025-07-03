@@ -93,6 +93,8 @@ export type StationState = {
   id: number;
   x: number;
   y: number;
+  health: number;
+  maxHealth: number;
 }
 
 export type Debris = {
