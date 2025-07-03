@@ -4,41 +4,35 @@ import { Minimap } from '@/components/game-ui/minimap';
 import { ChatBox } from '@/components/game-ui/chat-box';
 import { StellarBaseStatus } from '@/components/game-ui/stellar-base-status';
 import { VesselSystems } from '@/components/game-ui/vessel-systems';
-import Image from 'next/image';
 import { ClientOnly } from '@/components/client-only';
+import { GameContainer } from '@/components/game/game-container';
 
 export default function Home() {
   return (
-    <main className="relative h-screen w-screen overflow-hidden bg-black font-body text-foreground">
-      {/* Fullscreen Map Background */}
-      <Image
-        src="https://placehold.co/1920x1080"
-        alt="Main star map"
-        data-ai-hint="star map space"
-        layout="fill"
-        objectFit="cover"
-        className="z-0"
-      />
-      <div className="absolute inset-0 bg-black/30" /> {/* Overlay for better text readability */}
+    <main className="relative h-screen w-screen overflow-hidden bg-gray-900 font-body text-foreground">
+      {/* Game view in the background */}
+      <ClientOnly>
+        <GameContainer />
+      </ClientOnly>
 
       {/* UI Elements */}
-      <div className="absolute top-4 left-4">
+      <div className="absolute top-4 left-4 z-10">
         <VesselSystems />
       </div>
 
-      <div className="absolute top-4 right-4 flex flex-col gap-4">
+      <div className="absolute top-4 right-4 z-10 flex flex-col gap-4">
         <PlayerStatus />
         <ResourceDisplay />
       </div>
       
-      <div className="absolute bottom-4 left-4 flex flex-col items-start gap-4">
+      <div className="absolute bottom-4 left-4 z-10 flex flex-col items-start gap-4">
           <StellarBaseStatus />
           <ClientOnly>
             <ChatBox />
           </ClientOnly>
       </div>
 
-      <div className="absolute bottom-4 right-4">
+      <div className="absolute bottom-4 right-4 z-10">
         <Minimap />
       </div>
     </main>
