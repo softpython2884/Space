@@ -11,7 +11,7 @@ export const INITIAL_PLAYER_DATA: PlayerData = {
       "Deflector Shields": 1,
     },
   },
-  health: 85,
+  health: 100,
   energy: 70,
   cargo: {
     current: 150,

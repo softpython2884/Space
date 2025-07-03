@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { PlayerShip } from './player-ship';
 import { GameMap } from './game-map';
 import { Projectile } from './projectile';
@@ -8,6 +8,7 @@ import { EnemyShip } from './enemy-ship';
 import { Asteroid } from './asteroid';
 import { SpaceStation } from './space-station';
 import { Minimap } from '../game-ui/minimap';
+import { Radar } from '../game-ui/radar';
 import { SpeedIndicator } from '../game-ui/speed-indicator';
 import { SettingsMenu } from '../game-ui/settings-menu';
 import { PlayerStatus } from '@/components/game-ui/player-status';
@@ -32,6 +33,7 @@ const MAP_HEIGHT = 3000;
 const FIRE_RATE_MS = 250; 
 const ENEMY_CLICK_RADIUS = 30;
 
+const RADAR_RANGE = 1200;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 1.5;
 const ZOOM_SENSITIVITY = 0.001;
@@ -39,7 +41,7 @@ const ZOOM_SENSITIVITY = 0.001;
 // Combat & Resource Constants
 const PLAYER_COLLISION_RADIUS = 20;
 const ENEMY_COLLISION_RADIUS = 20;
-const ASTEROID_COLLISION_RADIUS = 40;
+const ASTEROID_COLLISION_RADIUS = 40; // This is a base, but we'll use asteroid.size
 const STATION_COLLISION_RADIUS = 75;
 
 const PLAYER_PROJECTILE_DAMAGE = 10;
@@ -93,6 +95,7 @@ const generateInitialEnemies = (): EnemyState[] => [
     { id: 2, x: MAP_WIDTH / 2 - 400, y: MAP_HEIGHT / 2 - 200, health: 100, maxHealth: 100, lastShotTimestamp: 0 },
     { id: 3, x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 + 500, health: 100, maxHealth: 100, lastShotTimestamp: 0 },
     { id: 4, x: MAP_WIDTH / 2 + 500, y: MAP_HEIGHT / 2 - 300, health: 100, maxHealth: 100, lastShotTimestamp: 0 },
+    { id: 5, x: MAP_WIDTH - 500, y: 500, health: 100, maxHealth: 100, lastShotTimestamp: 0 }, // Out of initial radar range
 ];
 
 const generateInitialAsteroids = (): AsteroidState[] => [
@@ -294,7 +297,7 @@ export function GameContainer() {
     if (health < 50) newSystems.shields = 'Damaged';
     if (health <= 0) newSystems.shields = 'Offline';
 
-    if (energy < 20) newSystems.weapons = 'Offline';
+    if (energy < ENERGY_PER_SHOT) newSystems.weapons = 'Offline';
     
     if (energy <= 0) newSystems.power = 'Offline';
     else if (energy < 40) newSystems.power = 'Damaged';
@@ -394,7 +397,7 @@ export function GameContainer() {
       
       // --- PLAYER SHOOTING ---
       const canShoot = playerDataRef.current.energy >= ENERGY_PER_SHOT;
-      const isShooting = (currentTarget || isLeftMouseDown.current || keysPressed.current.has(' ')) && canShoot;
+      const isShooting = (currentTarget || keysPressed.current.has(' ')) && canShoot;
       if (isShooting && timestamp - lastPlayerShotTimestamp > FIRE_RATE_MS) {
         lastPlayerShotTimestamp = timestamp;
         lastEnergyUseTimestamp.current = timestamp;
@@ -449,7 +452,7 @@ export function GameContainer() {
           // Player vs. Asteroids
           for (const asteroid of asteroids) {
               const distance = Math.hypot(asteroid.x - playerPositionRef.current.x, asteroid.y - playerPositionRef.current.y);
-              if (distance < (asteroid.size / 2) + PLAYER_COLLISION_RADIUS) {
+              if (distance < (asteroid.size * 0.4) + PLAYER_COLLISION_RADIUS) {
                   damage = ASTEROID_COLLISION_DAMAGE * speedFactor;
                   collisionOccurred = true;
                   break;
@@ -543,6 +546,16 @@ export function GameContainer() {
     return () => cancelAnimationFrame(animationFrameId);
   }, [viewSize, isSettingsOpen, isGameOver, controlScheme]);
 
+  const visibleEnemies = React.useMemo(() => 
+    enemies.filter(e => Math.hypot(e.x - playerPosition.x, e.y - playerPosition.y) < RADAR_RANGE),
+    [enemies, playerPosition.x, playerPosition.y]
+  );
+  
+  const visibleAsteroids = React.useMemo(() =>
+    asteroids.filter(a => Math.hypot(a.x - playerPosition.x, a.y - playerPosition.y) < RADAR_RANGE),
+    [asteroids, playerPosition.x, playerPosition.y]
+  );
+
   return (
     <div ref={containerRef} className="relative w-full h-full overflow-hidden bg-gray-900 cursor-crosshair">
       {/* Game World */}
@@ -558,7 +571,7 @@ export function GameContainer() {
         {enemyProjectiles.map((p) => (
           <Projectile key={p.id} x={p.x} y={p.y} rotation={p.rotation} isEnemy />
         ))}
-        {enemies.map((e) => (
+        {visibleEnemies.map((e) => (
             <EnemyShip key={e.id} x={e.x} y={e.y} health={e.health} maxHealth={e.maxHealth} isTargeted={e.id === targetId} />
         ))}
         {asteroids.map((a) => (
@@ -596,11 +609,18 @@ export function GameContainer() {
           </ClientOnly>
       </div>
 
-      <div className="absolute bottom-4 right-4 z-10">
+      <div className="absolute bottom-4 right-4 z-10 flex flex-col items-center gap-4">
+        <Radar 
+            playerPosition={playerPosition}
+            enemies={visibleEnemies}
+            stations={stations}
+            asteroids={visibleAsteroids}
+            radarRange={RADAR_RANGE}
+        />
         <Minimap 
           playerPosition={playerPosition} 
           playerRotation={playerRotation}
-          enemies={enemies}
+          enemies={visibleEnemies}
           asteroids={asteroids}
           stations={stations}
           mapWidth={MAP_WIDTH}
