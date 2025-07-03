@@ -18,7 +18,7 @@ const RadarDot = ({ color, size = 'w-2 h-2', pulse = false, type = 'dot' }: { co
     const icon = () => {
         switch(type) {
             case 'triangle':
-                return <div style={{width: 0, height: 0, borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderBottom: `10px solid ${color.replace('bg-', '')}`}}/>
+                return <div style={{width: 0, height: 0, borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderBottom: '10px solid hsl(var(--primary))'}}/>
             case 'square':
                  return <div className={cn(size, color)} />;
             default:
@@ -64,6 +64,8 @@ export function Radar({ playerPosition, enemies, stations, asteroids, radarRange
     }
     
     const getEnemyIcon = (enemy: EnemyState) => {
+        if (enemy.isAlly) return <RadarDot color="bg-green-500" type="triangle" />;
+
         switch(enemy.type) {
             case 'chasseur':
             case 'frigate':
@@ -114,7 +116,7 @@ export function Radar({ playerPosition, enemies, stations, asteroids, radarRange
                 </div>
                 
                 {enemies.map(e => renderObjectOnRadar(e, `enemy-${e.id}`, getEnemyIcon(e)))}
-                {stations.map(s => renderObjectOnRadar(s, `station-${s.id}`, <RadarDot color="bg-blue-400" size="w-4 h-4" type="square" />))}
+                {stations.map(s => renderObjectOnRadar(s, `station-${s.id}`, <RadarDot color="bg-blue-400" size="w-4 h-4" type="square" pulse />))}
                 {asteroids.map(a => renderObjectOnRadar(a, `asteroid-${a.id}`, <RadarDot color="bg-gray-500" />))}
             </div>
 

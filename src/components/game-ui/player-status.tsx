@@ -2,8 +2,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Heart, Zap, Container, Star } from "lucide-react";
 import type { PlayerData } from "@/lib/types";
+import { UPGRADE_VALUES } from "@/lib/constants";
 
 export function PlayerStatus({ data }: { data: PlayerData }) {
+  const maxHealth = UPGRADE_VALUES.maxHealth[data.upgrades.maxHealth];
+  const maxCargo = UPGRADE_VALUES.cargoCapacity[data.upgrades.cargoCapacity];
+  const healthPercentage = (data.health / maxHealth) * 100;
+
   return (
     <Card className="w-80 bg-black/60 border-primary/50 text-foreground backdrop-blur-sm">
       <CardHeader className="p-3">
@@ -22,9 +27,9 @@ export function PlayerStatus({ data }: { data: PlayerData }) {
                 <Heart className="h-4 w-4 text-red-500" />
                 <span className="font-medium">Health</span>
               </div>
-              <span className="text-muted-foreground">{Math.round(data.health)}%</span>
+              <span className="text-muted-foreground">{Math.round(data.health)} / {maxHealth}</span>
             </div>
-            <Progress value={data.health} className="h-2" />
+            <Progress value={healthPercentage} className="h-2" />
         </div>
         <div className="grid gap-2">
             <div className="flex items-center justify-between text-xs">
@@ -42,9 +47,9 @@ export function PlayerStatus({ data }: { data: PlayerData }) {
                 <Container className="h-4 w-4 text-gray-400" />
                 <span className="font-medium">Cargo</span>
               </div>
-              <span className="ml-auto text-muted-foreground">{data.cargo.current} / {data.cargo.max}</span>
+              <span className="ml-auto text-muted-foreground">{data.cargo.current} / {maxCargo}</span>
             </div>
-            <Progress value={(data.cargo.current / data.cargo.max) * 100} className="h-2" />
+            <Progress value={(data.cargo.current / maxCargo) * 100} className="h-2" />
         </div>
       </CardContent>
     </Card>

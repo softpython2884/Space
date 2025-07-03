@@ -1,4 +1,5 @@
 'use client';
+import { motion } from 'framer-motion';
 
 interface SpaceStationProps {
   x: number;
@@ -14,13 +15,16 @@ export function SpaceStation({ x, y }: SpaceStationProps) {
         willChange: 'transform',
       }}
     >
-      <div className="relative -translate-x-1/2 -translate-y-1/2">
+      <motion.div 
+        className="relative -translate-x-1/2 -translate-y-1/2"
+        animate={{ filter: ['drop-shadow(0 0 10px hsl(var(--primary)))', 'drop-shadow(0 0 20px hsl(var(--primary)))', 'drop-shadow(0 0 10px hsl(var(--primary)))'] }}
+        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+      >
         <svg
           width="150"
           height="150"
           viewBox="-75 -75 150 150"
           className="fill-gray-300/20 stroke-cyan-300"
-          style={{ filter: 'drop-shadow(0 0 10px hsl(var(--primary)))' }}
         >
           <circle cx="0" cy="0" r="60" strokeWidth="2" />
           <circle cx="0" cy="0" r="30" strokeWidth="1" className="fill-gray-700/50" />
@@ -29,7 +33,7 @@ export function SpaceStation({ x, y }: SpaceStationProps) {
           <rect x="-5" y="-70" width="10" height="40" strokeWidth="1" className="fill-gray-600" />
           <rect x="-5" y="30" width="10" height="40" strokeWidth="1" className="fill-gray-600" />
         </svg>
-      </div>
+      </motion.div>
     </div>
   );
 }
