@@ -24,6 +24,10 @@ const ENEMY_CLICK_RADIUS = 30;
 const PROJECTILE_DAMAGE = 10;
 const ENEMY_COLLISION_RADIUS = 20;
 
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 1.5;
+const ZOOM_SENSITIVITY = 0.001;
+
 type ProjectileState = {
   id: number;
   x: number;
@@ -49,8 +53,11 @@ export function GameContainer() {
   const [enemies, setEnemies] = useState<EnemyState[]>([]);
   const [targetId, setTargetId] = useState<number | null>(null);
   const [viewSize, setViewSize] = useState({ width: 0, height: 0 });
+  
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [controlScheme, setControlScheme] = useState<ControlScheme>('relative');
+  const [zoom, setZoom] = useState(1);
+  const [autoMoveTarget, setAutoMoveTarget] = useState<{ x: number, y: number } | null>(null);
 
   const keysPressed = useRef<Set<string>>(new Set());
   const mousePosition = useRef({ x: 0, y: 0 });
@@ -75,6 +82,9 @@ export function GameContainer() {
   const projectilesRef = useRef(projectiles);
   useEffect(() => { projectilesRef.current = projectiles; }, [projectiles]);
 
+  const autoMoveTargetRef = useRef(autoMoveTarget);
+  useEffect(() => { autoMoveTargetRef.current = autoMoveTarget; }, [autoMoveTarget]);
+
   // Initial enemy setup
   useEffect(() => {
     setEnemies([
@@ -90,13 +100,18 @@ export function GameContainer() {
     const handleKeyDown = (event: KeyboardEvent) => {
         if (event.key === 'Escape') {
             setIsSettingsOpen(open => !open);
+            setAutoMoveTarget(null);
             return;
         }
         if (isSettingsOpen) return;
         keysPressed.current.add(event.key.toLowerCase());
+        
+        const isMovementKey = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(event.key.toLowerCase());
+        if (isMovementKey && autoMoveTargetRef.current) {
+            setAutoMoveTarget(null);
+        }
     }
     const handleKeyUp = (event: KeyboardEvent) => {
-        if (isSettingsOpen) return;
         keysPressed.current.delete(event.key.toLowerCase());
     }
     const handleMouseMove = (event: MouseEvent) => mousePosition.current = { x: event.clientX, y: event.clientY };
@@ -104,12 +119,21 @@ export function GameContainer() {
     
     const handleMouseDown = (event: MouseEvent) => {
       if (isSettingsOpen) return;
+      setAutoMoveTarget(null);
 
-      if (event.button === 0) { // Left click
+      if (event.button === 1) {
+          event.preventDefault();
+          const targetWorldX = playerPositionRef.current.x + (mousePosition.current.x - viewSize.width / 2) / zoom;
+          const targetWorldY = playerPositionRef.current.y + (mousePosition.current.y - viewSize.height / 2) / zoom;
+          setAutoMoveTarget({ x: targetWorldX, y: targetWorldY });
+          return;
+      }
+
+      if (event.button === 0) {
         isLeftMouseDown.current = true;
         
-        const clickWorldX = playerPositionRef.current.x - (viewSize.width / 2) + mousePosition.current.x;
-        const clickWorldY = playerPositionRef.current.y - (viewSize.height / 2) + mousePosition.current.y;
+        const clickWorldX = playerPositionRef.current.x + (mousePosition.current.x - viewSize.width / 2) / zoom;
+        const clickWorldY = playerPositionRef.current.y + (mousePosition.current.y - viewSize.height / 2) / zoom;
         
         let clickedOnEnemy = false;
         for (const enemy of enemiesRef.current) {
@@ -126,10 +150,19 @@ export function GameContainer() {
       }
     };
     const handleMouseUp = (event: MouseEvent) => {
-      if (isSettingsOpen) return;
       if (event.button === 0) isLeftMouseDown.current = false;
     };
+    
+    const handleWheel = (event: WheelEvent) => {
+        if (isSettingsOpen) return;
+        event.preventDefault();
+        setZoom(prevZoom => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prevZoom - event.deltaY * ZOOM_SENSITIVITY)));
+    };
 
+    const container = containerRef.current;
+    if (container) {
+        container.addEventListener('wheel', handleWheel, { passive: false });
+    }
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     window.addEventListener('mousemove', handleMouseMove);
@@ -138,6 +171,9 @@ export function GameContainer() {
     window.addEventListener('contextmenu', handleContextMenu);
     
     return () => {
+      if (container) {
+        container.removeEventListener('wheel', handleWheel);
+      }
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('mousemove', handleMouseMove);
@@ -145,7 +181,7 @@ export function GameContainer() {
       window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, [viewSize, isSettingsOpen]);
+  }, [viewSize, isSettingsOpen, zoom]);
 
   // Resize observer for container size
   useEffect(() => {
@@ -175,58 +211,34 @@ export function GameContainer() {
       
       let accelVec = { x: 0, y: 0 };
       
-      switch (controlScheme) {
-        case 'relative':
-          if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) {
-            accelVec.x += cos * ACCELERATION;
-            accelVec.y += sin * ACCELERATION;
-          }
-          if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) {
-            accelVec.x -= cos * REVERSE_ACCELERATION;
-            accelVec.y -= sin * REVERSE_ACCELERATION;
-          }
-          if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) {
-            accelVec.x += sin * STRAFE_ACCELERATION;
-            accelVec.y -= cos * STRAFE_ACCELERATION;
-          }
-          if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) {
-            accelVec.x -= sin * STRAFE_ACCELERATION;
-            accelVec.y += cos * STRAFE_ACCELERATION;
-          }
-          break;
-        case 'absolute':
-          if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) {
-            accelVec.y -= ACCELERATION;
-          }
-          if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) {
-            accelVec.y += ACCELERATION;
-          }
-          if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) {
-            accelVec.x -= ACCELERATION;
-          }
-          if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) {
-            accelVec.x += ACCELERATION;
-          }
-          break;
-        case 'hybrid':
-          if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) {
-            accelVec.x += cos * ACCELERATION;
-            accelVec.y += sin * ACCELERATION;
-          }
-          if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) {
-            accelVec.x -= cos * REVERSE_ACCELERATION;
-            accelVec.y -= sin * REVERSE_ACCELERATION;
-          }
-          if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) {
-            accelVec.x -= STRAFE_ACCELERATION;
-          }
-          if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) {
-            accelVec.x += STRAFE_ACCELERATION;
-          }
-          break;
+      if (autoMoveTargetRef.current) {
+        const angleToTarget = Math.atan2(autoMoveTargetRef.current.y - playerPositionRef.current.y, autoMoveTargetRef.current.x - playerPositionRef.current.x);
+        setPlayerRotation(angleToTarget * (180 / Math.PI));
+        accelVec.x += Math.cos(angleToTarget) * ACCELERATION;
+        accelVec.y += Math.sin(angleToTarget) * ACCELERATION;
+      } else {
+        switch (controlScheme) {
+            case 'relative':
+              if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) { accelVec.x += cos * ACCELERATION; accelVec.y += sin * ACCELERATION; }
+              if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) { accelVec.x -= cos * REVERSE_ACCELERATION; accelVec.y -= sin * REVERSE_ACCELERATION; }
+              if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) { accelVec.x += sin * STRAFE_ACCELERATION; accelVec.y -= cos * STRAFE_ACCELERATION; }
+              if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) { accelVec.x -= sin * STRAFE_ACCELERATION; accelVec.y += cos * STRAFE_ACCELERATION; }
+              break;
+            case 'absolute':
+              if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) accelVec.y -= ACCELERATION;
+              if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) accelVec.y += ACCELERATION;
+              if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) accelVec.x -= ACCELERATION;
+              if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) accelVec.x += ACCELERATION;
+              break;
+            case 'hybrid':
+              if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) { accelVec.x += cos * ACCELERATION; accelVec.y += sin * ACCELERATION; }
+              if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) { accelVec.x -= cos * REVERSE_ACCELERATION; accelVec.y -= sin * REVERSE_ACCELERATION; }
+              if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) accelVec.x -= STRAFE_ACCELERATION;
+              if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) accelVec.x += STRAFE_ACCELERATION;
+              break;
+        }
       }
-
-
+      
       setVelocity(v => {
         const newVx = (v.x + accelVec.x) * FRICTION;
         const newVy = (v.y + accelVec.y) * FRICTION;
@@ -252,11 +264,13 @@ export function GameContainer() {
       
       const currentTarget = enemiesRef.current.find(e => e.id === targetIdRef.current);
 
-      if (currentTarget) {
-          const angleToTarget = Math.atan2(currentTarget.y - playerPositionRef.current.y, currentTarget.x - playerPositionRef.current.x) * (180 / Math.PI);
-          setPlayerRotation(angleToTarget);
-      } else if (isLeftMouseDown.current) {
-          setPlayerRotation(aimAngle);
+      if (!autoMoveTargetRef.current) {
+        if (currentTarget) {
+            const angleToTarget = Math.atan2(currentTarget.y - playerPositionRef.current.y, currentTarget.x - playerPositionRef.current.x) * (180 / Math.PI);
+            setPlayerRotation(angleToTarget);
+        } else if (isLeftMouseDown.current) {
+            setPlayerRotation(aimAngle);
+        }
       }
       
       // --- SHOOTING ---
@@ -307,12 +321,13 @@ export function GameContainer() {
     return () => cancelAnimationFrame(animationFrameId);
   }, [viewSize, isSettingsOpen, controlScheme]);
 
-  const mapOffsetX = -playerPosition.x + viewSize.width / 2;
-  const mapOffsetY = -playerPosition.y + viewSize.height / 2;
-
   return (
     <div ref={containerRef} className="relative w-full h-full overflow-hidden bg-gray-900 cursor-crosshair">
-      <div style={{ transform: `translate(${mapOffsetX}px, ${mapOffsetY}px)`, willChange: 'transform' }}>
+      <div style={{ 
+          transform: `translate(${viewSize.width / 2}px, ${viewSize.height / 2}px) scale(${zoom}) translate(${-playerPosition.x}px, ${-playerPosition.y}px)`,
+          willChange: 'transform',
+          transformOrigin: 'top left'
+      }}>
         <GameMap width={MAP_WIDTH} height={MAP_HEIGHT} />
         {projectiles.map((p) => (
           <Projectile key={p.id} x={p.x} y={p.y} rotation={p.rotation} />
