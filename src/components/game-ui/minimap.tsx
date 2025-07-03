@@ -17,16 +17,17 @@ export function Minimap() {
           className="object-cover rounded-b-lg"
         />
         {/* Simplified icons for minimap */}
-        <div className="absolute top-[20%] left-[30%]">
+        <div className="absolute top-[20%] left-[30%] animate-pulse">
           <Rocket className="h-4 w-4 text-green-400" />
         </div>
         <div className="absolute top-[50%] left-[60%]">
-          <Rocket className="h-4 w-4 text-red-500" />
+          <Rocket className="absolute h-4 w-4 animate-ping text-red-500" />
+          <Rocket className="relative h-4 w-4 text-red-500" />
         </div>
-        <div className="absolute top-[75%] left-[25%]">
+        <div className="absolute top-[75%] left-[25%] animate-pulse [animation-delay:-0.5s]">
           <Shield className="h-4 w-4 text-blue-400" />
         </div>
-        <div className="absolute top-[15%] right-[15%]">
+        <div className="absolute top-[15%] right-[15%] animate-spin [animation-duration:3s]">
            <AlertTriangle className="h-4 w-4 text-yellow-400" />
         </div>
       </CardContent>
