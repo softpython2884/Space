@@ -7,7 +7,7 @@ interface SpeedIndicatorProps {
 }
 
 const getDirection = (rotation: number): string => {
-  const directions = ['E', 'NE', 'N', 'NW', 'W', 'SW', 'S', 'SE'];
+  const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
   // atan2 rotation: 0 is E, 90 is S, 180 is W, -90 is N
   // We add 90 to align North with 0 degrees for easier calculation.
   const angle = (rotation + 360 + 90) % 360; 
