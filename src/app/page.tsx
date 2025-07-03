@@ -5,6 +5,7 @@ import { ChatBox } from '@/components/game-ui/chat-box';
 import { StellarBaseStatus } from '@/components/game-ui/stellar-base-status';
 import { VesselSystems } from '@/components/game-ui/vessel-systems';
 import Image from 'next/image';
+import { ClientOnly } from '@/components/client-only';
 
 export default function Home() {
   return (
@@ -32,7 +33,9 @@ export default function Home() {
       
       <div className="absolute bottom-4 left-4 flex flex-col items-start gap-4">
           <StellarBaseStatus />
-          <ChatBox />
+          <ClientOnly>
+            <ChatBox />
+          </ClientOnly>
       </div>
 
       <div className="absolute bottom-4 right-4">
