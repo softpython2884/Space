@@ -1,11 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { INITIAL_PLAYER_DATA } from "@/lib/constants";
 import { Heart, Zap, Container, Star } from "lucide-react";
+import type { PlayerData } from "@/lib/types";
 
-export function PlayerStatus() {
-  const data = INITIAL_PLAYER_DATA;
-
+export function PlayerStatus({ data }: { data: PlayerData }) {
   return (
     <Card className="w-80 bg-black/60 border-primary/50 text-foreground backdrop-blur-sm">
       <CardHeader className="p-3">

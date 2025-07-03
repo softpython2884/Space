@@ -15,7 +15,8 @@ import { ResourceDisplay } from '@/components/game-ui/resource-display';
 import { ChatBox } from '@/components/game-ui/chat-box';
 import { StellarBaseStatus } from '@/components/game-ui/stellar-base-status';
 import { VesselSystems } from '@/components/game-ui/vessel-systems';
-import type { ControlScheme } from '@/lib/types';
+import { INITIAL_PLAYER_DATA } from '@/lib/constants';
+import type { ControlScheme, PlayerData, StellarBaseData, VesselSystemsData } from '@/lib/types';
 import { ClientOnly } from '@/components/client-only';
 
 const ACCELERATION = 0.1;
@@ -82,6 +83,10 @@ export function GameContainer() {
   const [controlScheme, setControlScheme] = useState<ControlScheme>('relative');
   const [zoom, setZoom] = useState(1);
   const [autoMoveTarget, setAutoMoveTarget] = useState<{ x: number, y: number } | null>(null);
+
+  const [playerData, setPlayerData] = useState<PlayerData>(INITIAL_PLAYER_DATA);
+  const [stellarBaseData, setStellarBaseData] = useState<StellarBaseData>({ shields: 95, hull: 88 });
+  const [vesselSystems, setVesselSystems] = useState<VesselSystemsData>({ shields: 'Online', weapons: 'Ready', power: 'Optimal' });
 
   const keysPressed = useRef<Set<string>>(new Set());
   const mousePosition = useRef({ x: 0, y: 0 });
@@ -154,7 +159,7 @@ export function GameContainer() {
       if (isSettingsOpen) return;
       setAutoMoveTarget(null);
 
-      if (event.button === 1) {
+      if (event.button === 1) { // Middle mouse button
           event.preventDefault();
           const targetWorldX = playerPositionRef.current.x + (mousePosition.current.x - viewSize.width / 2) / zoom;
           const targetWorldY = playerPositionRef.current.y + (mousePosition.current.y - viewSize.height / 2) / zoom;
@@ -245,10 +250,15 @@ export function GameContainer() {
       let accelVec = { x: 0, y: 0 };
       
       if (autoMoveTargetRef.current) {
-        const angleToTarget = Math.atan2(autoMoveTargetRef.current.y - playerPositionRef.current.y, autoMoveTargetRef.current.x - playerPositionRef.current.x);
-        setPlayerRotation(angleToTarget * (180 / Math.PI));
-        accelVec.x += Math.cos(angleToTarget) * ACCELERATION;
-        accelVec.y += Math.sin(angleToTarget) * ACCELERATION;
+        const distanceToTarget = Math.hypot(autoMoveTargetRef.current.x - playerPositionRef.current.x, autoMoveTargetRef.current.y - playerPositionRef.current.y);
+        if (distanceToTarget > 10) {
+            const angleToTarget = Math.atan2(autoMoveTargetRef.current.y - playerPositionRef.current.y, autoMoveTargetRef.current.x - playerPositionRef.current.x);
+            setPlayerRotation(angleToTarget * (180 / Math.PI));
+            accelVec.x += Math.cos(angleToTarget) * ACCELERATION;
+            accelVec.y += Math.sin(angleToTarget) * ACCELERATION;
+        } else {
+            setAutoMoveTarget(null);
+        }
       } else {
         switch (controlScheme) {
             case 'relative':
@@ -382,16 +392,16 @@ export function GameContainer() {
       
       {/* UI Overlays */}
       <div className="absolute top-4 left-4 z-10">
-        <VesselSystems />
+        <VesselSystems systems={vesselSystems} />
       </div>
 
       <div className="absolute top-4 right-4 z-10 flex flex-col gap-4">
-        <PlayerStatus />
-        <ResourceDisplay />
+        <PlayerStatus data={playerData} />
+        <ResourceDisplay resources={playerData.resources} />
       </div>
       
       <div className="absolute bottom-4 left-4 z-10 flex flex-col items-start gap-4">
-          <StellarBaseStatus />
+          <StellarBaseStatus data={stellarBaseData} />
           <ClientOnly>
             <ChatBox />
           </ClientOnly>
@@ -409,7 +419,7 @@ export function GameContainer() {
         />
       </div>
 
-      <div className="absolute bottom-4 left-1/2 -transform-x-1/2 z-10">
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10">
         <SpeedIndicator speed={speed} rotation={playerRotation} />
       </div>
 

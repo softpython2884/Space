@@ -21,7 +21,7 @@ export function AimIndicator({ rotation }: AimIndicatorProps) {
         className="opacity-50"
       >
         <path
-          d="M 50 0 A 50 50 0 0 1 35.35 35.35" // A 45 degree arc
+          d="M 35.35 35.35 A 50 50 0 0 1 35.35 -35.35" // A 90 degree arc
           fill="none"
           stroke="hsl(var(--primary))"
           strokeWidth="2.5"
