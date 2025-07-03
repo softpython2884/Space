@@ -22,7 +22,7 @@ export function PlayerStatus({ data }: { data: PlayerData }) {
                 <Heart className="h-4 w-4 text-red-500" />
                 <span className="font-medium">Health</span>
               </div>
-              <span className="text-muted-foreground">{data.health}%</span>
+              <span className="text-muted-foreground">{Math.round(data.health)}%</span>
             </div>
             <Progress value={data.health} className="h-2" />
         </div>
@@ -32,7 +32,7 @@ export function PlayerStatus({ data }: { data: PlayerData }) {
                 <Zap className="h-4 w-4 text-yellow-400" />
                 <span className="font-medium">Energy</span>
                </div>
-              <span className="ml-auto text-muted-foreground">{data.energy}%</span>
+              <span className="ml-auto text-muted-foreground">{Math.round(data.energy)}%</span>
             </div>
             <Progress value={data.energy} className="h-2" />
         </div>
