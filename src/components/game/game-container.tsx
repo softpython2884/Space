@@ -7,7 +7,6 @@ import { Projectile } from './projectile';
 import { EnemyShip } from './enemy-ship';
 import { Asteroid } from './asteroid';
 import { SpaceStation } from './space-station';
-import { Minimap } from '../game-ui/minimap';
 import { Radar } from '../game-ui/radar';
 import { SpeedIndicator } from '../game-ui/speed-indicator';
 import { SettingsMenu } from '../game-ui/settings-menu';
@@ -616,15 +615,6 @@ export function GameContainer() {
             stations={stations}
             asteroids={visibleAsteroids}
             radarRange={RADAR_RANGE}
-        />
-        <Minimap 
-          playerPosition={playerPosition} 
-          playerRotation={playerRotation}
-          enemies={visibleEnemies}
-          asteroids={asteroids}
-          stations={stations}
-          mapWidth={MAP_WIDTH}
-          mapHeight={MAP_HEIGHT}
         />
       </div>
 
