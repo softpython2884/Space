@@ -7,6 +7,8 @@ import { Projectile } from './projectile';
 import { EnemyShip } from './enemy-ship';
 import { Minimap } from '../game-ui/minimap';
 import { SpeedIndicator } from '../game-ui/speed-indicator';
+import { SettingsMenu } from '../game-ui/settings-menu';
+import type { ControlScheme } from '@/lib/types';
 
 const ACCELERATION = 0.1;
 const STRAFE_ACCELERATION = 0.05;
@@ -47,6 +49,8 @@ export function GameContainer() {
   const [enemies, setEnemies] = useState<EnemyState[]>([]);
   const [targetId, setTargetId] = useState<number | null>(null);
   const [viewSize, setViewSize] = useState({ width: 0, height: 0 });
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [controlScheme, setControlScheme] = useState<ControlScheme>('relative');
 
   const keysPressed = useRef<Set<string>>(new Set());
   const mousePosition = useRef({ x: 0, y: 0 });
@@ -83,12 +87,24 @@ export function GameContainer() {
 
   // Setup event listeners
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => keysPressed.current.add(event.key.toLowerCase());
-    const handleKeyUp = (event: KeyboardEvent) => keysPressed.current.delete(event.key.toLowerCase());
+    const handleKeyDown = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') {
+            setIsSettingsOpen(open => !open);
+            return;
+        }
+        if (isSettingsOpen) return;
+        keysPressed.current.add(event.key.toLowerCase());
+    }
+    const handleKeyUp = (event: KeyboardEvent) => {
+        if (isSettingsOpen) return;
+        keysPressed.current.delete(event.key.toLowerCase());
+    }
     const handleMouseMove = (event: MouseEvent) => mousePosition.current = { x: event.clientX, y: event.clientY };
     const handleContextMenu = (event: MouseEvent) => event.preventDefault();
     
     const handleMouseDown = (event: MouseEvent) => {
+      if (isSettingsOpen) return;
+
       if (event.button === 0) { // Left click
         isLeftMouseDown.current = true;
         
@@ -110,6 +126,7 @@ export function GameContainer() {
       }
     };
     const handleMouseUp = (event: MouseEvent) => {
+      if (isSettingsOpen) return;
       if (event.button === 0) isLeftMouseDown.current = false;
     };
 
@@ -128,7 +145,7 @@ export function GameContainer() {
       window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, [viewSize]);
+  }, [viewSize, isSettingsOpen]);
 
   // Resize observer for container size
   useEffect(() => {
@@ -146,28 +163,69 @@ export function GameContainer() {
     let lastShotTimestamp = 0;
 
     const gameLoop = (timestamp: number) => {
+      if (isSettingsOpen) {
+        animationFrameId = requestAnimationFrame(gameLoop);
+        return;
+      }
+
       // --- MOVEMENT ---
       const rotRad = playerRotationRef.current * (Math.PI / 180);
       const cos = Math.cos(rotRad);
       const sin = Math.sin(rotRad);
       
       let accelVec = { x: 0, y: 0 };
-      if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) {
-        accelVec.x += cos * ACCELERATION;
-        accelVec.y += sin * ACCELERATION;
+      
+      switch (controlScheme) {
+        case 'relative':
+          if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) {
+            accelVec.x += cos * ACCELERATION;
+            accelVec.y += sin * ACCELERATION;
+          }
+          if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) {
+            accelVec.x -= cos * REVERSE_ACCELERATION;
+            accelVec.y -= sin * REVERSE_ACCELERATION;
+          }
+          if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) {
+            accelVec.x += sin * STRAFE_ACCELERATION;
+            accelVec.y -= cos * STRAFE_ACCELERATION;
+          }
+          if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) {
+            accelVec.x -= sin * STRAFE_ACCELERATION;
+            accelVec.y += cos * STRAFE_ACCELERATION;
+          }
+          break;
+        case 'absolute':
+          if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) {
+            accelVec.y -= ACCELERATION;
+          }
+          if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) {
+            accelVec.y += ACCELERATION;
+          }
+          if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) {
+            accelVec.x -= ACCELERATION;
+          }
+          if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) {
+            accelVec.x += ACCELERATION;
+          }
+          break;
+        case 'hybrid':
+          if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) {
+            accelVec.x += cos * ACCELERATION;
+            accelVec.y += sin * ACCELERATION;
+          }
+          if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) {
+            accelVec.x -= cos * REVERSE_ACCELERATION;
+            accelVec.y -= sin * REVERSE_ACCELERATION;
+          }
+          if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) {
+            accelVec.x -= STRAFE_ACCELERATION;
+          }
+          if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) {
+            accelVec.x += STRAFE_ACCELERATION;
+          }
+          break;
       }
-      if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) {
-        accelVec.x -= cos * REVERSE_ACCELERATION;
-        accelVec.y -= sin * REVERSE_ACCELERATION;
-      }
-      if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) {
-        accelVec.x += sin * STRAFE_ACCELERATION; // Left is 90 deg counter-clockwise from forward
-        accelVec.y -= cos * STRAFE_ACCELERATION;
-      }
-      if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) {
-        accelVec.x -= sin * STRAFE_ACCELERATION; // Right is 90 deg clockwise from forward
-        accelVec.y += cos * STRAFE_ACCELERATION;
-      }
+
 
       setVelocity(v => {
         const newVx = (v.x + accelVec.x) * FRICTION;
@@ -247,7 +305,7 @@ export function GameContainer() {
     
     if(viewSize.width > 0) animationFrameId = requestAnimationFrame(gameLoop);
     return () => cancelAnimationFrame(animationFrameId);
-  }, [viewSize]);
+  }, [viewSize, isSettingsOpen, controlScheme]);
 
   const mapOffsetX = -playerPosition.x + viewSize.width / 2;
   const mapOffsetY = -playerPosition.y + viewSize.height / 2;
@@ -266,6 +324,12 @@ export function GameContainer() {
       <PlayerShip rotation={playerRotation} aimRotation={aimRotation} />
       
       {/* UI Overlays */}
+      <SettingsMenu
+        isOpen={isSettingsOpen}
+        onOpenChange={setIsSettingsOpen}
+        controlScheme={controlScheme}
+        onControlSchemeChange={setControlScheme}
+      />
       <div className="absolute bottom-4 right-4 z-10">
         <Minimap 
           playerPosition={playerPosition} 

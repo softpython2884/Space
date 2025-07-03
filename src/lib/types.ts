@@ -1,4 +1,5 @@
 export type ShipType = "Combat" | "Mining" | "Support" | "Galleon";
+export type ControlScheme = 'relative' | 'absolute' | 'hybrid';
 
 export interface Resources {
   money: number;
