@@ -3,23 +3,22 @@
 import { motion } from 'framer-motion';
 
 interface PlayerShipProps {
-  x: number;
-  y: number;
+  rotation: number;
 }
 
-export function PlayerShip({ x, y }: PlayerShipProps) {
+export function PlayerShip({ rotation }: PlayerShipProps) {
   return (
     <motion.div
-      animate={{ x, y }}
-      transition={{ type: 'spring', stiffness: 100, damping: 20, mass: 0.5 }}
-      className="absolute top-0 left-0"
+      className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
       style={{ willChange: 'transform' }}
+      animate={{ rotate: rotation + 90 }} // +90 to align SVG's 'up' with atan2's 'right' is 0
+      transition={{ type: "spring", stiffness: 700, damping: 30 }}
     >
       <svg
         width="40"
         height="40"
         viewBox="0 0 50 50"
-        className="fill-cyan-400 stroke-cyan-200 -rotate-90"
+        className="fill-cyan-400 stroke-cyan-200"
         style={{ filter: 'drop-shadow(0 0 8px hsl(var(--primary)))' }}
       >
         <polygon points="25,5 45,45 25,35 5,45" strokeWidth="2" />
