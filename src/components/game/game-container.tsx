@@ -71,7 +71,7 @@ const STEALTH_DETECTION_RADIUS_NEAR = 100;
 // Cruise Mode Constants
 const CRUISE_CHARGE_TIME = 2000; // 2 seconds
 const CRUISE_DURATION = 4000; // 4 seconds
-const CRUISE_ENERGY_COST = 30;
+const CRUISE_ENERGY_COST = 50;
 const CRUISE_COOLDOWN_MS = 5000; // 5 seconds after cruise ends
 
 // Mode Switching Constants
@@ -538,49 +538,94 @@ export function GameContainer() {
           .filter(p => p.x > -10 && p.x < MAP_WIDTH + 10 && p.y > -10 && p.y < MAP_HEIGHT + 10)
       );
 
-      // --- ENEMY AI & SHOOTING ---
+      // --- ENEMY PROCESSING & COMBAT ---
       const newEnemyProjectiles: ProjectileState[] = [];
-      setEnemies(currentEnemies => currentEnemies.map(enemy => {
-          const distanceToPlayer = Math.hypot(enemy.x - playerPositionRef.current.x, enemy.y - playerPositionRef.current.y);
-          let updatedEnemy = { ...enemy };
+      const hitPlayerProjectileIds = new Set<number>();
+      const killedEnemies: EnemyState[] = [];
 
-          let aggroRadius = ENEMY_AGGRO_RADIUS;
-          if (shipMode === 'scan') {
-              aggroRadius = ENEMY_AGGRO_RADIUS * 1.5;
-          } else if (shipMode === 'stealth') {
-              aggroRadius = STEALTH_AGGRO_RADIUS;
+      const updatedEnemiesList = enemiesRef.current.map(enemy => {
+          let updatedEnemy = { ...enemy };
+          
+          // Check for player projectile hits
+          let isHit = false;
+          for (const proj of playerProjectilesRef.current) {
+              if (hitPlayerProjectileIds.has(proj.id)) continue;
+              const distance = Math.hypot(proj.x - updatedEnemy.x, proj.y - updatedEnemy.y);
+              if (distance < ENEMY_COLLISION_RADIUS) {
+                  hitPlayerProjectileIds.add(proj.id);
+                  updatedEnemy.health -= PLAYER_PROJECTILE_DAMAGE;
+                  isHit = true;
+              }
           }
 
+          if (isHit) {
+              updatedEnemy.isAggro = true;
+          }
+
+          if (updatedEnemy.health <= 0) {
+              killedEnemies.push(updatedEnemy);
+              return null; // Will be filtered out
+          }
+
+          // AI behavior for alive enemies
+          const distanceToPlayer = Math.hypot(updatedEnemy.x - playerPositionRef.current.x, updatedEnemy.y - playerPositionRef.current.y);
+          
+          let aggroRadius = ENEMY_AGGRO_RADIUS;
+          if (shipMode === 'scan') aggroRadius = ENEMY_AGGRO_RADIUS * 1.5;
+          else if (shipMode === 'stealth') aggroRadius = STEALTH_AGGRO_RADIUS;
+          
           const shouldBeAggro = updatedEnemy.isAggro || distanceToPlayer < aggroRadius;
-          let newVx = updatedEnemy.vx;
-          let newVy = updatedEnemy.vy;
           
           if (shouldBeAggro) {
-              if (!updatedEnemy.isAggro) {
-                  updatedEnemy.isAggro = true; // Persist aggro
-              }
-              const angleToPlayer = Math.atan2(playerPositionRef.current.y - enemy.y, playerPositionRef.current.x - enemy.x);
-              newVx = Math.cos(angleToPlayer) * ENEMY_SPEED;
-              newVy = Math.sin(angleToPlayer) * ENEMY_SPEED;
+              if (!updatedEnemy.isAggro) updatedEnemy.isAggro = true;
+              
+              const angleToPlayer = Math.atan2(playerPositionRef.current.y - updatedEnemy.y, playerPositionRef.current.x - updatedEnemy.x);
+              
+              // Move towards player
+              updatedEnemy.vx = Math.cos(angleToPlayer) * ENEMY_SPEED;
+              updatedEnemy.vy = Math.sin(angleToPlayer) * ENEMY_SPEED;
 
-              if (timestamp - enemy.lastShotTimestamp > ENEMY_FIRE_RATE_MS) {
-                  newEnemyProjectiles.push({ id: timestamp + enemy.id, x: enemy.x, y: enemy.y, rotation: angleToPlayer * (180 / Math.PI) });
+              // Shoot at player
+              if (timestamp - updatedEnemy.lastShotTimestamp > ENEMY_FIRE_RATE_MS) {
+                  newEnemyProjectiles.push({ id: timestamp + updatedEnemy.id, x: updatedEnemy.x, y: updatedEnemy.y, rotation: angleToPlayer * (180 / Math.PI) });
                   updatedEnemy.lastShotTimestamp = timestamp;
               }
           } else {
-              newVx *= FRICTION;
-              newVy *= FRICTION;
+              // Drift peacefully
+              updatedEnemy.vx *= FRICTION;
+              updatedEnemy.vy *= FRICTION;
           }
-
-          updatedEnemy.vx = newVx;
-          updatedEnemy.vy = newVy;
-          updatedEnemy.x += newVx;
-          updatedEnemy.y += newVy;
+          
+          // Update position
+          updatedEnemy.x += updatedEnemy.vx;
+          updatedEnemy.y += updatedEnemy.vy;
           
           return updatedEnemy;
-      }));
+
+      }).filter(Boolean) as EnemyState[];
+
+      // Apply state updates
+      setEnemies(updatedEnemiesList);
+
       if (newEnemyProjectiles.length > 0) {
         setEnemyProjectiles(prev => [...prev, ...newEnemyProjectiles]);
+      }
+
+      if (hitPlayerProjectileIds.size > 0) {
+          setPlayerProjectiles(prev => prev.filter(p => !hitPlayerProjectileIds.has(p.id)));
+      }
+      
+      if (killedEnemies.length > 0) {
+          if (killedEnemies.some(e => e.id === targetIdRef.current)) {
+              setTargetId(null);
+          }
+          const newDebris = killedEnemies.map(e => ({
+              id: e.id + timestamp,
+              x: e.x,
+              y: e.y,
+              amount: Math.floor(Math.random() * 21) + 5,
+          }));
+          setDebris(d => [...d, ...newDebris]);
       }
 
 
@@ -632,52 +677,6 @@ export function GameContainer() {
           }
       }
       
-      // Player Projectiles vs. Enemies
-      const hitPlayerProjectileIds = new Set<number>();
-      const killedEnemies: EnemyState[] = [];
-      const updatedEnemies = enemiesRef.current.map(enemy => {
-          let newHealth = enemy.health;
-          let isHit = false;
-          for (const proj of playerProjectilesRef.current) {
-              if (hitPlayerProjectileIds.has(proj.id)) continue;
-              const distance = Math.hypot(proj.x - enemy.x, proj.y - enemy.y);
-              if (distance < ENEMY_COLLISION_RADIUS) {
-                  hitPlayerProjectileIds.add(proj.id);
-                  newHealth -= PLAYER_PROJECTILE_DAMAGE;
-                  isHit = true;
-              }
-          }
-          if (newHealth <= 0) {
-              killedEnemies.push(enemy);
-          }
-          const updatedEnemy = { ...enemy, health: newHealth };
-          if(isHit) {
-              updatedEnemy.isAggro = true;
-          }
-          return updatedEnemy;
-
-      }).filter(enemy => {
-        if (enemy.health <= 0 && enemy.id === targetIdRef.current) {
-            setTargetId(null);
-        }
-        return enemy.health > 0
-      });
-
-      if (killedEnemies.length > 0) {
-          const newDebris = killedEnemies.map(e => ({
-              id: e.id + timestamp,
-              x: e.x,
-              y: e.y,
-              amount: Math.floor(Math.random() * 21) + 5, // 5 to 25
-          }));
-          setDebris(d => [...d, ...newDebris]);
-      }
-      setEnemies(updatedEnemies);
-
-      if (hitPlayerProjectileIds.size > 0) {
-          setPlayerProjectiles(prev => prev.filter(p => !hitPlayerProjectileIds.has(p.id)));
-      }
-
       // Enemy Projectiles vs. Player
       const hitEnemyProjectileIds = new Set<number>();
       let playerHealth = playerDataRef.current.health;
