@@ -14,11 +14,25 @@ interface RadarProps {
 
 const RADAR_SIZE = 256; // pixels
 
-const RadarDot = ({ color, size = 'w-2 h-2', pulse = false }: { color: string, size?: string, pulse?: boolean }) => (
-    <div className={cn("rounded-full relative", size, color)}>
-        {pulse && <div className={cn("absolute -inset-0.5 rounded-full", color, "animate-ping")} />}
-    </div>
-);
+const RadarDot = ({ color, size = 'w-2 h-2', pulse = false, type = 'dot' }: { color: string, size?: string, pulse?: boolean, type?: 'dot' | 'triangle' | 'square' }) => {
+    const icon = () => {
+        switch(type) {
+            case 'triangle':
+                return <div style={{width: 0, height: 0, borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderBottom: `10px solid ${color.replace('bg-', '')}`}}/>
+            case 'square':
+                 return <div className={cn(size, color)} />;
+            default:
+                return <div className={cn("rounded-full", size, color)} />;
+        }
+    }
+    
+    return (
+        <div className="relative flex items-center justify-center">
+            {icon()}
+            {pulse && <div className={cn("absolute -inset-0.5 rounded-full", color, "animate-ping")} />}
+        </div>
+    )
+};
 
 export function Radar({ playerPosition, enemies, stations, asteroids, radarRange }: RadarProps) {
 
@@ -48,7 +62,19 @@ export function Radar({ playerPosition, enemies, stations, asteroids, radarRange
             </div>
         );
     }
-
+    
+    const getEnemyIcon = (enemy: EnemyState) => {
+        switch(enemy.type) {
+            case 'chasseur':
+                return <RadarDot color="bg-red-500" pulse />;
+            case 'frigate':
+                return <RadarDot color="bg-orange-500" type="square" size="w-3 h-3" pulse />;
+            case 'staff':
+                return <RadarDot color="bg-gray-400" size="w-1 h-3" />;
+            default:
+                return <RadarDot color="bg-red-500" pulse />;
+        }
+    }
 
     return (
         <div 
@@ -85,11 +111,11 @@ export function Radar({ playerPosition, enemies, stations, asteroids, radarRange
             <div className="relative w-full h-full">
                 {/* Player in center */}
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-                    <RadarDot color="bg-cyan-400" size="w-2.5 h-2.5" />
+                    <RadarDot color="bg-cyan-400" size="w-2.5 h-2.5" type="triangle" />
                 </div>
                 
-                {enemies.map(e => renderObjectOnRadar(e, `enemy-${e.id}`, <RadarDot color="bg-red-500" pulse />))}
-                {stations.map(s => renderObjectOnRadar(s, `station-${s.id}`, <RadarDot color="bg-blue-400" size="w-3 h-3" />))}
+                {enemies.map(e => renderObjectOnRadar(e, `enemy-${e.id}`, getEnemyIcon(e)))}
+                {stations.map(s => renderObjectOnRadar(s, `station-${s.id}`, <RadarDot color="bg-blue-400" size="w-4 h-4" type="square" />))}
                 {asteroids.map(a => renderObjectOnRadar(a, `asteroid-${a.id}`, <RadarDot color="bg-gray-500" />))}
             </div>
 
