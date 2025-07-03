@@ -40,11 +40,20 @@ const ZOOM_SENSITIVITY = 0.001;
 const PLAYER_COLLISION_RADIUS = 20;
 const ENEMY_COLLISION_RADIUS = 20;
 const ASTEROID_COLLISION_RADIUS = 40;
+const STATION_COLLISION_RADIUS = 75;
+
 const PLAYER_PROJECTILE_DAMAGE = 10;
 const ENEMY_PROJECTILE_DAMAGE = 5;
+
 const ASTEROID_COLLISION_DAMAGE = 15;
+const ENEMY_COLLISION_DAMAGE = 25;
+const STATION_COLLISION_DAMAGE = 50;
+
 const ENERGY_PER_SHOT = 2;
-const ENERGY_REGEN_RATE = 0.05;
+const ENERGY_REGEN_RATE = 0.02; // Slower regen
+const ENERGY_REGEN_DELAY_MS = 2000; // 2 seconds delay
+const LOW_HEALTH_THRESHOLD = 30;
+
 const ENEMY_AGGRO_RADIUS = 600;
 const ENEMY_FIRE_RATE_MS = 1500;
 
@@ -126,6 +135,7 @@ export function GameContainer() {
   const mousePosition = useRef({ x: 0, y: 0 });
   const isLeftMouseDown = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const lastEnergyUseTimestamp = useRef(0);
   
   const playerPositionRef = useRef(playerPosition);
   useEffect(() => { playerPositionRef.current = playerPosition; }, [playerPosition]);
@@ -286,7 +296,7 @@ export function GameContainer() {
 
     if (energy < 20) newSystems.weapons = 'Offline';
     
-    if (energy < 10) newSystems.power = 'Offline';
+    if (energy <= 0) newSystems.power = 'Offline';
     else if (energy < 40) newSystems.power = 'Damaged';
 
     setVesselSystems(newSystems);
@@ -296,7 +306,7 @@ export function GameContainer() {
   useEffect(() => {
     let animationFrameId: number;
     let lastPlayerShotTimestamp = 0;
-    let lastAsteroidCollisionTimestamp = 0;
+    let lastCollisionTimestamp = 0;
 
     const gameLoop = (timestamp: number) => {
       if (isSettingsOpen || isGameOver) {
@@ -344,21 +354,25 @@ export function GameContainer() {
         }
       }
       
+      let newVelocity = {x:0, y:0};
       setVelocity(v => {
         const newVx = (v.x + accelVec.x) * FRICTION;
         const newVy = (v.y + accelVec.y) * FRICTION;
         const currentSpeed = Math.hypot(newVx, newVy);
         if (currentSpeed > MAX_SPEED) {
-          return { x: (newVx / currentSpeed) * MAX_SPEED, y: (newVy / currentSpeed) * MAX_SPEED };
+          newVelocity = { x: (newVx / currentSpeed) * MAX_SPEED, y: (newVy / currentSpeed) * MAX_SPEED };
+        } else {
+          newVelocity = { x: newVx, y: newVy };
         }
-        return { x: newVx, y: newVy };
+        return newVelocity;
       });
       
-      setSpeed(Math.hypot(velocityRef.current.x, velocityRef.current.y));
+      const currentSpeed = Math.hypot(newVelocity.x, newVelocity.y);
+      setSpeed(currentSpeed);
 
       setPlayerPosition(p => ({
-        x: Math.max(40, Math.min(MAP_WIDTH - 40, p.x + velocityRef.current.x)),
-        y: Math.max(40, Math.min(MAP_HEIGHT - 40, p.y + velocityRef.current.y)),
+        x: Math.max(40, Math.min(MAP_WIDTH - 40, p.x + newVelocity.x)),
+        y: Math.max(40, Math.min(MAP_HEIGHT - 40, p.y + newVelocity.y)),
       }));
 
       // --- AIMING & ROTATION ---
@@ -380,15 +394,18 @@ export function GameContainer() {
       
       // --- PLAYER SHOOTING ---
       const canShoot = playerDataRef.current.energy >= ENERGY_PER_SHOT;
-      const isShooting = (currentTarget || keysPressed.current.has(' ')) && canShoot;
+      const isShooting = (currentTarget || isLeftMouseDown.current || keysPressed.current.has(' ')) && canShoot;
       if (isShooting && timestamp - lastPlayerShotTimestamp > FIRE_RATE_MS) {
         lastPlayerShotTimestamp = timestamp;
+        lastEnergyUseTimestamp.current = timestamp;
         setPlayerProjectiles(prev => [...prev, { id: timestamp, x: playerPositionRef.current.x, y: playerPositionRef.current.y, rotation: playerRotationRef.current }]);
         setPlayerData(d => ({ ...d, energy: d.energy - ENERGY_PER_SHOT }));
       }
 
       // --- PLAYER STATS REGEN ---
-      setPlayerData(d => ({ ...d, energy: Math.min(100, d.energy + ENERGY_REGEN_RATE) }));
+      if (timestamp - lastEnergyUseTimestamp.current > ENERGY_REGEN_DELAY_MS) {
+        setPlayerData(d => ({ ...d, energy: Math.min(100, d.energy + ENERGY_REGEN_RATE) }));
+      }
       
       // --- PROJECTILE MOVEMENT ---
       setPlayerProjectiles(prev => prev
@@ -423,6 +440,53 @@ export function GameContainer() {
 
 
       // --- COLLISION DETECTION ---
+      const collisionCooldown = 1000; // 1 second invulnerability after collision
+      if (timestamp - lastCollisionTimestamp > collisionCooldown) {
+          let collisionOccurred = false;
+          let damage = 0;
+          const speedFactor = 0.5 + (currentSpeed / MAX_SPEED) * 0.5;
+
+          // Player vs. Asteroids
+          for (const asteroid of asteroids) {
+              const distance = Math.hypot(asteroid.x - playerPositionRef.current.x, asteroid.y - playerPositionRef.current.y);
+              if (distance < (asteroid.size / 2) + PLAYER_COLLISION_RADIUS) {
+                  damage = ASTEROID_COLLISION_DAMAGE * speedFactor;
+                  collisionOccurred = true;
+                  break;
+              }
+          }
+
+          // Player vs. Enemies
+          if (!collisionOccurred) {
+              for (const enemy of enemiesRef.current) {
+                  const distance = Math.hypot(enemy.x - playerPositionRef.current.x, enemy.y - playerPositionRef.current.y);
+                  if (distance < ENEMY_COLLISION_RADIUS + PLAYER_COLLISION_RADIUS) {
+                      damage = ENEMY_COLLISION_DAMAGE * speedFactor;
+                      collisionOccurred = true;
+                      break;
+                  }
+              }
+          }
+
+          // Player vs. Stations
+          if (!collisionOccurred) {
+              for (const station of stations) {
+                  const distance = Math.hypot(station.x - playerPositionRef.current.x, station.y - playerPositionRef.current.y);
+                  if (distance < STATION_COLLISION_RADIUS + PLAYER_COLLISION_RADIUS) {
+                      damage = STATION_COLLISION_DAMAGE * speedFactor;
+                      collisionOccurred = true;
+                      break;
+                  }
+              }
+          }
+
+          if (collisionOccurred) {
+              setPlayerData(d => ({ ...d, health: Math.max(0, d.health - damage) }));
+              lastCollisionTimestamp = timestamp;
+              setVelocity(v => ({ x: -v.x * 0.5, y: -v.y * 0.5 }));
+          }
+      }
+      
       // Player Projectiles vs. Enemies
       const hitPlayerProjectileIds = new Set<number>();
       const updatedEnemies = enemiesRef.current.map(enemy => {
@@ -462,21 +526,6 @@ export function GameContainer() {
       if (hitEnemyProjectileIds.size > 0) {
         setPlayerData(d => ({ ...d, health: Math.max(0, playerHealth) }));
         setEnemyProjectiles(prev => prev.filter(p => !hitEnemyProjectileIds.has(p.id)));
-      }
-      
-      // Player vs. Asteroids
-      const collisionCooldown = 1000; // 1 second invulnerability after collision
-      if (timestamp - lastAsteroidCollisionTimestamp > collisionCooldown) {
-        for (const asteroid of asteroids) {
-            const distance = Math.hypot(asteroid.x - playerPositionRef.current.x, asteroid.y - playerPositionRef.current.y);
-            if (distance < ASTEROID_COLLISION_RADIUS + PLAYER_COLLISION_RADIUS) {
-                setPlayerData(d => ({ ...d, health: Math.max(0, d.health - ASTEROID_COLLISION_DAMAGE) }));
-                lastAsteroidCollisionTimestamp = timestamp;
-                // Optional: apply some knockback
-                setVelocity(v => ({ x: -v.x * 0.5, y: -v.y * 0.5 }));
-                break;
-            }
-        }
       }
 
       // --- GAME OVER CHECK ---
@@ -523,7 +572,14 @@ export function GameContainer() {
       {/* Player */}
       <PlayerShip rotation={playerRotation} aimRotation={aimRotation} />
       
-      {/* UI Overlays */}
+      {/* UI Overlays & Effects */}
+       {playerData.health < LOW_HEALTH_THRESHOLD && (
+          <div className="absolute inset-0 pointer-events-none animate-pulse" style={{ boxShadow: 'inset 0 0 80px 30px rgba(255, 0, 0, 0.4)' }} />
+       )}
+       {playerData.energy <= 0 && (
+          <div className="absolute inset-0 pointer-events-none" style={{ boxShadow: 'inset 0 0 80px 30px rgba(0, 150, 255, 0.3)' }} />
+       )}
+
       <div className="absolute top-1/2 -translate-y-1/2 left-4 z-10 flex flex-col gap-4">
         <VesselSystems systems={vesselSystems} />
       </div>
