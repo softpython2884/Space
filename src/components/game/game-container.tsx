@@ -21,13 +21,14 @@ import { VesselSystems } from '@/components/game-ui/vessel-systems';
 import { ShipModeSelector } from '@/components/game-ui/ship-mode-selector';
 import { CruiseStreaks } from '@/components/game/cruise-streaks';
 import { INITIAL_PLAYER_DATA } from '@/lib/constants';
-import type { ControlScheme, PlayerData, StellarBaseData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState as EnemyStateType, AsteroidState, StationState, BotShipType, ContextMenuTargetType, PlayerActionType } from '@/lib/types';
+import type { ControlScheme, PlayerData, StellarBaseData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState as EnemyStateType, AsteroidState, StationState, BotShipType, ContextMenuTargetType, PlayerActionType, Resources } from '@/lib/types';
 import { ClientOnly } from '@/components/client-only';
 import { GameOverOverlay } from './game-over-overlay';
 import { MilitaryViewOverlay } from './military-view-overlay';
 import { ContextMenu } from './context-menu';
 import { ActionProgress } from '../game-ui/action-progress';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
 
 let ACCELERATION = 0.1;
 let STRAFE_ACCELERATION = 0.05;
@@ -60,7 +61,7 @@ const ASTEROID_COLLISION_RADIUS = 0.3; // Multiplier for asteroid size
 const PLAYER_PROJECTILE_DAMAGE = 10;
 const ENEMY_PROJECTILE_DAMAGE = 5;
 
-const ASTEROID_COLLISION_DAMAGE = 10;
+const ASTEROID_COLLISION_DAMAGE = 1;
 const ENEMY_COLLISION_DAMAGE = 25;
 const STATION_COLLISION_DAMAGE = 50;
 
@@ -71,7 +72,7 @@ const LOW_HEALTH_THRESHOLD = 30;
 
 const ENEMY_AGGRO_RADIUS = 800;
 const ENEMY_FIRE_RATE_MS = 1500;
-const ENEMY_SPEED = 3.0;
+const ENEMY_SPEED = 2.5;
 
 const STEALTH_AGGRO_RADIUS = 350;
 const STEALTH_DETECTION_RADIUS_NEAR = 100;
@@ -83,7 +84,7 @@ const CRUISE_ENERGY_COST = 50;
 const CRUISE_COOLDOWN_MS = 5000; // 5 seconds after cruise ends
 
 // Shield Mode Constants
-const SHIELD_ENERGY_DRAIN_RATE = 0.02;
+const SHIELD_ENERGY_DRAIN_RATE = 0.01;
 const SHIELD_DAMAGE_TO_ENERGY_COST = 3;
 
 // Mode Switching Constants
@@ -99,6 +100,13 @@ const ENEMY_FLEE_HEALTH_THRESHOLD = 0.3; // 30% health
 
 // Action constants
 const MINING_DURATION_MS = 5000;
+const PILLAGE_DURATION_MS = 2000;
+const PILLAGE_ENERGY_COST = 40;
+const PILLAGE_DAMAGE = 15;
+const BOARDING_DURATION_MS = 7000;
+const BOARDING_ENERGY_COST = 60;
+const BOARDING_SUCCESS_CHANCE = 0.4;
+const BOARDING_FAIL_DAMAGE = 20;
 
 
 type ProjectileState = {
@@ -134,6 +142,7 @@ const generateInitialStations = (): StationState[] => [
 
 
 export function GameContainer() {
+  const { toast } = useToast();
   const [playerPosition, setPlayerPosition] = useState({ x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 });
   const [velocity, setVelocity] = useState({ x: 0, y: 0 });
   const [speed, setSpeed] = useState(0);
@@ -251,17 +260,37 @@ export function GameContainer() {
     setContextMenu(null);
     if (playerActionRef.current) return;
 
+    const targetEnemy = enemiesRef.current.find(e => e.id === targetId);
+
     switch(action) {
       case 'mining':
         setPlayerAction({ type: 'mining', targetId, startTime: Date.now(), duration: MINING_DURATION_MS });
         break;
       case 'pillaging':
-        console.log(`Action: Pillaging target ${targetId}`);
-        // Placeholder for pillaging logic
+        if (targetEnemy) {
+          if (playerDataRef.current.energy < PILLAGE_ENERGY_COST) {
+            toast({ variant: "destructive", title: "Not enough energy to pillage." });
+            return;
+          }
+          setPlayerData(d => ({ ...d, energy: d.energy - PILLAGE_ENERGY_COST }));
+          lastEnergyUseTimestamp.current = Date.now();
+          setPlayerAction({ type: 'pillaging', targetId, startTime: Date.now(), duration: PILLAGE_DURATION_MS });
+        }
         break;
       case 'boarding':
-        console.log(`Action: Boarding target ${targetId}`);
-        // Placeholder for boarding logic
+        if (targetEnemy) {
+            if (targetEnemy.isAlly) {
+                toast({ title: "Target is already an ally." });
+                return;
+            }
+          if (playerDataRef.current.energy < BOARDING_ENERGY_COST) {
+            toast({ variant: "destructive", title: "Not enough energy to board." });
+            return;
+          }
+          setPlayerData(d => ({ ...d, energy: d.energy - BOARDING_ENERGY_COST }));
+          lastEnergyUseTimestamp.current = Date.now();
+          setPlayerAction({ type: 'boarding', targetId, startTime: Date.now(), duration: BOARDING_DURATION_MS });
+        }
         break;
     }
   };
@@ -269,7 +298,7 @@ export function GameContainer() {
   const handleModeChange = (newMode: ShipMode) => {
     const now = Date.now();
     if (now < modeChangeAvailableAtRef.current) {
-        console.warn("Mode change is on cooldown.");
+        toast({ title: "Mode change is on cooldown." });
         return;
     }
     if (cruiseStateRef.current !== 'idle') return;
@@ -277,18 +306,18 @@ export function GameContainer() {
 
     if (newMode === 'cruise') {
         if (now < cruiseAvailableAtRef.current) {
-            console.warn("Cruise is on cooldown.");
+            toast({ title: "Cruise is on cooldown." });
             return;
         }
         if (playerDataRef.current.energy < CRUISE_ENERGY_COST) {
-            console.warn("Not enough energy for cruise.");
+            toast({ variant: "destructive", title: "Not enough energy for cruise." });
             return;
         }
         setPlayerData(d => ({ ...d, energy: Math.max(0, d.energy - CRUISE_ENERGY_COST) }));
     }
 
     if (newMode === 'shield' && playerDataRef.current.energy <= 0) {
-        console.warn("Not enough energy to activate shield.");
+        toast({ variant: "destructive", title: "Not enough energy to activate shield." });
         return;
     }
     
@@ -306,6 +335,7 @@ export function GameContainer() {
 
   const applyDamage = (damage: number) => {
     setPlayerData(d => {
+        if (d.health <= 0) return d;
         const energyCost = damage * SHIELD_DAMAGE_TO_ENERGY_COST;
         if (shipModeRef.current === 'shield' && d.energy >= energyCost) {
             lastEnergyUseTimestamp.current = Date.now();
@@ -324,7 +354,7 @@ export function GameContainer() {
             setContextMenu(null);
             return;
         }
-        if (isSettingsOpen || isGameOver || playerActionRef.current) return;
+        if (isSettingsOpen || isGameOver || playerActionRef.current?.type === 'mining') return;
         keysPressed.current.add(event.key.toLowerCase());
         
         const isMovementKey = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(event.key.toLowerCase());
@@ -339,7 +369,7 @@ export function GameContainer() {
     const handleContextMenu = (event: MouseEvent) => event.preventDefault();
     
     const handleMouseDown = (event: MouseEvent) => {
-      if (isSettingsOpen || isGameOver || playerActionRef.current) return;
+      if (isSettingsOpen || isGameOver) return;
       if ((event.target as HTMLElement).closest('[data-ui-element="true"]')) {
         return;
       }
@@ -352,6 +382,7 @@ export function GameContainer() {
         setContextMenu(null);
 
         for (const enemy of enemiesRef.current) {
+            if (enemy.isAlly) continue;
             const distance = Math.hypot(clickWorldX - enemy.x, clickWorldY - enemy.y);
             if (distance < ENEMY_CLICK_RADIUS) {
                 setTargetId(enemy.id === targetIdRef.current ? null : enemy.id);
@@ -479,15 +510,58 @@ export function GameContainer() {
       // --- PLAYER ACTION HANDLING ---
       if (playerActionRef.current) {
         const { type, targetId, startTime, duration } = playerActionRef.current;
+        const now = timestamp;
+        const targetEnemy = enemiesRef.current.find(e => e.id === targetId);
+
         if (type === 'mining') {
-          if (timestamp - startTime > duration) {
+          if (now - startTime > duration) {
             setAsteroids(prev => prev.filter(a => a.id !== targetId));
             setPlayerData(d => ({ ...d, resources: { ...d.resources, ore: d.resources.ore + Math.floor(Math.random() * 51) + 25 }}));
             setPlayerAction(null);
           }
+        } else if (type === 'pillaging') {
+            if (!targetEnemy || now - startTime > duration) {
+              if (targetEnemy) {
+                setEnemies(prev => prev.map(e => e.id === targetId ? { ...e, health: Math.max(0, e.health - PILLAGE_DAMAGE) } : e));
+                const newDebris: DebrisType = {
+                  id: Date.now(),
+                  x: targetEnemy.x,
+                  y: targetEnemy.y,
+                  resources: {
+                    money: Math.floor(Math.random() * 51),
+                    ore: Math.floor(Math.random() * 11),
+                    gas: Math.floor(Math.random() * 6),
+                  }
+                };
+                setDebris(prev => [...prev, newDebris]);
+              }
+              setPlayerAction(null);
+            }
+        } else if (type === 'boarding') {
+            if (!targetEnemy) {
+                setPlayerAction(null); // Target destroyed
+            } else {
+                const distanceToTarget = Math.hypot(targetEnemy.x - playerPositionRef.current.x, targetEnemy.y - playerPositionRef.current.y);
+                const stickDistance = PLAYER_COLLISION_RADIUS + ENEMY_COLLISION_RADIUS + 5;
+                if (distanceToTarget > stickDistance) {
+                    const angleToTarget = Math.atan2(targetEnemy.y - playerPositionRef.current.y, targetEnemy.x - playerPositionRef.current.x);
+                    setVelocity({ x: Math.cos(angleToTarget) * MAX_SPEED, y: Math.sin(angleToTarget) * MAX_SPEED });
+                } else {
+                    setVelocity({ x: targetEnemy.vx, y: targetEnemy.vy });
+                }
+
+                if (now - startTime > duration) {
+                    if (Math.random() < BOARDING_SUCCESS_CHANCE) {
+                        toast({ title: "Boarding Successful!", description: `${targetEnemy.type} has joined your side.` });
+                        setEnemies(prev => prev.map(e => e.id === targetId ? { ...e, isAlly: true, aiState: 'following' } : e));
+                    } else {
+                        toast({ variant: "destructive", title: "Boarding Failed!", description: "Your ship took damage." });
+                        applyDamage(BOARDING_FAIL_DAMAGE);
+                    }
+                    setPlayerAction(null);
+                }
+            }
         }
-        animationFrameId = requestAnimationFrame(gameLoop);
-        return;
       }
       
       // --- CRUISE MODE STATE MACHINE ---
@@ -521,7 +595,7 @@ export function GameContainer() {
           currentMaxSpeed = MAX_SPEED * 5;
           currentAccel = ACCELERATION * 4.0;
           currentStrafe = STRAFE_ACCELERATION * 0.1; // Poor turning
-      } else if (shipMode === 'stealth') {
+      } else if (shipModeRef.current === 'stealth') {
           currentMaxSpeed = MAX_SPEED * 0.8;
           currentAccel = ACCELERATION * 0.8;
       }
@@ -532,15 +606,7 @@ export function GameContainer() {
       const aimAngle = Math.atan2(mouseWorldY - playerPositionRef.current.y, mouseWorldX - playerPositionRef.current.x) * (180 / Math.PI);
       setAimRotation(aimAngle); // Aiming reticle always follows mouse
       
-      if (autoMoveTargetRef.current) {
-        const distanceToTarget = Math.hypot(autoMoveTargetRef.current.x - playerPositionRef.current.x, autoMoveTargetRef.current.y - playerPositionRef.current.y);
-        if (distanceToTarget > 10) {
-            const angleToTarget = Math.atan2(autoMoveTargetRef.current.y - playerPositionRef.current.y, autoMoveTargetRef.current.x - playerPositionRef.current.x);
-            setPlayerRotation(angleToTarget * (180 / Math.PI));
-        } else {
-            setAutoMoveTarget(null); // Stop when destination is reached
-        }
-      } else if (isLeftMouseDown.current) {
+      if (isLeftMouseDown.current) {
         setPlayerRotation(aimAngle);
       }
 
@@ -561,6 +627,7 @@ export function GameContainer() {
               const angleToTarget = Math.atan2(autoMoveTargetRef.current.y - playerPositionRef.current.y, autoMoveTargetRef.current.x - playerPositionRef.current.x);
               accelVec.x += Math.cos(angleToTarget) * currentAccel;
               accelVec.y += Math.sin(angleToTarget) * currentAccel;
+              setPlayerRotation(angleToTarget * (180 / Math.PI));
           } else {
               setAutoMoveTarget(null);
           }
@@ -610,8 +677,8 @@ export function GameContainer() {
 
       
       // --- PLAYER SHOOTING ---
-      const currentTarget = enemiesRef.current.find(e => e.id === targetIdRef.current);
-      const canShoot = playerDataRef.current.energy >= ENERGY_PER_SHOT && (shipMode === 'normal' || shipMode === 'stealth' || shipMode === 'shield') && cruiseStateRef.current === 'idle';
+      const currentTarget = enemiesRef.current.find(e => e.id === targetIdRef.current && !e.isAlly);
+      const canShoot = playerDataRef.current.energy >= ENERGY_PER_SHOT && (shipMode === 'normal' || shipMode === 'stealth' || shipMode === 'shield') && cruiseStateRef.current === 'idle' && !playerActionRef.current;
       const isShooting = currentTarget && canShoot;
       if (isShooting && timestamp - lastFiredTimestamp.current > FIRE_RATE_MS) {
         lastFiredTimestamp.current = timestamp;
@@ -666,6 +733,10 @@ export function GameContainer() {
       let processedEnemies = enemiesRef.current.map(enemy => {
           let updatedEnemy = { ...enemy };
           
+          if (updatedEnemy.isAlly) {
+            updatedEnemy.aiState = 'following';
+          }
+
           // Energy Regen
           if (timestamp - updatedEnemy.lastEnergyUseTimestamp > ENEMY_ENERGY_REGEN_DELAY_MS) {
               updatedEnemy.energy = Math.min(updatedEnemy.maxEnergy, updatedEnemy.energy + ENEMY_ENERGY_REGEN_RATE);
@@ -677,14 +748,16 @@ export function GameContainer() {
 
           // Check for player projectile hits
           let isHit = false;
-          for (const proj of playerProjectilesRef.current) {
-              if (hitPlayerProjectileIds.has(proj.id)) continue;
-              const distance = Math.hypot(proj.x - updatedEnemy.x, proj.y - updatedEnemy.y);
-              if (distance < collisionRadius) {
-                  hitPlayerProjectileIds.add(proj.id);
-                  updatedEnemy.health -= PLAYER_PROJECTILE_DAMAGE;
-                  isHit = true;
-              }
+          if (!updatedEnemy.isAlly) {
+            for (const proj of playerProjectilesRef.current) {
+                if (hitPlayerProjectileIds.has(proj.id)) continue;
+                const distance = Math.hypot(proj.x - updatedEnemy.x, proj.y - updatedEnemy.y);
+                if (distance < collisionRadius) {
+                    hitPlayerProjectileIds.add(proj.id);
+                    updatedEnemy.health -= PLAYER_PROJECTILE_DAMAGE;
+                    isHit = true;
+                }
+            }
           }
 
           if (isHit && updatedEnemy.aiState === 'patrolling' && updatedEnemy.type !== 'staff') {
@@ -698,7 +771,7 @@ export function GameContainer() {
                   id: updatedEnemy.id + timestamp,
                   x: updatedEnemy.x,
                   y: updatedEnemy.y,
-                  amount: Math.floor(Math.random() * 21) + 5 + updatedEnemy.cargo,
+                  resources: { ore: Math.floor(Math.random() * 21) + 5 + updatedEnemy.cargo }
               });
               if (updatedEnemy.id === targetIdRef.current) {
                   setTargetId(null);
@@ -717,14 +790,14 @@ export function GameContainer() {
             const canSeePlayer = distanceToPlayer < aggroRadius;
 
             const shouldFlee = (updatedEnemy.health / updatedEnemy.maxHealth) < ENEMY_FLEE_HEALTH_THRESHOLD && updatedEnemy.energy < (ENEMY_ENERGY_PER_SHOT * 2);
-            if (shouldFlee && updatedEnemy.aiState !== 'fleeing') {
+            if (shouldFlee && updatedEnemy.aiState !== 'fleeing' && !updatedEnemy.isAlly) {
                 updatedEnemy.aiState = 'fleeing';
                 updatedEnemy.stateChangeTimestamp = timestamp;
             }
 
             switch (updatedEnemy.aiState) {
                 case 'patrolling':
-                    if (canSeePlayer) {
+                    if (canSeePlayer && !updatedEnemy.isAlly) {
                         updatedEnemy.aiState = 'chasing';
                         updatedEnemy.stateChangeTimestamp = timestamp;
                     } else {
@@ -784,11 +857,26 @@ export function GameContainer() {
                         updatedEnemy.stateChangeTimestamp = timestamp;
                     }
                     break;
+                
+                case 'following':
+                    const followDistance = 150;
+                    if (distanceToPlayer > followDistance) {
+                        const angleToPlayer = Math.atan2(playerPositionRef.current.y - updatedEnemy.y, playerPositionRef.current.x - updatedEnemy.x);
+                        updatedEnemy.vx = Math.cos(angleToPlayer) * ENEMY_SPEED * 0.8;
+                        updatedEnemy.vy = Math.sin(angleToPlayer) * ENEMY_SPEED * 0.8;
+                    } else {
+                        updatedEnemy.vx *= FRICTION;
+                        updatedEnemy.vy *= FRICTION;
+                    }
+                    break;
             }
           }
           
           updatedEnemy.x += updatedEnemy.vx;
           updatedEnemy.y += updatedEnemy.vy;
+
+          updatedEnemy.x = Math.max(collisionRadius, Math.min(MAP_WIDTH - collisionRadius, updatedEnemy.x));
+          updatedEnemy.y = Math.max(collisionRadius, Math.min(MAP_HEIGHT - collisionRadius, updatedEnemy.y));
           
           return updatedEnemy;
 
@@ -816,6 +904,7 @@ export function GameContainer() {
           }
           if (!collisionOccurred) {
               for (const enemy of enemiesRef.current) {
+                  if (enemy.isAlly) continue;
                   let enemyRadius = ENEMY_COLLISION_RADIUS;
                   if (enemy.type === 'frigate') enemyRadius = FRIGATE_COLLISION_RADIUS;
                   else if (enemy.type === 'staff') enemyRadius = STAFF_COLLISION_RADIUS;
@@ -861,40 +950,55 @@ export function GameContainer() {
       }
       
       // --- UNIFIED DEBRIS COLLECTION ---
-      let cargo = { ...playerDataRef.current.cargo };
       const collectedDebrisIds = new Set<number>();
       const currentDebris = [...debrisRef.current, ...newDebrisFromKills];
-      
+      let collectedResources: Resources = { money: 0, ore: 0, gas: 0 };
+
       for (const d of currentDebris) {
-        // Player collection
-        const playerDist = Math.hypot(d.x - playerPositionRef.current.x, d.y - playerPositionRef.current.y);
-        if (playerDist < DEBRIS_COLLISION_RADIUS + PLAYER_COLLISION_RADIUS) {
-          if (cargo.current < cargo.max) {
-            cargo.current = Math.min(cargo.max, cargo.current + d.amount);
+          if (collectedDebrisIds.has(d.id)) continue;
+          
+          const playerDist = Math.hypot(d.x - playerPositionRef.current.x, d.y - playerPositionRef.current.y);
+          if (playerDist < DEBRIS_COLLISION_RADIUS + PLAYER_COLLISION_RADIUS) {
+              collectedResources.money += d.resources.money || 0;
+              collectedResources.ore += d.resources.ore || 0;
+              collectedResources.gas += d.resources.gas || 0;
+              collectedDebrisIds.add(d.id);
+              continue;
           }
-          collectedDebrisIds.add(d.id);
-          continue;
-        }
-        
-        // Enemy collection
-        for (let i = 0; i < processedEnemies.length; i++) {
-          let enemyRadius = ENEMY_COLLISION_RADIUS;
-          if (processedEnemies[i].type === 'frigate') enemyRadius = FRIGATE_COLLISION_RADIUS;
-          else if (processedEnemies[i].type === 'staff') enemyRadius = STAFF_COLLISION_RADIUS;
-          const enemyDist = Math.hypot(d.x - processedEnemies[i].x, d.y - processedEnemies[i].y);
-          if (enemyDist < DEBRIS_COLLISION_RADIUS + enemyRadius) {
-            processedEnemies[i] = { ...processedEnemies[i], cargo: processedEnemies[i].cargo + d.amount };
-            collectedDebrisIds.add(d.id);
-            break;
+
+          for (let i = 0; i < processedEnemies.length; i++) {
+              if (collectedDebrisIds.has(d.id)) break;
+              let enemyRadius = ENEMY_COLLISION_RADIUS;
+              if (processedEnemies[i].type === 'frigate') enemyRadius = FRIGATE_COLLISION_RADIUS;
+              else if (processedEnemies[i].type === 'staff') enemyRadius = STAFF_COLLISION_RADIUS;
+              const enemyDist = Math.hypot(d.x - processedEnemies[i].x, d.y - processedEnemies[i].y);
+              if (enemyDist < DEBRIS_COLLISION_RADIUS + enemyRadius) {
+                  processedEnemies[i] = { ...processedEnemies[i], cargo: processedEnemies[i].cargo + (d.resources.ore || 0) };
+                  collectedDebrisIds.add(d.id);
+                  break; 
+              }
           }
-        }
+      }
+      
+      if (collectedResources.money > 0 || collectedResources.ore > 0 || collectedResources.gas > 0) {
+          setPlayerData(d => ({
+              ...d,
+              resources: {
+                  money: d.resources.money + collectedResources.money,
+                  ore: d.resources.ore + collectedResources.ore,
+                  gas: d.resources.gas + collectedResources.gas,
+              },
+              cargo: {
+                  ...d.cargo,
+                  current: Math.min(d.cargo.max, d.cargo.current + collectedResources.ore),
+              }
+          }));
       }
 
-      setPlayerData(d => ({ ...d, cargo }));
       if (collectedDebrisIds.size > 0) {
-        setDebris(prev => [...prev, ...newDebrisFromKills].filter(d => !collectedDebrisIds.has(d.id)));
+          setDebris(prev => [...prev, ...newDebrisFromKills].filter(d => !collectedDebrisIds.has(d.id)));
       } else if (newDebrisFromKills.length > 0) {
-        setDebris(prev => [...prev, ...newDebrisFromKills]);
+          setDebris(prev => [...prev, ...newDebrisFromKills]);
       }
       setEnemies(processedEnemies);
 
@@ -951,6 +1055,7 @@ export function GameContainer() {
       health: enemy.health,
       maxHealth: enemy.maxHealth,
       isTargeted: enemy.id === targetId,
+      isAlly: enemy.isAlly || false,
     };
     switch (enemy.type) {
       case 'chasseur':
@@ -982,6 +1087,13 @@ export function GameContainer() {
         {enemyProjectiles.map((p) => (
           <Projectile key={p.id} x={p.x} y={p.y} rotation={p.rotation} isEnemy />
         ))}
+        <PlayerShip 
+          x={playerPosition.x}
+          y={playerPosition.y}
+          rotation={playerRotation} 
+          aimRotation={aimRotation} 
+          isShieldActive={shipMode === 'shield'} 
+        />
         {enemies.map(renderEnemy)}
         {asteroids.map((a) => (
             <Asteroid key={a.id} x={a.x} y={a.y} size={a.size} rotation={a.rotation} />
@@ -992,13 +1104,6 @@ export function GameContainer() {
         {debris.map((d) => (
             <Debris key={d.id} x={d.x} y={d.y} />
         ))}
-        <PlayerShip 
-          x={playerPosition.x}
-          y={playerPosition.y}
-          rotation={playerRotation} 
-          aimRotation={aimRotation} 
-          isShieldActive={shipMode === 'shield'} 
-        />
       </div>
       
       {/* UI Overlays & Effects */}
@@ -1010,9 +1115,9 @@ export function GameContainer() {
        {playerData.energy <= 0 && (
           <div className="absolute inset-0 pointer-events-none" style={{ boxShadow: 'inset 0 0 80px 30px rgba(0, 150, 255, 0.3)' }} />
        )}
-       {playerAction && playerAction.type === 'mining' && (
+       {playerAction && (
         <ActionProgress 
-            actionType="Mining"
+            actionType={playerAction.type}
             progress={(Date.now() - playerAction.startTime) / playerAction.duration * 100}
         />
        )}

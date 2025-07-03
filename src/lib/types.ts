@@ -50,7 +50,7 @@ export interface StellarBaseData {
   hull: number;
 }
 
-export type EnemyAiState = 'patrolling' | 'chasing' | 'searching' | 'fleeing';
+export type EnemyAiState = 'patrolling' | 'chasing' | 'searching' | 'fleeing' | 'following';
 export type BotShipType = 'chasseur' | 'frigate' | 'staff';
 
 export type EnemyState = {
@@ -70,6 +70,7 @@ export type EnemyState = {
   maxEnergy: number;
   cargo: number;
   lastEnergyUseTimestamp: number;
+  isAlly?: boolean;
 };
 
 export type AsteroidState = {
@@ -90,5 +91,5 @@ export type Debris = {
   id: number;
   x: number;
   y: number;
-  amount: number;
+  resources: Partial<Resources>;
 }

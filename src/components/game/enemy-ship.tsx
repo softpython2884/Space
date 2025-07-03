@@ -6,9 +6,10 @@ interface EnemyShipProps {
   health: number;
   maxHealth: number;
   isTargeted: boolean;
+  isAlly?: boolean;
 }
 
-export function EnemyShip({ x, y, health, maxHealth, isTargeted }: EnemyShipProps) {
+export function EnemyShip({ x, y, health, maxHealth, isTargeted, isAlly }: EnemyShipProps) {
     const healthPercentage = (health / maxHealth) * 100;
 
   return (
@@ -25,11 +26,11 @@ export function EnemyShip({ x, y, health, maxHealth, isTargeted }: EnemyShipProp
           width="40"
           height="40"
           viewBox="0 0 50 50"
-          className="fill-red-500/80 stroke-red-300"
-          style={{ filter: isTargeted ? 'drop-shadow(0 0 8px hsl(0 100% 50%))' : 'none' }}
+          className={isAlly ? "fill-blue-500/80 stroke-blue-300" : "fill-red-500/80 stroke-red-300"}
+          style={{ filter: isTargeted ? `drop-shadow(0 0 8px hsl(${isAlly ? '210 100% 50%' : '0 100% 50%'}))` : 'none' }}
         >
           <polygon points="25,5 40,20 40,45 10,45 10,20" strokeWidth="2" />
-          <polygon points="18,5 32,5 25,15" strokeWidth="1" className="fill-red-400" />
+          <polygon points="18,5 32,5 25,15" strokeWidth="1" className={isAlly ? "fill-blue-400" : "fill-red-400"} />
         </svg>
 
         {/* Health bar */}
@@ -42,7 +43,7 @@ export function EnemyShip({ x, y, health, maxHealth, isTargeted }: EnemyShipProp
         
         {/* Targeting indicator */}
         {isTargeted && (
-            <div className="absolute -inset-2 border-2 border-red-500 rounded-full animate-pulse" />
+            <div className={`absolute -inset-2 border-2 ${isAlly ? 'border-blue-500' : 'border-red-500'} rounded-full animate-pulse`} />
         )}
       </div>
     </div>
