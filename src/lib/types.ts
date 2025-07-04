@@ -77,7 +77,7 @@ export interface StellarBaseData {
   maxHull: number;
 }
 
-export type EnemyAiState = 'patrolling' | 'chasing' | 'searching' | 'fleeing' | 'following' | 'mining' | 'returning_to_base' | 'guarding' | 'scavenging' | 'moving_to_order' | 'patrolling_order' | 'recharging';
+export type EnemyAiState = 'patrolling' | 'chasing' | 'searching' | 'fleeing' | 'following' | 'mining' | 'returning_to_base' | 'guarding' | 'scavenging' | 'moving_to_order' | 'patrolling_order' | 'recharging' | 'holding_position';
 export type BotShipType = 'Chasseur' | 'Frégate' | 'Mineur' | 'Intercepteur' | 'Destroyer' | 'Porteur' | 'Cargo';
 
 export type EnemyState = {
