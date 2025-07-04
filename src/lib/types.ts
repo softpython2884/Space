@@ -39,7 +39,6 @@ export interface PlayerData {
   energy: number;
   cargo: {
     current: number;
-    max: number;
   };
   resources: Resources;
   upgrades: PlayerUpgrades;

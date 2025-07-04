@@ -1,11 +1,13 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { INITIAL_PLAYER_DATA } from "@/lib/constants";
+import { INITIAL_PLAYER_DATA, SHIP_DATA, UPGRADE_VALUES } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
 import { Heart, Zap, Container, CircleDollarSign, Mountain, Flame, Star, Ship } from "lucide-react";
 
 export function Dashboard() {
-  const data = INITIAL_PLAYER_DATA;
+  const data = INITIAL_PLAYER_DATA; // Note: This component uses static initial data.
+  const maxHealth = SHIP_DATA[data.ship.class].baseHealth + UPGRADE_VALUES.maxHealth[data.upgrades.maxHealth];
+  const maxCargo = SHIP_DATA[data.ship.class].baseCargo + UPGRADE_VALUES.cargoCapacity[data.upgrades.cargoCapacity];
 
   return (
     <Card className="bg-secondary/40 border-secondary">
@@ -22,7 +24,7 @@ export function Dashboard() {
             <div className="flex items-center gap-2">
                 <Ship className="h-5 w-5 text-primary" />
                 <span className="font-medium">Class:</span>
-                <Badge variant="secondary" className="ml-auto">{data.shipType}</Badge>
+                <Badge variant="secondary" className="ml-auto">{data.ship.class}</Badge>
             </div>
         </div>
 
@@ -48,9 +50,9 @@ export function Dashboard() {
             <div className="flex items-center gap-2">
               <Container className="h-5 w-5 text-primary" />
               <span className="font-medium">Cargo</span>
-              <span className="ml-auto text-muted-foreground">{data.cargo.current} / {data.cargo.max}</span>
+              <span className="ml-auto text-muted-foreground">{data.cargo.current} / {maxCargo}</span>
             </div>
-            <Progress value={(data.cargo.current / data.cargo.max) * 100} aria-label={`Cargo capacity`} />
+            <Progress value={(data.cargo.current / maxCargo) * 100} aria-label={`Cargo capacity`} />
         </div>
         
         <div>

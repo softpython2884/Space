@@ -23,8 +23,10 @@ export function PillageMenu({ isOpen, onOpenChange, targetEnemy, onComplete, pla
   const [progress, setProgress] = useState(0);
   const [isFinished, setIsFinished] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const startTimeRef = useRef(0);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const frameIdRef = useRef(0);
+
 
   useEffect(() => {
     if (!isOpen) {
@@ -32,31 +34,33 @@ export function PillageMenu({ isOpen, onOpenChange, targetEnemy, onComplete, pla
         setProgress(0);
         setIsFinished(false);
         setError(null);
-        if (intervalRef.current) clearInterval(intervalRef.current);
+        cancelAnimationFrame(frameIdRef.current);
     }
   }, [isOpen]);
 
   useEffect(() => {
     if (isPillaging) {
         startTimeRef.current = Date.now();
-        intervalRef.current = setInterval(() => {
+        
+        const animate = () => {
             const elapsed = Date.now() - startTimeRef.current;
             const newProgress = Math.min((elapsed / PILLAGE_DURATION_MS) * 100, 100);
             setProgress(newProgress);
 
-            if (newProgress >= 100) {
-                if (intervalRef.current) clearInterval(intervalRef.current);
+            if (newProgress < 100) {
+                frameIdRef.current = requestAnimationFrame(animate);
+            } else {
                 onComplete();
                 setIsPillaging(false);
                 setIsFinished(true);
             }
-        }, 50);
-    } else {
-        if (intervalRef.current) clearInterval(intervalRef.current);
+        };
+
+        frameIdRef.current = requestAnimationFrame(animate);
     }
 
     return () => {
-        if (intervalRef.current) clearInterval(intervalRef.current);
+        cancelAnimationFrame(frameIdRef.current);
     }
   }, [isPillaging, onComplete]);
 

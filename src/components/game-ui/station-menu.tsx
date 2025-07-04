@@ -8,8 +8,8 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { PlayerData, PlayerUpgrades, PlayerShipClass, StationState } from "@/lib/types";
-import { UPGRADE_COSTS, UPGRADE_VALUES, RESOURCE_PRICES } from "@/lib/constants";
-import { CircleDollarSign, Mountain, Flame, Heart, Zap, ChevronsUp, Warehouse, Bot, Wrench } from "lucide-react";
+import { UPGRADE_COSTS, UPGRADE_VALUES, RESOURCE_PRICES, SHIP_DATA, ALLY_COST } from "@/lib/constants";
+import { CircleDollarSign, Mountain, Flame, Heart, Zap, ChevronsUp, Warehouse, Bot, Wrench, Ship, ShieldPlus } from "lucide-react";
 
 interface StationMenuProps {
   isOpen: boolean;
@@ -19,6 +19,8 @@ interface StationMenuProps {
   onSellResource: (resource: 'ore' | 'gas', amount: number) => void;
   onBuyUpgrade: (upgrade: keyof PlayerUpgrades) => void;
   onRepairHull: (amount: number, cost: number) => void;
+  onBuyShip: (shipClass: PlayerShipClass) => void;
+  onBuyAlly: () => void;
 }
 
 const UpgradeCard = ({ title, icon: Icon, level, maxLevel, cost, onUpgrade, canAfford }: {
@@ -52,35 +54,43 @@ const UpgradeCard = ({ title, icon: Icon, level, maxLevel, cost, onUpgrade, canA
     </Card>
 )
 
-const ShipCard = ({ name, description }: { name: string, description: string }) => (
-    <Card className="bg-background/50">
+const ShipCard = ({ shipClass, playerData, onBuyShip }: { shipClass: PlayerShipClass, playerData: PlayerData, onBuyShip: (shipClass: PlayerShipClass) => void }) => {
+    const shipInfo = SHIP_DATA[shipClass];
+    const isOwned = playerData.ship.class === shipClass;
+    const canAfford = playerData.resources.money >= shipInfo.cost;
+
+    return (
+    <Card className="bg-background/50 flex flex-col">
         <CardHeader>
-            <CardTitle className="text-lg">{name}</CardTitle>
+            <CardTitle className="text-lg">{shipInfo.name}</CardTitle>
+            <CardDescription>{shipInfo.description}</CardDescription>
         </CardHeader>
-        <CardContent>
-            <p className="text-sm text-muted-foreground">{description}</p>
+        <CardContent className="flex-grow space-y-2 text-sm">
+            <div className="flex justify-between"><span>Coque:</span> <span>{shipInfo.baseHealth} HP</span></div>
+            <div className="flex justify-between"><span>Soute:</span> <span>{shipInfo.baseCargo} unités</span></div>
         </CardContent>
         <CardFooter>
-            <Button disabled className="w-full">Coming Soon</Button>
+            {isOwned ? (
+                 <Button disabled className="w-full">Possédé</Button>
+            ) : (
+                 <Button onClick={() => onBuyShip(shipClass)} disabled={!canAfford} className="w-full">
+                    Acheter ({shipInfo.cost} <CircleDollarSign className="inline h-3 w-3 ml-1" />)
+                </Button>
+            )}
         </CardFooter>
     </Card>
-)
+    )
+};
 
-const playerShips: {name: PlayerShipClass, description: string}[] = [
-    { name: 'Chasseur', description: 'Vaisseau de base polyvalent, évolutif.' },
-    { name: 'Intercepteur', description: 'Petit et rapide, idéal pour les raids éclairs.' },
-    { name: 'Frégate', description: 'Vaisseau de guerre lourdement armé.' },
-    { name: 'Destroyer', description: 'Plateforme d\'armement mobile, dévastatrice.' },
-    { name: 'Porteur', description: 'Transporte et déploie une escouade de drones.' },
-    { name: 'Cargo', description: 'Soute immense et coque résistante, mais lent.' },
-    { name: 'Mineur', description: 'Équipé pour une extraction de ressources rapide et efficace.' },
-];
 
-export function StationMenu({ isOpen, onOpenChange, playerData, stationData, onSellResource, onBuyUpgrade, onRepairHull }: StationMenuProps) {
+export function StationMenu({ isOpen, onOpenChange, playerData, stationData, onSellResource, onBuyUpgrade, onRepairHull, onBuyShip, onBuyAlly }: StationMenuProps) {
 
   const repairAmount = 100;
   const repairCost = 50;
   const canRepair = stationData && stationData.health < stationData.maxHealth && playerData.resources.money >= repairCost;
+  const canBuyAlly = playerData.resources.money >= ALLY_COST;
+
+  const maxCargo = SHIP_DATA[playerData.ship.class].baseCargo + UPGRADE_VALUES.cargoCapacity[playerData.upgrades.cargoCapacity];
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -169,7 +179,7 @@ export function StationMenu({ isOpen, onOpenChange, playerData, stationData, onS
                 <Card className="bg-transparent border-0">
                     <CardHeader>
                         <CardTitle>Ship Upgrades</CardTitle>
-                        <CardDescription>Improve your ship's systems and capabilities.</CardDescription>
+                        <CardDescription>Improve your current ship's systems and capabilities.</CardDescription>
                     </CardHeader>
                     <CardContent className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                         <UpgradeCard 
@@ -213,17 +223,39 @@ export function StationMenu({ isOpen, onOpenChange, playerData, stationData, onS
             </TabsContent>
 
             <TabsContent value="hangar">
-                <Card className="bg-transparent border-0">
-                    <CardHeader>
-                        <CardTitle>Shipyard</CardTitle>
-                        <CardDescription>Purchase a new vessel.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {playerShips.map(ship => (
-                            <ShipCard key={ship.name} name={ship.name} description={ship.description} />
-                        ))}
-                    </CardContent>
-                </Card>
+                <div className="space-y-6">
+                    <Card className="bg-transparent border-0">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2"><Ship /> Shipyard</CardTitle>
+                            <CardDescription>Purchase a new vessel. This will replace your current ship.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {(Object.keys(SHIP_DATA) as PlayerShipClass[]).map(shipClass => (
+                                <ShipCard key={shipClass} shipClass={shipClass} playerData={playerData} onBuyShip={onBuyShip} />
+                            ))}
+                        </CardContent>
+                    </Card>
+                    <Separator />
+                    <Card className="bg-transparent border-0">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2"><ShieldPlus /> Fleet Support</CardTitle>
+                            <CardDescription>Hire mercenary ships to assist you in combat.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <Card className="bg-background/50 max-w-sm">
+                                <CardHeader>
+                                    <CardTitle className="text-lg">Chasseur Escort</CardTitle>
+                                    <CardDescription>A basic but reliable combat ship that will follow and defend you.</CardDescription>
+                                </CardHeader>
+                                <CardFooter>
+                                     <Button onClick={onBuyAlly} disabled={!canBuyAlly} className="w-full">
+                                        Hire for {ALLY_COST} credits
+                                    </Button>
+                                </CardFooter>
+                            </Card>
+                        </CardContent>
+                    </Card>
+                </div>
             </TabsContent>
           </ScrollArea>
         </Tabs>
