@@ -3,9 +3,9 @@
 import { cn } from '@/lib/utils';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Ship, CircleDollarSign, TowerControl, Shield, Skull } from 'lucide-react';
+import { PlusCircle, Ship, CircleDollarSign, TowerControl, Shield, Skull, UserPlus } from 'lucide-react';
 import type { Resources, BotShipType, PlayerShipClass } from '@/lib/types';
-import { SHIP_DATA, OUTPOST_COST } from '@/lib/constants';
+import { SHIP_DATA, OUTPOST_COST, REINFORCEMENT_COST } from '@/lib/constants';
 import { ScrollArea } from '../ui/scroll-area';
 import { Separator } from '../ui/separator';
 
@@ -16,6 +16,9 @@ interface TacticalViewOverlayProps {
     onBuildOutpost: () => void;
     onAllFollow: () => void;
     onAllAttack: () => void;
+    onCallReinforcements: () => void;
+    canCallReinforcements: boolean;
+    isPlacingReinforcements: boolean;
 }
 
 const ShipBuildCard = ({ shipInfo, canAfford, onBuildShip }: { shipInfo: (typeof SHIP_DATA)[PlayerShipClass], canAfford: boolean, onBuildShip: (type: BotShipType) => void }) => {
@@ -34,7 +37,17 @@ const ShipBuildCard = ({ shipInfo, canAfford, onBuildShip }: { shipInfo: (typeof
     )
 }
 
-export function TacticalViewOverlay({ isOpen, playerResources, onBuildShip, onBuildOutpost, onAllFollow, onAllAttack }: TacticalViewOverlayProps) {
+export function TacticalViewOverlay({ 
+    isOpen, 
+    playerResources, 
+    onBuildShip, 
+    onBuildOutpost, 
+    onAllFollow, 
+    onAllAttack,
+    onCallReinforcements,
+    canCallReinforcements,
+    isPlacingReinforcements
+}: TacticalViewOverlayProps) {
     if (!isOpen) {
         return null;
     }
@@ -91,6 +104,16 @@ export function TacticalViewOverlay({ isOpen, playerResources, onBuildShip, onBu
                              </div>
                         </div>
 
+                        <Separator />
+
+                        <div>
+                             <h4 className="text-lg font-semibold mb-2">Special Actions</h4>
+                             <Button className="w-full" onClick={onCallReinforcements} disabled={!canCallReinforcements || isPlacingReinforcements}>
+                                <UserPlus className="mr-2 h-4 w-4"/>
+                                {isPlacingReinforcements ? 'Choisissez un emplacement...' : `Appel de renforts (${REINFORCEMENT_COST} C)`}
+                             </Button>
+                        </div>
+                        
                         <Separator />
 
                         <div>

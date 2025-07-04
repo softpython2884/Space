@@ -114,6 +114,7 @@ export type EnemyState = {
   cruiseDurationStartTimestamp?: number;
   cruiseAvailableAt?: number;
   fleeFrom?: { x: number, y: number } | null;
+  despawnTimestamp?: number;
 };
 
 export type AsteroidState = {

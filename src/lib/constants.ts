@@ -66,6 +66,7 @@ export const SHIP_DATA: Record<PlayerShipClass, {
 };
 
 export const BEAM_DAMAGE_PER_FRAME = 0.5;
+export const BEAM_RANGE = 1000;
 export const STATION_BASE_HEALTH = 45000;
 export const STATION_BASE_SHIELD = 9000;
 export const OUTPOST_COST = 5000;
@@ -74,6 +75,8 @@ export const OUTPOST_RANGE = 900;
 export const OUTPOST_FIRE_RATE_MS = 1000;
 
 export const ALLY_COST = 2500;
+export const REINFORCEMENT_COST = 3000;
+export const REINFORCEMENT_COOLDOWN_MS = 180000; // 3 minutes
 
 export const AI_HELP_RADIUS = 700;
 

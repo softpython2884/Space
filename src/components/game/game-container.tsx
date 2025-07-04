@@ -26,7 +26,7 @@ import { ShipModeSelector } from '@/components/game-ui/ship-mode-selector';
 import { CruiseStreaks } from '@/components/game/cruise-streaks';
 import { ElectricCloud } from './electric-cloud';
 import { Vortex } from './vortex';
-import { INITIAL_PLAYER_DATA, INITIAL_FACTION_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS, AI_HELP_RADIUS, MAP_WIDTH, MAP_HEIGHT, ZONES, BEAM_DAMAGE_PER_FRAME } from '@/lib/constants';
+import { INITIAL_PLAYER_DATA, INITIAL_FACTION_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS, AI_HELP_RADIUS, MAP_WIDTH, MAP_HEIGHT, ZONES, BEAM_DAMAGE_PER_FRAME, BEAM_RANGE, REINFORCEMENT_COST, REINFORCEMENT_COOLDOWN_MS } from '@/lib/constants';
 import type { ControlScheme, PlayerData, FactionData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState, AsteroidState, StationState, BotShipType, ContextMenuTargetType, PlayerActionType, Resources, PlayerUpgrades, PlayerShipClass, BeamState, ProjectileState, PlayerAction, EnemyAiState, OutpostState, ChatMessage, Zone, StellarBaseData } from '@/lib/types';
 import { ClientOnly } from '@/components/client-only';
 import { GameOverOverlay } from './game-over-overlay';
@@ -296,6 +296,10 @@ export function GameContainer() {
   const lastAiFactionUpdate = useRef(0);
   const lastAttackWaveTimestamp = useRef(0);
   const nextAttackWaveTimestamp = useRef(180000); // 3 mins for first attack
+
+  // Reinforcement state
+  const [isPlacingReinforcements, setIsPlacingReinforcements] = useState(false);
+  const reinforcementAvailableAt = useRef(0);
 
   const uniqueIdCounterRef = useRef(0);
   const keysPressed = useRef<Set<string>>(new Set());
@@ -886,6 +890,20 @@ export function GameContainer() {
     ));
   }, [addChatMessage]);
 
+  const handleCallReinforcements = useCallback(() => {
+    const now = Date.now();
+    if (now < reinforcementAvailableAt.current) {
+        addChatMessage('System', `Reinforcements are on cooldown.`, 'text-yellow-400');
+        return;
+    }
+    if (playerDataRef.current.resources.money < REINFORCEMENT_COST) {
+        addChatMessage('System', `Insufficient funds to call reinforcements.`, 'text-red-400');
+        return;
+    }
+    addChatMessage('Commander', 'Select a deployment zone for reinforcements on the tactical map.', 'text-cyan-400');
+    setIsPlacingReinforcements(true);
+  }, [addChatMessage]);
+
   const handleToggleWeapon = useCallback((weapon: 'manualTurrets' | 'autoTurrets' | 'beam') => {
     setActiveWeapons(prev => ({
         ...prev,
@@ -902,6 +920,10 @@ export function GameContainer() {
             setAutoMoveTarget(null);
             setContextMenu(null);
             setIsStationMenuOpen(false);
+            if (isPlacingReinforcements) {
+                setIsPlacingReinforcements(false);
+                addChatMessage('Commander', 'Reinforcement call cancelled.', 'text-yellow-400');
+            }
             return;
         }
         if (isModalOpen) return;
@@ -940,6 +962,46 @@ export function GameContainer() {
       
       const clickWorldX = cameraPositionRef.current.x + (mousePosition.current.x - viewSize.width / 2) / zoomRef.current;
       const clickWorldY = cameraPositionRef.current.y + (mousePosition.current.y - viewSize.height / 2) / zoomRef.current;
+      
+      if (isPlacingReinforcements && isTacticalViewRef.current) {
+        setIsPlacingReinforcements(false);
+        
+        setPlayerData(prev => ({
+            ...prev,
+            resources: { ...prev.resources, money: prev.resources.money - REINFORCEMENT_COST }
+        }));
+        reinforcementAvailableAt.current = Date.now() + REINFORCEMENT_COOLDOWN_MS;
+    
+        const newReinforcements: EnemyState[] = [];
+        const reinforcementCount = 5;
+        const despawnTime = Date.now() + 120000; // 2 minutes
+    
+        for (let i = 0; i < reinforcementCount; i++) {
+            const shipInfo = SHIP_DATA['Chasseur'];
+            const spawnOffset = { x: (Math.random() - 0.5) * 200, y: (Math.random() - 0.5) * 200 };
+            const newAlly: EnemyState = {
+                id: getUniqueId(),
+                type: 'Chasseur',
+                x: clickWorldX + spawnOffset.x,
+                y: clickWorldY + spawnOffset.y,
+                vx: 0, vy: 0, rotation: 0,
+                health: shipInfo.baseHealth * 3,
+                maxHealth: shipInfo.baseHealth * 3,
+                lastShotTimestamp: 0, lastAutoShotTimestamp: 0,
+                aiState: 'patrolling_order',
+                orderTarget: { x: clickWorldX, y: clickWorldY },
+                lastKnownPlayerPosition: null, stateChangeTimestamp: 0,
+                energy: shipInfo.maxEnergy, maxEnergy: shipInfo.maxEnergy, cargo: 0, lastEnergyUseTimestamp: 0,
+                isAlly: true, combatTargetId: null, lastAttackerId: null, patrolTarget: null,
+                cruiseState: 'idle', cruiseAvailableAt: 0,
+                despawnTimestamp: despawnTime,
+            };
+            newReinforcements.push(newAlly);
+        }
+        setEnemies(prev => [...prev, ...newReinforcements]);
+        addChatMessage('System', `${reinforcementCount} Chasseur reinforcements have arrived. They will depart in 2 minutes.`, 'text-green-400');
+        return;
+      }
       
       if (event.button === 0) { // Left Click
         isLeftMouseDown.current = true;
@@ -1101,7 +1163,7 @@ export function GameContainer() {
       window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, [viewSize, isModalOpen, handleActionSelect]);
+  }, [viewSize, isModalOpen, handleActionSelect, isPlacingReinforcements, addChatMessage]);
 
   useEffect(() => {
       const container = containerRef.current;
@@ -1680,6 +1742,13 @@ export function GameContainer() {
       let currentActiveBeams = [...activeBeamsRef.current];
 
       let processedEnemies = enemiesRef.current.map(enemy => {
+          if (enemy.despawnTimestamp && timestamp > enemy.despawnTimestamp) {
+            if (enemy.id === targetIdRef.current) setTargetId(null);
+            if (selectedAllyIdsRef.current.includes(enemy.id)) {
+                setSelectedAllyIds(prev => prev.filter(id => id !== enemy.id));
+            }
+            return null; // This ship will be filtered out
+          }
           let updatedEnemy = { ...enemy };
           const enemyShipInfo = SHIP_DATA[updatedEnemy.type];
 
@@ -2579,7 +2648,7 @@ export function GameContainer() {
     }
     
     return () => cancelAnimationFrame(animationFrameId);
-  }, [viewSize, isGameOver, controlScheme, isDocked, applyDamage, handleActionSelect, handleBuyAlly, handleBuyShip, handleBuyUpgrade, handleRepairHull, handleSellResource, resetGame, addChatMessage, handleBuildShipFromTactical, handleBuildOutpost, handleRespawn, zones, cheats]);
+  }, [viewSize, isGameOver, controlScheme, isDocked, applyDamage, handleActionSelect, handleBuyAlly, handleBuyShip, handleBuyUpgrade, handleRepairHull, handleSellResource, resetGame, addChatMessage, handleBuildShipFromTactical, handleBuildOutpost, handleRespawn, zones, cheats, handleCallReinforcements]);
 
   const allies = React.useMemo(() => enemies.filter(e => e.isAlly), [enemies]);
 
@@ -2748,7 +2817,8 @@ export function GameContainer() {
           isShieldActive={shipMode === 'shield'} 
         />
         {visibleEnemies.map(enemy => {
-          const {id, ...props} = {
+          const props = {
+            key: enemy.id,
             x: enemy.x,
             y: enemy.y,
             rotation: enemy.rotation,
@@ -2760,13 +2830,13 @@ export function GameContainer() {
           };
           switch (enemy.type) {
             case 'Chasseur':
-              return <EnemyShip key={enemy.id} {...props} />;
+              return <EnemyShip {...props} />;
             case 'Frégate':
-              return <FrigateShip key={enemy.id} {...props} />;
+              return <FrigateShip {...props} />;
             case 'Mineur':
-              return <StaffShip key={enemy.id} {...props} />;
+              return <StaffShip {...props} />;
             case 'Intercepteur':
-              return <InterceptorShip key={enemy.id} {...props} />;
+              return <InterceptorShip {...props} />;
             default:
               return null;
           }
@@ -2809,6 +2879,9 @@ export function GameContainer() {
         onBuildOutpost={handleBuildOutpost}
         onAllFollow={handleAllFollow}
         onAllAttack={handleAllAttack}
+        onCallReinforcements={handleCallReinforcements}
+        canCallReinforcements={playerData.resources.money >= REINFORCEMENT_COST && Date.now() >= reinforcementAvailableAt.current}
+        isPlacingReinforcements={isPlacingReinforcements}
       />
       <ClientOnly>
       {cruiseState === 'cruising' && <CruiseStreaks />}
