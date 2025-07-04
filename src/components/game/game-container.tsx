@@ -24,7 +24,7 @@ import { StellarBaseStatus } from '@/components/game-ui/stellar-base-status';
 import { VesselSystems } from '@/components/game-ui/vessel-systems';
 import { ShipModeSelector } from '@/components/game-ui/ship-mode-selector';
 import { CruiseStreaks } from '@/components/game/cruise-streaks';
-import { INITIAL_PLAYER_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD } from '@/lib/constants';
+import { INITIAL_PLAYER_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS } from '@/lib/constants';
 import type { ControlScheme, PlayerData, StellarBaseData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState, AsteroidState, StationState, BotShipType, ContextMenuTargetType, PlayerActionType, Resources, PlayerUpgrades, PlayerShipClass, BeamState, ProjectileState, PlayerAction, EnemyAiState, OutpostState } from '@/lib/types';
 import { ClientOnly } from '@/components/client-only';
 import { GameOverOverlay } from './game-over-overlay';
@@ -231,7 +231,7 @@ export function GameContainer() {
   const [shipMode, setShipMode] = useState<ShipMode>('normal');
   const [cruiseState, setCruiseState] = useState<'idle' | 'charging' | 'cruising'>('idle');
   const [cooldowns, setCooldowns] = useState({ modeChange: 1, cruise: 1 });
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; targetId: number; targetType: ContextMenuTargetType; } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; worldX: number, worldY: number; targetId: number | null; targetType: ContextMenuTargetType; } | null>(null);
   const [miningIntent, setMiningIntent] = useState<number | null>(null);
   const [playerAction, setPlayerAction] = useState<PlayerAction | null>(null);
   
@@ -399,9 +399,24 @@ export function GameContainer() {
     resetGame();
   }, [resetGame]);
 
-  const handleActionSelect = useCallback((action: PlayerActionType | 'open_station_menu', targetId: number) => {
+  const handleActionSelect = useCallback((action: PlayerActionType, targetId: number | null, worldCoords?: { x: number, y: number }) => {
     setContextMenu(null);
     if (playerActionRef.current) return;
+    
+    if (action === 'tactical_move' || action === 'patrolling_order') {
+        if (worldCoords && selectedAllyIdsRef.current.length > 0) {
+            const newAiState = action === 'tactical_move' ? 'moving_to_order' : 'patrolling_order';
+            setEnemies(prev => prev.map(e => selectedAllyIdsRef.current.includes(e.id) ? { 
+                ...e, 
+                aiState: newAiState, 
+                orderTarget: worldCoords, 
+                combatTargetId: null 
+            } : e));
+        }
+        return;
+    }
+    
+    if (targetId === null) return;
 
     if (action === 'open_station_menu') {
         const station = stationsRef.current.find(s => s.id === targetId);
@@ -639,12 +654,38 @@ export function GameContainer() {
           lastShotTimestamp: 0, lastAutoShotTimestamp: 0,
           aiState: 'guarding', lastKnownPlayerPosition: null, stateChangeTimestamp: 0,
           energy: shipInfo.maxEnergy, maxEnergy: shipInfo.maxEnergy, cargo: 0, lastEnergyUseTimestamp: 0,
-          isAlly: true, combatTargetId: null, lastAttackerId: null, patrolTarget: null,
+          isAlly: true, combatTargetId: null, lastAttackerId: null, patrolTarget: null, patrolCenter: {x: spawnX, y: spawnY},
           cruiseState: 'idle', cruiseAvailableAt: 0,
       };
 
       setEnemies(prev => [...prev, newAlly]);
       toast({ title: "Ship Built!", description: `A new ${shipType} has been constructed at the base.` });
+  }, [toast]);
+  
+  const handleBuildOutpost = useCallback(() => {
+    if (playerDataRef.current.resources.money < OUTPOST_COST) {
+        toast({ title: "Insufficient Funds", description: `You need ${OUTPOST_COST} credits to build an Outpost.`, variant: "destructive" });
+        return;
+    }
+    
+    setPlayerData(prev => ({
+        ...prev,
+        resources: { ...prev.resources, money: prev.resources.money - OUTPOST_COST }
+    }));
+    
+    const newOutpost: OutpostState = {
+        id: getUniqueId(),
+        x: cameraPositionRef.current.x,
+        y: cameraPositionRef.current.y,
+        health: OUTPOST_HEALTH,
+        maxHealth: OUTPOST_HEALTH,
+        ownerId: -1, // -1 for player
+        lastShotTimestamp: 0,
+    };
+    
+    setOutposts(prev => [...prev, newOutpost]);
+    toast({ title: "Outpost Constructed!", description: `A new defensive outpost is online.` });
+
   }, [toast]);
 
 
@@ -797,16 +838,13 @@ export function GameContainer() {
         event.preventDefault();
         setContextMenu(null);
 
-        // Command selected allies in tactical view
         if (isTacticalViewRef.current && selectedAllyIdsRef.current.length > 0) {
-            const selectedIds = selectedAllyIdsRef.current;
-            
             // Check for target enemy
             for (const enemy of enemiesRef.current) {
                 if (enemy.isAlly) continue;
                 const distance = Math.hypot(clickWorldX - enemy.x, clickWorldY - enemy.y);
                 if (distance < ENEMY_CLICK_RADIUS * 2) {
-                    setEnemies(prev => prev.map(e => selectedIds.includes(e.id) ? { ...e, aiState: 'chasing', combatTargetId: enemy.id, orderTarget: null } : e));
+                    setEnemies(prev => prev.map(e => selectedAllyIdsRef.current.includes(e.id) ? { ...e, aiState: 'chasing', combatTargetId: enemy.id, orderTarget: null } : e));
                     return;
                 }
             }
@@ -814,12 +852,12 @@ export function GameContainer() {
             for (const asteroid of asteroidsRef.current) {
                 const distance = Math.hypot(clickWorldX - asteroid.x, clickWorldY - asteroid.y);
                 if (distance < asteroid.size * ASTEROID_COLLISION_RADIUS) {
-                    setEnemies(prev => prev.map(e => (selectedIds.includes(e.id) && e.type === 'Mineur') ? { ...e, aiState: 'mining', targetObjectId: asteroid.id, orderTarget: null } : e));
+                    setEnemies(prev => prev.map(e => (selectedAllyIdsRef.current.includes(e.id) && e.type === 'Mineur') ? { ...e, aiState: 'mining', targetObjectId: asteroid.id, orderTarget: null } : e));
                     return;
                 }
             }
-            // Move order
-            setEnemies(prev => prev.map(e => selectedIds.includes(e.id) ? { ...e, aiState: 'moving_to_order', orderTarget: { x: clickWorldX, y: clickWorldY }, combatTargetId: null } : e));
+            // Open context menu for tactical orders
+            setContextMenu({ x: event.clientX, y: event.clientY, worldX: clickWorldX, worldY: clickWorldY, targetId: null, targetType: 'tactical_space' });
             return;
         }
 
@@ -828,7 +866,7 @@ export function GameContainer() {
           const distance = Math.hypot(clickWorldX - enemy.x, clickWorldY - enemy.y);
           if (distance < ENEMY_CLICK_RADIUS * 2) {
             if (!enemy.isAlly) {
-                setContextMenu({ x: event.clientX, y: event.clientY, targetId: enemy.id, targetType: 'enemy' });
+                setContextMenu({ x: event.clientX, y: event.clientY, worldX: clickWorldX, worldY: clickWorldY, targetId: enemy.id, targetType: 'enemy' });
             }
             return;
           }
@@ -836,14 +874,14 @@ export function GameContainer() {
         for (const asteroid of asteroidsRef.current) {
           const distance = Math.hypot(clickWorldX - asteroid.x, clickWorldY - asteroid.y);
           if (distance < asteroid.size * ASTEROID_COLLISION_RADIUS) { 
-            setContextMenu({ x: event.clientX, y: event.clientY, targetId: asteroid.id, targetType: 'asteroid' });
+            setContextMenu({ x: event.clientX, y: event.clientY, worldX: clickWorldX, worldY: clickWorldY, targetId: asteroid.id, targetType: 'asteroid' });
             return;
           }
         }
         for (const station of stationsRef.current) {
             const distance = Math.hypot(clickWorldX - station.x, clickWorldY - station.y);
             if (distance < STATION_INTERACTION_RADIUS) {
-              setContextMenu({ x: event.clientX, y: event.clientY, targetId: station.id, targetType: 'station' });
+              setContextMenu({ x: event.clientX, y: event.clientY, worldX: clickWorldX, worldY: clickWorldY, targetId: station.id, targetType: 'station' });
               return;
             }
           }
@@ -1352,6 +1390,37 @@ export function GameContainer() {
           })
           .filter(p => p.x > -10 && p.x < MAP_WIDTH + 10 && p.y > -10 && p.y < MAP_HEIGHT + 10)
       );
+      
+      setOutposts(prev => prev.map(outpost => {
+          if (timestamp - outpost.lastShotTimestamp > OUTPOST_FIRE_RATE_MS) {
+              let closestEnemy: EnemyState | null = null;
+              let minDistance = OUTPOST_RANGE;
+
+              for (const enemy of enemiesRef.current) {
+                  if (enemy.isAlly) continue;
+                  const distance = Math.hypot(outpost.x - enemy.x, outpost.y - enemy.y);
+                  if (distance < minDistance) {
+                      minDistance = distance;
+                      closestEnemy = enemy;
+                  }
+              }
+
+              if (closestEnemy) {
+                  const angleToTarget = Math.atan2(closestEnemy.y - outpost.y, closestEnemy.x - outpost.x);
+                  setPlayerProjectiles(proj => [...proj, {
+                      id: getUniqueId(),
+                      x: outpost.x,
+                      y: outpost.y,
+                      rotation: angleToTarget * (180 / Math.PI),
+                      ownerId: outpost.id,
+                      type: 'basic'
+                  }]);
+                  return { ...outpost, lastShotTimestamp: timestamp };
+              }
+          }
+          return outpost;
+      }));
+
 
       const newEnemyProjectiles: ProjectileState[] = [];
       const hitProjectileIds = new Set<number>();
@@ -1585,6 +1654,23 @@ export function GameContainer() {
                     }
                 } else {
                     updatedEnemy.aiState = 'guarding';
+                }
+                break;
+            }
+            case 'patrolling_order': {
+                if (updatedEnemy.orderTarget) {
+                    const distance = Math.hypot(updatedEnemy.orderTarget.x - updatedEnemy.x, updatedEnemy.orderTarget.y - updatedEnemy.y);
+                     if (distance > GUARD_PATROL_RADIUS) {
+                        const angleToTarget = Math.atan2(updatedEnemy.orderTarget.y - updatedEnemy.y, updatedEnemy.orderTarget.x - updatedEnemy.x);
+                        updatedEnemy.vx = Math.cos(angleToTarget) * ENEMY_SPEED * 0.5 * speedMultiplier;
+                        updatedEnemy.vy = Math.sin(angleToTarget) * ENEMY_SPEED * 0.5 * speedMultiplier;
+                    } else {
+                        updatedEnemy.aiState = 'patrolling';
+                        updatedEnemy.patrolCenter = updatedEnemy.orderTarget;
+                        updatedEnemy.orderTarget = null;
+                    }
+                } else {
+                     updatedEnemy.aiState = 'patrolling';
                 }
                 break;
             }
@@ -2101,8 +2187,8 @@ export function GameContainer() {
                   if (overflowOre > 0 || overflowGas > 0) {
                       newDebrisFromOverflow.push({
                           id: getUniqueId(),
-                          x: playerPositionRef.current.x + (Math.random() - 0.5) * 10,
-                          y: playerPositionRef.current.y + (Math.random() - 0.5) * 10,
+                          x: playerPositionRef.current.x + (Math.random() - 0.5) * 50,
+                          y: playerPositionRef.current.y + (Math.random() - 0.5) * 50,
                           resources: { ore: overflowOre, gas: overflowGas, money: 0 }
                       });
                   }
@@ -2168,7 +2254,7 @@ export function GameContainer() {
     }
     
     return () => cancelAnimationFrame(animationFrameId);
-  }, [viewSize, isGameOver, controlScheme, isDocked, applyDamage, handleActionSelect, handleBuyAlly, handleBuyShip, handleBuyUpgrade, handleRepairHull, handleSellResource, resetGame, toast, handleBuildShipFromTactical, handleRespawn]);
+  }, [viewSize, isGameOver, controlScheme, isDocked, applyDamage, handleActionSelect, handleBuyAlly, handleBuyShip, handleBuyUpgrade, handleRepairHull, handleSellResource, resetGame, toast, handleBuildShipFromTactical, handleBuildOutpost, handleRespawn]);
 
   let radarRange = BASE_RADAR_RANGE;
   if (shipMode === 'scan') radarRange = BASE_RADAR_RANGE * 2;
@@ -2297,7 +2383,6 @@ export function GameContainer() {
         />
         {visibleEnemies.map(enemy => {
           const props = {
-            key: enemy.id,
             x: enemy.x,
             y: enemy.y,
             rotation: enemy.rotation,
@@ -2310,13 +2395,13 @@ export function GameContainer() {
           };
           switch (enemy.type) {
             case 'Chasseur':
-              return <EnemyShip {...props} />;
+              return <EnemyShip key={enemy.id} {...props} />;
             case 'Frégate':
-              return <FrigateShip {...props} />;
+              return <FrigateShip key={enemy.id} {...props} />;
             case 'Mineur':
-              return <StaffShip {...props} />;
+              return <StaffShip key={enemy.id} {...props} />;
             case 'Intercepteur':
-              return <InterceptorShip {...props} />;
+              return <InterceptorShip key={enemy.id} {...props} />;
             default:
               return null;
           }
@@ -2346,6 +2431,7 @@ export function GameContainer() {
         isOpen={isTacticalView}
         playerResources={playerData.resources}
         onBuildShip={handleBuildShipFromTactical}
+        onBuildOutpost={handleBuildOutpost}
       />
       {cruiseState === 'cruising' && <CruiseStreaks />}
        {playerData.health < LOW_HEALTH_THRESHOLD * 3 && ( // Adjusted for higher base health
@@ -2406,7 +2492,7 @@ export function GameContainer() {
           x={contextMenu.x}
           y={contextMenu.y}
           targetType={contextMenu.targetType}
-          onAction={(action) => handleActionSelect(action, contextMenu.targetId)}
+          onAction={(action) => handleActionSelect(action, contextMenu.targetId, {x: contextMenu.worldX, y: contextMenu.worldY})}
           onClose={() => setContextMenu(null)}
         />
       )}

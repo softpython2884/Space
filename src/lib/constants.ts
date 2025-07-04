@@ -55,7 +55,9 @@ export const SHIP_DATA: Record<PlayerShipClass, {
 export const STATION_BASE_HEALTH = 45000;
 export const STATION_BASE_SHIELD = 9000;
 export const OUTPOST_COST = 5000;
-
+export const OUTPOST_HEALTH = 2000;
+export const OUTPOST_RANGE = 900;
+export const OUTPOST_FIRE_RATE_MS = 1000;
 
 export const ALLY_COST = 2500;
 
