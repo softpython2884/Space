@@ -173,35 +173,34 @@ const generateInitialEnemies = (playerStation: StationState, enemyStation: Stati
         
         // 3 Miners
         for (let i = 0; i < 3; i++) {
-            fleet.push(createShip('Mineur', stationX + (Math.random() - 0.5) * 400, stationY + 150 + (Math.random() - 0.5) * 400, isAlly, 'mining', { role: 'miner', patrolCenter: { x: stationX, y: stationY } }));
+            fleet.push(createShip('Mineur', stationX + (Math.random() - 0.5) * 400, stationY + 150 + (Math.random() - 0.5) * 400, isAlly, 'patrolling', { role: 'miner', patrolCenter: { x: stationX, y: stationY } }));
         }
 
         // 1 Frigate with 2 Chasseur escorts
-        const frigate = createShip('Frégate', stationX, stationY - 200, isAlly, 'guarding', { patrolCenter: { x: stationX, y: stationY } });
+        const frigate = createShip('Frégate', stationX, stationY - 200, isAlly, 'patrolling', { patrolCenter: { x: stationX, y: stationY } });
         fleet.push(frigate);
         for (let i = 0; i < 2; i++) {
             fleet.push(createShip('Chasseur', frigate.x + (i*100-50), frigate.y + 50, isAlly, 'following', { followTargetId: frigate.id, patrolCenter: { x: stationX, y: stationY } }));
         }
 
         const attackForceCommon = {
-            aiState: 'chasing' as EnemyAiState,
-            combatTargetId: enemyBase.id + 10000, // Target enemy base
+            aiState: 'patrolling' as EnemyAiState,
             role: 'attack' as const,
             patrolCenter: { x: stationX, y: stationY }
         };
         
         // 4 Interceptors
         for (let i = 0; i < 4; i++) {
-            fleet.push(createShip('Intercepteur', stationX + (Math.random() - 0.5) * 300, stationY - 300 + (Math.random() - 0.5) * 100, isAlly, 'chasing', attackForceCommon));
+            fleet.push(createShip('Intercepteur', stationX + (Math.random() - 0.5) * 300, stationY - 300 + (Math.random() - 0.5) * 100, isAlly, 'patrolling', attackForceCommon));
         }
         
         // 7 Chasseurs
         for (let i = 0; i < 7; i++) {
-            fleet.push(createShip('Chasseur', stationX + (Math.random() - 0.5) * 400, stationY - 400 + (Math.random() - 0.5) * 100, isAlly, 'chasing', attackForceCommon));
+            fleet.push(createShip('Chasseur', stationX + (Math.random() - 0.5) * 400, stationY - 400 + (Math.random() - 0.5) * 100, isAlly, 'patrolling', attackForceCommon));
         }
         
         // 1 Destroyer
-        fleet.push(createShip('Destroyer', stationX, stationY - 500, isAlly, 'chasing', attackForceCommon));
+        fleet.push(createShip('Destroyer', stationX, stationY - 500, isAlly, 'patrolling', attackForceCommon));
     };
 
     // Player Fleet
@@ -1275,6 +1274,8 @@ export function GameContainer() {
                     id: getUniqueId(), 
                     x: turretX, 
                     y: turretY, 
+                    startX: turretX,
+                    startY: turretY,
                     rotation: fireRotation, 
                     ownerId: -1, 
                     type: manualTurrets.type 
@@ -1317,6 +1318,8 @@ export function GameContainer() {
                         id: getUniqueId(), 
                         x: turretX,
                         y: turretY,
+                        startX: turretX,
+                        startY: turretY,
                         rotation: fireRotation, 
                         ownerId: -1, 
                         type: autoTurrets.type 
@@ -1500,14 +1503,22 @@ export function GameContainer() {
               const rad = p.rotation * (Math.PI / 180);
               return { ...p, x: p.x + Math.cos(rad) * PROJECTILE_SPEED, y: p.y + Math.sin(rad) * PROJECTILE_SPEED };
           })
-          .filter(p => p.x > -10 && p.x < MAP_WIDTH + 10 && p.y > -10 && p.y < MAP_HEIGHT + 10)
+          .filter(p => {
+              const dist = Math.hypot(p.x - p.startX, p.y - p.startY);
+              if (dist > PROJECTILE_MAX_RANGE) return false;
+              return p.x > -10 && p.x < MAP_WIDTH + 10 && p.y > -10 && p.y < MAP_HEIGHT + 10;
+          })
       );
       setEnemyProjectiles(prev => prev
           .map(p => {
               const rad = p.rotation * (Math.PI / 180);
               return { ...p, x: p.x + Math.cos(rad) * PROJECTILE_SPEED, y: p.y + Math.sin(rad) * PROJECTILE_SPEED };
           })
-          .filter(p => p.x > -10 && p.x < MAP_WIDTH + 10 && p.y > -10 && p.y < MAP_HEIGHT + 10)
+          .filter(p => {
+              const dist = Math.hypot(p.x - p.startX, p.y - p.startY);
+              if (dist > PROJECTILE_MAX_RANGE) return false;
+              return p.x > -10 && p.x < MAP_WIDTH + 10 && p.y > -10 && p.y < MAP_HEIGHT + 10;
+          })
       );
       
       setOutposts(prev => prev.map(outpost => {
@@ -1526,10 +1537,14 @@ export function GameContainer() {
 
               if (closestEnemy) {
                   const angleToTarget = Math.atan2(closestEnemy.y - outpost.y, closestEnemy.x - outpost.x);
+                  const outpostX = outpost.x;
+                  const outpostY = outpost.y;
                   setPlayerProjectiles(proj => [...proj, {
                       id: getUniqueId(),
-                      x: outpost.x,
-                      y: outpost.y,
+                      x: outpostX,
+                      y: outpostY,
+                      startX: outpostX,
+                      startY: outpostY,
                       rotation: angleToTarget * (180 / Math.PI),
                       ownerId: outpost.id,
                       type: 'basic'
@@ -1670,11 +1685,8 @@ export function GameContainer() {
               } else if (updatedEnemy.role === 'attack') { // If attacker and no target, go for base
                   const enemyBase = stationsRef.current.find(s => s.owner !== (updatedEnemy.isAlly ? 'player' : 'enemy'));
                   if (enemyBase) {
-                      const distToBase = Math.hypot(updatedEnemy.x - enemyBase.x, updatedEnemy.y - enemyBase.y);
-                      if (distToBase < STATION_AGGRO_RADIUS) {
-                         updatedEnemy.combatTargetId = enemyBase.id + 10000;
-                         updatedEnemy.aiState = 'chasing';
-                      }
+                     updatedEnemy.combatTargetId = enemyBase.id + 10000;
+                     updatedEnemy.aiState = 'chasing';
                   }
               }
           }
@@ -1897,7 +1909,9 @@ export function GameContainer() {
 
                     if (timestamp - updatedEnemy.lastShotTimestamp > ENEMY_FIRE_RATE_MS && updatedEnemy.energy >= ENEMY_ENERGY_PER_SHOT) {
                         if (enemyShipInfo.weapons.manualTurrets.count > 0) {
-                           newEnemyProjectiles.push({ id: getUniqueId(), x: updatedEnemy.x, y: updatedEnemy.y, rotation: angleToTarget * (180 / Math.PI), ownerId: updatedEnemy.id, type: 'basic' });
+                           const startX = updatedEnemy.x;
+                           const startY = updatedEnemy.y;
+                           newEnemyProjectiles.push({ id: getUniqueId(), x: startX, y: startY, startX, startY, rotation: angleToTarget * (180 / Math.PI), ownerId: updatedEnemy.id, type: 'basic' });
                            updatedEnemy.lastShotTimestamp = timestamp;
                            updatedEnemy.energy -= ENEMY_ENERGY_PER_SHOT;
                            updatedEnemy.lastEnergyUseTimestamp = timestamp;
@@ -2299,19 +2313,6 @@ export function GameContainer() {
             setEnemies(e => [...e, newShip]);
             setEnemyFactionData(d => ({ ...d, shipCounts: { ...d.shipCounts, Chasseur: d.shipCounts.Chasseur + 1 }}));
         }
-
-        // Launch attack
-        const enemyCombatShips = processedEnemies.filter(e => !e.isAlly && e.type !== 'Mineur');
-        const playerStation = stationsRef.current.find(s => s.owner === 'player');
-        if(playerStation && enemyCombatShips.length > 3) {
-             addChatMessage('EnemyComms', `All units, converge on the enemy headquarters!`, 'text-red-400');
-             setEnemies(prev => prev.map(e => {
-                if(!e.isAlly && e.type !== 'Mineur') {
-                    return { ...e, combatTargetId: playerStation.id + 10000, aiState: 'chasing' as EnemyAiState };
-                }
-                return e;
-             }));
-        }
       }
 
       // Game Over check
@@ -2503,6 +2504,7 @@ export function GameContainer() {
         />
         {visibleEnemies.map(enemy => {
           const props = {
+            key: enemy.id,
             x: enemy.x,
             y: enemy.y,
             rotation: enemy.rotation,
@@ -2514,13 +2516,13 @@ export function GameContainer() {
           };
           switch (enemy.type) {
             case 'Chasseur':
-              return <EnemyShip key={enemy.id} {...props} />;
+              return <EnemyShip {...props} />;
             case 'Frégate':
-              return <FrigateShip key={enemy.id} {...props} />;
+              return <FrigateShip {...props} />;
             case 'Mineur':
-              return <StaffShip key={enemy.id} {...props} />;
+              return <StaffShip {...props} />;
             case 'Intercepteur':
-              return <InterceptorShip key={enemy.id} {...props} />;
+              return <InterceptorShip {...props} />;
             default:
               return null;
           }
