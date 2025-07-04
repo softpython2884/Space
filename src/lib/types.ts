@@ -128,6 +128,7 @@ export type AsteroidState = {
 
 export type StationState = {
   id: number;
+  owner: 'player' | 'enemy';
   x: number;
   y: number;
   health: number;
@@ -136,6 +137,13 @@ export type StationState = {
   maxShield: number;
   lastHitTimestamp: number;
 }
+
+export type FactionData = {
+    money: number;
+    ships: number[];
+    shipCounts: Record<BotShipType, number>;
+}
+
 
 export type OutpostState = {
   id: number;

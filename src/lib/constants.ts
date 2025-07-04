@@ -1,4 +1,4 @@
-import type { PlayerData, PlayerUpgrades, PlayerShipClass, WeaponConfig } from "@/lib/types";
+import type { PlayerData, PlayerUpgrades, PlayerShipClass, WeaponConfig, FactionData } from "@/lib/types";
 
 export const INITIAL_PLAYER_UPGRADES: PlayerUpgrades = {
   maxHealth: 0,
@@ -32,6 +32,21 @@ export const INITIAL_PLAYER_DATA: PlayerData = {
   upgrades: INITIAL_PLAYER_UPGRADES,
 };
 
+export const INITIAL_FACTION_DATA: FactionData = {
+    money: 5000,
+    ships: [],
+    shipCounts: {
+        'Chasseur': 0,
+        'Frégate': 0,
+        'Mineur': 0,
+        'Intercepteur': 0,
+        'Destroyer': 0,
+        'Porteur': 0,
+        'Cargo': 0
+    }
+}
+
+
 export const SHIP_DATA: Record<PlayerShipClass, {
     name: PlayerShipClass;
     description: string;
@@ -43,7 +58,7 @@ export const SHIP_DATA: Record<PlayerShipClass, {
     miningBonus?: number;
     weapons: WeaponConfig;
 }> = {
-    'Chasseur': { name: 'Chasseur', description: 'Vaisseau de base polyvalent. 1 tourelle manuelle, améliorable avec 1 tourelle auto.', cost: 1000, baseHealth: 300, baseCargo: 200, maxEnergy: 100, baseEnergyRecharge: 0.1, weapons: { manualTurrets: { count: 1, type: 'basic', offsets: [{x: 0, y: -20}] }, autoTurrets: { count: 0, type: 'basic', offsets: [{x: -15, y: 10}, {x: 15, y: 10}] } } },
+    'Chasseur': { name: 'Chasseur', description: 'Vaisseau de base polyvalent. 1 tourelle manuelle, améliorable avec 1 tourelle auto.', cost: 1000, baseHealth: 300, baseCargo: 200, maxEnergy: 100, baseEnergyRecharge: 0.1, weapons: { manualTurrets: { count: 1, type: 'basic', offsets: [{x: 0, y: -20}] }, autoTurrets: { count: 2, type: 'basic', offsets: [{x: -15, y: 10}, {x: 15, y: 10}] }, beam: { count: 1, type: 'basic', offsets: [{x: 0, y: 0}] } } },
     'Intercepteur': { name: 'Intercepteur', description: 'Très rapide, faible soute. 2 tourelles manuelles, améliorable pour poser des mines.', cost: 1500, baseHealth: 225, baseCargo: 100, maxEnergy: 120, baseEnergyRecharge: 0.15, weapons: { manualTurrets: { count: 2, type: 'basic', offsets: [{x: -15, y: -5}, {x: 15, y: -5}] } } },
     'Frégate': { name: 'Frégate', description: 'Vaisseau de guerre lourd. 1 tourelle lourde manuelle, 2 automatiques, 1 rayon.', cost: 4000, baseHealth: 750, baseCargo: 150, maxEnergy: 250, baseEnergyRecharge: 0.2, weapons: { manualTurrets: { count: 1, type: 'heavy', offsets: [{x: 0, y: -25}] }, beam: { count: 1, type: 'basic', offsets: [{x: 0, y: 10}] }, autoTurrets: { count: 2, type: 'basic', offsets: [{x: -20, y: 20}, {x: 20, y: 20}] } } },
     'Destroyer': { name: 'Destroyer', description: 'Plateforme d\'armes ultime. 2 tourelles manuelles lourdes, 2 auto lourdes, 3 rayons.', cost: 10000, baseHealth: 1200, baseCargo: 250, maxEnergy: 500, baseEnergyRecharge: 0.25, weapons: { manualTurrets: { count: 2, type: 'heavy', offsets: [{x: -15, y: -30}, {x: 15, y: -30}] }, beam: { count: 3, type: 'heavy', offsets: [{x: 0, y: 0}, {x: -25, y: 15}, {x: 25, y: 15}] }, autoTurrets: { count: 2, type: 'heavy', offsets: [{x: -25, y: 30}, {x: 25, y: 30}] } } },
@@ -52,7 +67,7 @@ export const SHIP_DATA: Record<PlayerShipClass, {
     'Mineur': { name: 'Mineur', description: 'Extraction rapide des ressources. 1 tourelle manuelle. Vitesse de minage x1.5.', cost: 2000, baseHealth: 300, baseCargo: 500, maxEnergy: 150, baseEnergyRecharge: 0.08, miningBonus: 1.5, weapons: { manualTurrets: { count: 1, type: 'basic', offsets: [{x: 0, y: -15}] } } },
 };
 
-export const BEAM_INITIAL_ENERGY_COST = 15;
+export const BEAM_INITIAL_ENERGY_COST = 25;
 export const STATION_BASE_HEALTH = 45000;
 export const STATION_BASE_SHIELD = 9000;
 export const OUTPOST_COST = 5000;

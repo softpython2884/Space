@@ -28,6 +28,7 @@ export function TacticalViewOverlay({ isOpen, playerResources, onBuildShip, onBu
                 "absolute inset-0 z-20 pointer-events-none transition-opacity duration-500",
                 isOpen ? "opacity-100" : "opacity-0"
             )}
+            data-ui-element="true" // This is a transparent overlay, but we mark it so clicks don't go through to the game when visible
         >
             {/* Background effects */}
             <div className="absolute inset-0 bg-black/70" />
@@ -61,12 +62,11 @@ export function TacticalViewOverlay({ isOpen, playerResources, onBuildShip, onBu
                         <div>
                             <h4 className="text-lg font-semibold mb-2">Reinforcements</h4>
                             <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
-                                {buildableShips.map(shipType => {
-                                    const shipInfo = SHIP_DATA[shipType];
+                                {(Object.values(SHIP_DATA)).map(shipInfo => {
                                     const cost = shipInfo.cost;
                                     const canAfford = playerResources.money >= cost;
                                     return (
-                                        <Button key={shipType} className="w-full justify-start" disabled={!canAfford} onClick={() => onBuildShip(shipType as BotShipType)}>
+                                        <Button key={shipInfo.name} className="w-full justify-start" disabled={!canAfford} onClick={() => onBuildShip(shipInfo.name as BotShipType)}>
                                             <PlusCircle className="mr-2"/>Build {shipInfo.name} ({cost} C)
                                         </Button>
                                     )
