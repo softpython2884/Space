@@ -59,7 +59,7 @@ const FRIGATE_COLLISION_RADIUS = 30;
 const STAFF_COLLISION_RADIUS = 25;
 const DEBRIS_COLLISION_RADIUS = 20;
 const STATION_COLLISION_RADIUS = 75;
-const ASTEROID_COLLISION_RADIUS = 0.4; // More accurate hitbox, smaller than the visual size
+const ASTEROID_COLLISION_RADIUS = 0.45; // More accurate hitbox, smaller than the visual size
 
 const PLAYER_PROJECTILE_DAMAGE = 10;
 const ENEMY_PROJECTILE_DAMAGE = 5;
@@ -359,7 +359,7 @@ export function GameContainer() {
             return { ...d, energy: Math.max(0, d.energy - energyCost) };
         }
         const maxHealth = UPGRADE_VALUES.maxHealth[d.upgrades.maxHealth];
-        return { ...d, health: Math.max(0, (d.health * 100 / maxHealth) - damage) };
+        return { ...d, health: Math.max(0, (d.health * maxHealth / 100) - damage) };
     });
   };
 
@@ -375,7 +375,14 @@ export function GameContainer() {
         newResources[resource] -= sellAmount;
         newResources.money += sellAmount * price;
 
-        return { ...prev, resources: newResources };
+        return { 
+            ...prev, 
+            resources: newResources,
+            cargo: {
+                ...prev.cargo,
+                current: prev.cargo.current - sellAmount
+            }
+        };
     });
   };
 
@@ -559,7 +566,7 @@ export function GameContainer() {
 
     if (shipMode === 'stealth') newSystems.shields = 'Offline';
     else if (shipMode === 'shield') newSystems.shields = 'Online';
-    else if ((health / maxHealth * 100) < 50) newSystems.shields = 'Damaged';
+    else if ((health * 100 / maxHealth) < 50) newSystems.shields = 'Damaged';
     if (health <= 0) newSystems.shields = 'Offline';
     
     if (energy <= 0) newSystems.power = 'Offline';
@@ -595,73 +602,85 @@ export function GameContainer() {
       
       let actionVelocity: {x: number, y: number} | null = null;
       let isInputDisabled = false;
+      
+      const currentAction = playerActionRef.current;
+      if (currentAction) {
+          isInputDisabled = true;
+          const { type, targetId, startTime, duration } = currentAction;
+          const now = timestamp;
+          const isTimeUp = now - startTime > duration;
+          let isTargetValid = true;
+          let keepSticking = false; // specific for boarding
 
-      if (playerActionRef.current) {
-        isInputDisabled = true;
-        const { type, targetId, startTime, duration } = playerActionRef.current;
-        const now = timestamp;
-        let isActionFinished = false;
-        
-        if (type === 'mining') {
-          const targetAsteroid = asteroidsRef.current.find(a => a.id === targetId);
-          const distanceToTarget = targetAsteroid ? Math.hypot(targetAsteroid.x - playerPositionRef.current.x, targetAsteroid.y - playerPositionRef.current.y) : Infinity;
-          if (!targetAsteroid || distanceToTarget > ACTION_MAX_RANGE) {
-              isActionFinished = true;
-          } else if (now - startTime > duration) {
-            setAsteroids(prev => prev.filter(a => a.id !== targetId));
-            setPlayerData(d => ({ ...d, resources: { ...d.resources, ore: d.resources.ore + Math.floor(Math.random() * 51) + 25 }}));
-            isActionFinished = true;
-          }
-        } else if (type === 'pillaging') {
-            const targetEnemy = enemiesRef.current.find(e => e.id === targetId);
-            const distanceToTarget = targetEnemy ? Math.hypot(targetEnemy.x - playerPositionRef.current.x, targetEnemy.y - playerPositionRef.current.y) : Infinity;
-            if (!targetEnemy || distanceToTarget > ACTION_MAX_RANGE) {
-                isActionFinished = true;
-            } else if (now - startTime > duration) {
-              if (targetEnemy) {
-                setEnemies(prev => prev.map(e => e.id === targetId ? { ...e, health: Math.max(0, e.health - PILLAGE_DAMAGE) } : e));
-                const newDebris: DebrisType = {
-                  id: Date.now(),
-                  x: targetEnemy.x,
-                  y: targetEnemy.y,
-                  resources: {
-                    money: Math.floor(Math.random() * 51),
-                    ore: Math.floor(Math.random() * 11),
-                    gas: Math.floor(Math.random() * 6),
-                  }
-                };
-                setDebris(prev => [...prev, newDebris]);
+          if (type === 'mining') {
+              const targetAsteroid = asteroidsRef.current.find(a => a.id === targetId);
+              const distanceToTarget = targetAsteroid ? Math.hypot(targetAsteroid.x - playerPositionRef.current.x, targetAsteroid.y - playerPositionRef.current.y) : Infinity;
+              isTargetValid = !!targetAsteroid && distanceToTarget <= ACTION_MAX_RANGE;
+
+              if (isTargetValid && isTimeUp) {
+                  const oreGained = Math.floor(Math.random() * 51) + 25;
+                  setPlayerData(d => {
+                      const maxCargo = UPGRADE_VALUES.cargoCapacity[d.upgrades.cargoCapacity];
+                      const availableSpace = maxCargo - d.cargo.current;
+                      const oreToAdd = Math.min(oreGained, availableSpace);
+                      return {
+                          ...d,
+                          resources: { ...d.resources, ore: d.resources.ore + oreToAdd },
+                          cargo: { ...d.cargo, current: d.cargo.current + oreToAdd }
+                      };
+                  });
+                  setAsteroids(prev => prev.filter(a => a.id !== targetId));
               }
-              isActionFinished = true;
-            }
-        } else if (type === 'boarding') {
-            const targetEnemy = enemiesRef.current.find(e => e.id === targetId);
-            const distanceToTarget = targetEnemy ? Math.hypot(targetEnemy.y - playerPositionRef.current.y, targetEnemy.x - playerPositionRef.current.x) : Infinity;
+          } else if (type === 'pillaging') {
+              const targetEnemy = enemiesRef.current.find(e => e.id === targetId);
+              const distanceToTarget = targetEnemy ? Math.hypot(targetEnemy.x - playerPositionRef.current.x, targetEnemy.y - playerPositionRef.current.y) : Infinity;
+              isTargetValid = !!targetEnemy && distanceToTarget <= ACTION_MAX_RANGE;
 
-            if (!targetEnemy || distanceToTarget > ACTION_MAX_RANGE * 1.5) {
-                isActionFinished = true;
-            } else {
-                const stickDistance = PLAYER_COLLISION_RADIUS + ENEMY_COLLISION_RADIUS + 5;
-                if (distanceToTarget > stickDistance) {
-                    const angleToTarget = Math.atan2(targetEnemy.y - playerPositionRef.current.y, targetEnemy.x - playerPositionRef.current.x);
-                    actionVelocity = { x: Math.cos(angleToTarget) * MAX_SPEED * 0.5, y: Math.sin(angleToTarget) * MAX_SPEED * 0.5 };
-                } else {
-                    actionVelocity = { x: targetEnemy.vx, y: targetEnemy.vy };
-                }
+              if (isTargetValid && isTimeUp) {
+                  if (targetEnemy) {
+                      setEnemies(prev => prev.map(e => e.id === targetId ? { ...e, health: Math.max(0, e.health - PILLAGE_DAMAGE) } : e));
+                      const newDebris: DebrisType = {
+                          id: Date.now(),
+                          x: targetEnemy.x,
+                          y: targetEnemy.y,
+                          resources: {
+                              money: Math.floor(Math.random() * 51),
+                              ore: Math.floor(Math.random() * 11),
+                              gas: Math.floor(Math.random() * 6),
+                          }
+                      };
+                      setDebris(prev => [...prev, newDebris]);
+                  }
+              }
+          } else if (type === 'boarding') {
+              const targetEnemy = enemiesRef.current.find(e => e.id === targetId);
+              const distanceToTarget = targetEnemy ? Math.hypot(targetEnemy.y - playerPositionRef.current.y, targetEnemy.x - playerPositionRef.current.x) : Infinity;
+              isTargetValid = !!targetEnemy && distanceToTarget <= ACTION_MAX_RANGE * 1.5;
 
-                if (now - startTime > duration) {
-                    if (Math.random() < BOARDING_SUCCESS_CHANCE) {
-                        setEnemies(prev => prev.map(e => e.id === targetId ? { ...e, isAlly: true, aiState: 'following' } : e));
-                    } else {
-                        applyDamage(BOARDING_FAIL_DAMAGE);
-                    }
-                    isActionFinished = true;
-                }
-            }
-        }
-        if (isActionFinished) {
-            setPlayerAction(null);
-        };
+              if (isTargetValid) {
+                  const stickDistance = PLAYER_COLLISION_RADIUS + ENEMY_COLLISION_RADIUS + 5;
+                  if (distanceToTarget > stickDistance) {
+                      const angleToTarget = Math.atan2(targetEnemy.y - playerPositionRef.current.y, targetEnemy.x - playerPositionRef.current.x);
+                      actionVelocity = { x: Math.cos(angleToTarget) * MAX_SPEED * 0.5, y: Math.sin(angleToTarget) * MAX_SPEED * 0.5 };
+                  } else {
+                      actionVelocity = { x: targetEnemy.vx, y: targetEnemy.vy };
+                  }
+                  keepSticking = true; // Stay in action state until time is up, even if close
+
+                  if (isTimeUp) {
+                      if (Math.random() < BOARDING_SUCCESS_CHANCE) {
+                          setEnemies(prev => prev.map(e => e.id === targetId ? { ...e, isAlly: true, aiState: 'following' } : e));
+                      } else {
+                          applyDamage(BOARDING_FAIL_DAMAGE);
+                      }
+                      keepSticking = false; // Action is done
+                  }
+              }
+          }
+
+          if (!isTargetValid || (isTimeUp && !keepSticking)) {
+              setPlayerAction(null);
+          }
       }
       
       if (cruiseStateRef.current === 'charging') {
@@ -703,10 +722,10 @@ export function GameContainer() {
         setPlayerRotation(aimAngle);
       }
 
-      let accelVec = { x: 0, y: 0 };
+      const accelVec = { x: 0, y: 0 };
       const isMovementDisabled = shipModeRef.current === 'scan' || cruiseStateRef.current === 'charging' || isInputDisabled;
 
-      if (!isMovementDisabled && !actionVelocity) {
+      if (!isMovementDisabled) {
         const rotRad = playerRotationRef.current * (Math.PI / 180);
         if (cruiseStateRef.current === 'cruising') {
           const cruiseRad = playerRotationRef.current * (Math.PI / 180);
@@ -749,15 +768,16 @@ export function GameContainer() {
         }
       }
       
-      let newVx = (velocityRef.current.x + accelVec.x);
-      let newVy = (velocityRef.current.y + accelVec.y);
-
+      let newVx, newVy;
       if (actionVelocity) {
         newVx = actionVelocity.x;
         newVy = actionVelocity.y;
+      } else if (isInputDisabled) {
+        newVx = 0;
+        newVy = 0;
       } else {
-        newVx *= FRICTION;
-        newVy *= FRICTION;
+        newVx = (velocityRef.current.x + accelVec.x) * FRICTION;
+        newVy = (velocityRef.current.y + accelVec.y) * FRICTION;
       }
 
       const calculatedSpeed = Math.hypot(newVx, newVy);
@@ -812,7 +832,7 @@ export function GameContainer() {
       } else if (timestamp - lastEnergyUseTimestamp.current > ENERGY_REGEN_DELAY_MS) {
           setPlayerData(d => ({ ...d, energy: Math.min(100, d.energy + energyRechargeRate) }));
       }
-      if(nanobotRechargeRate > 0) setPlayerData(d => ({...d, health: Math.min(100, d.health + nanobotRechargeRate * 100 / maxHealth)}));
+      if(nanobotRechargeRate > 0) setPlayerData(d => ({...d, health: Math.min(100, (d.health * maxHealth / 100) + nanobotRechargeRate) * 100 / maxHealth}));
       if (isDocked) setPlayerData(d => ({ ...d, health: Math.min(100, d.health + STATION_PLAYER_REGEN_RATE), energy: Math.min(100, d.energy + STATION_PLAYER_REGEN_RATE) }));
       
       setStations(prev => prev.map(station => {
