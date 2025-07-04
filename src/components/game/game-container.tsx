@@ -105,6 +105,7 @@ const GUARD_PATROL_RADIUS = 600;
 const MINER_SIMULATED_MINE_TIME_MS = 8000;
 const MINER_CARGO_PER_TRIP = 20;
 const MINER_AVOIDANCE_RADIUS = 300;
+const AI_SCAVENGE_RADIUS = 500;
 
 
 // Action constants
@@ -128,10 +129,11 @@ const STATION_PLAYER_REGEN_RATE = 0.1;
 const STATION_SHIELD_REGEN_RATE = 0.05;
 const STATION_SHIELD_REGEN_DELAY_MS = 5000;
 
-const getUniqueId = (() => {
-  let nextId = 0;
-  return () => Date.now() + nextId++;
-})();
+let uniqueIdCounter = 0;
+const getUniqueId = () => {
+    uniqueIdCounter += 1;
+    return Date.now() + uniqueIdCounter;
+};
 
 
 type ProjectileState = {
@@ -161,18 +163,18 @@ const generateInitialEnemies = (): EnemyState[] => {
     { id: 1, type: 'chasseur', x: MAP_WIDTH / 2 + 1500, y: MAP_HEIGHT / 2 + 1500, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
     { id: 2, type: 'chasseur', x: MAP_WIDTH / 2 - 1600, y: MAP_HEIGHT / 2 - 1200, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
     { id: 3, type: 'frigate', x: MAP_WIDTH / 2 + 800, y: MAP_HEIGHT / 2 + 1800, vx: 0, vy: 0, health: 300, maxHealth: 300, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 10, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
-    { id: 4, type: 'staff', x: 850, y: 850, vx: 0.5, vy: -0.5, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: 0, maxEnergy: 0, cargo: 20, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
-    { id: 5, type: 'staff', x: 2800, y: 3000, vx: -0.5, vy: 0.5, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: 0, maxEnergy: 0, cargo: 20, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
+    { id: 4, type: 'staff', x: 850, y: 850, vx: 0.5, vy: -0.5, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 20, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
+    { id: 5, type: 'staff', x: 2800, y: 3000, vx: -0.5, vy: 0.5, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 20, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
 
     // Allied Escort
     { id: 6, type: 'frigate', x: stationX - 150, y: stationY, vx: 0, vy: 0, health: 300, maxHealth: 300, lastShotTimestamp: 0, aiState: 'guarding', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'escort', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
-    { id: 7, type: 'interceptor', x: stationX + 150, y: stationY - 100, vx: 0, vy: 0, health: 120, maxHealth: 120, lastShotTimestamp: 0, aiState: 'guarding', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'escort', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
-    { id: 8, type: 'interceptor', x: stationX + 150, y: stationY + 100, vx: 0, vy: 0, health: 120, maxHealth: 120, lastShotTimestamp: 0, aiState: 'guarding', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'escort', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
+    { id: 7, type: 'interceptor', x: stationX + 150, y: stationY - 100, vx: 0, vy: 0, health: 120, maxHealth: 120, lastShotTimestamp: 0, aiState: 'following', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'escort', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null, followTargetId: 6 },
+    { id: 8, type: 'interceptor', x: stationX + 150, y: stationY + 100, vx: 0, vy: 0, health: 120, maxHealth: 120, lastShotTimestamp: 0, aiState: 'following', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'escort', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null, followTargetId: 6 },
 
     // Allied Miners
-    { id: 9, type: 'staff', x: stationX, y: stationY - 150, vx: 0, vy: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: 0, maxEnergy: 0, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'miner', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
-    { id: 10, type: 'staff', x: stationX - 130, y: stationY - 75, vx: 0, vy: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: 0, maxEnergy: 0, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'miner', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
-    { id: 11, type: 'staff', x: stationX + 130, y: stationY + 75, vx: 0, vy: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: 0, maxEnergy: 0, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'miner', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
+    { id: 9, type: 'staff', x: stationX, y: stationY - 150, vx: 0, vy: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'miner', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
+    { id: 10, type: 'staff', x: stationX - 130, y: stationY - 75, vx: 0, vy: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'miner', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
+    { id: 11, type: 'staff', x: stationX + 130, y: stationY + 75, vx: 0, vy: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'miner', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
 ]};
 
 
@@ -459,7 +461,7 @@ export function GameContainer() {
             ...prev, 
             resources: newResources,
             cargo: {
-                current: prev.cargo.current - sellAmount
+                current: Math.max(0, prev.cargo.current - sellAmount)
             }
         };
     });
@@ -929,7 +931,7 @@ export function GameContainer() {
                       if (targetEnemy) {
                           const success = Math.random() < BOARDING_SUCCESS_CHANCE;
                           if (success) {
-                              setEnemies(prev => prev.map(e => e.id === action.targetId ? { ...e, isAlly: true, aiState: 'following' } : e));
+                              setEnemies(prev => prev.map(e => e.id === action.targetId ? { ...e, isAlly: true, aiState: 'following', followTargetId: -1 } : e));
                               setTimeout(() => {
                                 toast({ title: "Boarding Successful!", description: "The enemy ship is now under your control." });
                               }, 0);
@@ -1012,11 +1014,9 @@ export function GameContainer() {
               const distance = Math.hypot(proj.x - updatedEnemy.x, proj.y - updatedEnemy.y);
               if (distance < collisionRadius) {
                   hitPlayerProjectileIds.add(proj.id);
-                  if (!updatedEnemy.isAlly) {
-                    updatedEnemy.health -= PLAYER_PROJECTILE_DAMAGE;
-                    updatedEnemy.lastAttackerId = proj.ownerId;
-                  }
-                  if ((updatedEnemy.aiState === 'patrolling' || updatedEnemy.aiState === 'guarding' || updatedEnemy.aiState === 'mining') && updatedEnemy.type !== 'staff' && !updatedEnemy.isAlly) {
+                  updatedEnemy.health -= PLAYER_PROJECTILE_DAMAGE;
+                  updatedEnemy.lastAttackerId = proj.ownerId;
+                  if (updatedEnemy.aiState === 'patrolling' || updatedEnemy.aiState === 'guarding' || updatedEnemy.aiState === 'mining') {
                     updatedEnemy.aiState = 'chasing';
                     updatedEnemy.stateChangeTimestamp = timestamp;
                     updatedEnemy.lastKnownPlayerPosition = { ...playerPositionRef.current };
@@ -1061,112 +1061,137 @@ export function GameContainer() {
           const aggroRadius = shipModeRef.current === 'stealth' ? STEALTH_AGGRO_RADIUS : ENEMY_AGGRO_RADIUS;
           const canSeePlayer = distanceToPlayer < aggroRadius;
 
-          // 1. Target Acquisition & Group Aggro
-          if (updatedEnemy.type !== 'staff') {
-              const currentTargetEntity = enemiesRef.current.find(e => e.id === updatedEnemy.combatTargetId);
-              let hasValidTarget = currentTargetEntity && currentTargetEntity.health > 0;
-
-              // Group Aggro Logic: If a nearby ally is fighting, join in!
-              if (!hasValidTarget && (updatedEnemy.aiState === 'patrolling' || updatedEnemy.aiState === 'guarding')) {
+          // 1. State Transitions
+          const shouldFlee = (updatedEnemy.health / updatedEnemy.maxHealth) < ENEMY_FLEE_HEALTH_THRESHOLD;
+          if (updatedEnemy.aiState !== 'fleeing' && shouldFlee && updatedEnemy.lastAttackerId !== null) {
+              updatedEnemy.aiState = 'fleeing';
+          } else if (updatedEnemy.aiState === 'fleeing') {
+              const attacker = updatedEnemy.lastAttackerId === -1 
+                  ? playerPositionRef.current 
+                  : enemiesRef.current.find(e => e.id === updatedEnemy.lastAttackerId);
+              if (attacker) {
+                  const distFromAttacker = Math.hypot(updatedEnemy.x - attacker.x, updatedEnemy.y - attacker.y);
+                  if (distFromAttacker > aggroRadius * 1.5) updatedEnemy.aiState = 'patrolling';
+              } else {
+                  updatedEnemy.aiState = 'patrolling';
+              }
+          } else if (updatedEnemy.role === 'miner' && (updatedEnemy.aiState === 'patrolling' || updatedEnemy.aiState === 'mining')) {
+              let fleeFromThreat = false;
+              for (const otherShip of enemiesRef.current) {
+                  if (otherShip.isAlly) continue;
+                  const distToEnemy = Math.hypot(updatedEnemy.x - otherShip.x, updatedEnemy.y - otherShip.y);
+                  if (distToEnemy < MINER_AVOIDANCE_RADIUS * 1.5) {
+                      updatedEnemy.aiState = 'fleeing';
+                      updatedEnemy.lastAttackerId = otherShip.id;
+                      fleeFromThreat = true;
+                      break;
+                  }
+              }
+          } else {
+              // Group Aggro
+              if (updatedEnemy.combatTargetId === null) {
                   for (const otherShip of enemiesRef.current) {
                       if (otherShip.id === updatedEnemy.id || otherShip.isAlly !== updatedEnemy.isAlly) continue;
-                      const distToAlly = Math.hypot(updatedEnemy.x - otherShip.x, updatedEnemy.y - otherShip.y);
-                      if (distToAlly < AI_HELP_RADIUS && otherShip.combatTargetId) {
-                          updatedEnemy.combatTargetId = otherShip.combatTargetId;
-                          hasValidTarget = true;
-                          break;
+                      if (otherShip.combatTargetId !== null && otherShip.aiState === 'chasing') {
+                          const distToAlly = Math.hypot(updatedEnemy.x - otherShip.x, updatedEnemy.y - otherShip.y);
+                          if (distToAlly < AI_HELP_RADIUS) {
+                              updatedEnemy.combatTargetId = otherShip.combatTargetId;
+                              break;
+                          }
                       }
                   }
               }
               
-              if (!hasValidTarget) {
-                  updatedEnemy.combatTargetId = null;
-                  let closestTarget: { id: number; dist: number } | null = null;
+              // Individual Aggro
+              if (updatedEnemy.combatTargetId === null) {
+                  let closestTarget = null;
+                  let minDistance = aggroRadius;
                   
-                  // Check against player
+                  // Target player
                   if (!updatedEnemy.isAlly && canSeePlayer) {
-                      closestTarget = { id: -1, dist: distanceToPlayer };
+                      closestTarget = -1; // -1 for player
+                      minDistance = distanceToPlayer;
                   }
                   
-                  // Check against other faction ships
+                  // Target other ships
                   for (const otherShip of enemiesRef.current) {
-                      if (otherShip.health > 0 && otherShip.isAlly !== updatedEnemy.isAlly) {
+                      if (otherShip.isAlly !== updatedEnemy.isAlly) {
                           const dist = Math.hypot(updatedEnemy.x - otherShip.x, updatedEnemy.y - otherShip.y);
-                          if (dist < aggroRadius && (!closestTarget || dist < closestTarget.dist)) {
-                              closestTarget = { id: otherShip.id, dist };
+                          if (dist < minDistance) {
+                              minDistance = dist;
+                              closestTarget = otherShip.id;
                           }
                       }
                   }
-
-                  if (closestTarget) {
-                      updatedEnemy.combatTargetId = closestTarget.id === -1 ? null : closestTarget.id;
-                  }
+                  updatedEnemy.combatTargetId = closestTarget;
               }
           }
-          
-          const hasCombatTarget = updatedEnemy.combatTargetId !== null || (!updatedEnemy.isAlly && canSeePlayer);
-          const shouldFlee = (updatedEnemy.health / updatedEnemy.maxHealth) < ENEMY_FLEE_HEALTH_THRESHOLD;
 
-          // 2. State Transitions
-          if (updatedEnemy.aiState !== 'fleeing' && shouldFlee) {
-              updatedEnemy.aiState = 'fleeing';
-          } else if (updatedEnemy.aiState === 'fleeing') {
-              const attacker = enemiesRef.current.find(e => e.id === updatedEnemy.lastAttackerId) ?? playerPositionRef.current;
-              const distFromAttacker = Math.hypot(updatedEnemy.x - attacker.x, updatedEnemy.y - attacker.y);
-              if (distFromAttacker > aggroRadius * 1.5) updatedEnemy.aiState = 'patrolling';
-          } else if (updatedEnemy.type !== 'staff' && hasCombatTarget) {
+          if (updatedEnemy.combatTargetId !== null && updatedEnemy.aiState !== 'chasing' && updatedEnemy.aiState !== 'fleeing') {
               updatedEnemy.aiState = 'chasing';
-          } else if (updatedEnemy.aiState === 'chasing' && !hasCombatTarget) {
-              updatedEnemy.aiState = 'patrolling';
+          } else if (updatedEnemy.combatTargetId === null && updatedEnemy.aiState === 'chasing') {
+              updatedEnemy.aiState = 'searching';
+              updatedEnemy.stateChangeTimestamp = timestamp;
           }
-          
-          // 3. Execute State Action
+
+          if (updatedEnemy.aiState === 'patrolling' || updatedEnemy.aiState === 'guarding' || updatedEnemy.aiState === 'following') {
+              let closestDebris = null;
+              let minDebrisDist = AI_SCAVENGE_RADIUS;
+              for(const d of debrisRef.current) {
+                  const dist = Math.hypot(updatedEnemy.x - d.x, updatedEnemy.y - d.y);
+                  if (dist < minDebrisDist) {
+                      minDebrisDist = dist;
+                      closestDebris = d;
+                  }
+              }
+              if (closestDebris) {
+                  updatedEnemy.aiState = 'scavenging';
+                  updatedEnemy.targetObjectId = closestDebris.id;
+              }
+          }
+
+
+          // 2. Execute State Action
           switch(updatedEnemy.aiState) {
             case 'guarding':
             case 'patrolling': {
-                if (hasCombatTarget && updatedEnemy.type !== 'staff') {
-                     updatedEnemy.aiState = 'chasing';
-                     break;
+                const center = updatedEnemy.patrolCenter ?? {x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2};
+                const patrolRadius = updatedEnemy.patrolCenter ? GUARD_PATROL_RADIUS : MAP_WIDTH / 2;
+
+                if (!updatedEnemy.patrolTarget || Math.hypot(updatedEnemy.x - updatedEnemy.patrolTarget.x, updatedEnemy.y - updatedEnemy.patrolTarget.y) < 50) {
+                     if (timestamp - updatedEnemy.stateChangeTimestamp > 5000) { // Wait 5s at point
+                        const randomAngle = Math.random() * 2 * Math.PI;
+                        const randomDist = Math.random() * patrolRadius;
+                        updatedEnemy.patrolTarget = {
+                            x: center.x + Math.cos(randomAngle) * randomDist,
+                            y: center.y + Math.sin(randomAngle) * randomDist,
+                        };
+                        updatedEnemy.stateChangeTimestamp = timestamp;
+                     }
+                } else {
+                    const angleToTarget = Math.atan2(updatedEnemy.patrolTarget.y - updatedEnemy.y, updatedEnemy.patrolTarget.x - updatedEnemy.x);
+                    updatedEnemy.vx = Math.cos(angleToTarget) * ENEMY_SPEED * 0.3;
+                    updatedEnemy.vy = Math.sin(angleToTarget) * ENEMY_SPEED * 0.3;
                 }
-                if (updatedEnemy.role === 'miner') {
-                    if (updatedEnemy.cargo >= MINER_CARGO_PER_TRIP) {
-                        updatedEnemy.aiState = 'returning_to_base';
-                        updatedEnemy.targetObjectId = stationsRef.current[0].id;
-                    } else if (!updatedEnemy.targetObjectId) {
-                        let closestAsteroid: AsteroidState | null = null;
-                        let minDistance = Infinity;
-                        for (const asteroid of asteroidsRef.current) {
-                            if (asteroid.cooldownUntil > timestamp) continue;
-                            const distance = Math.hypot(asteroid.x - updatedEnemy.x, asteroid.y - updatedEnemy.y);
-                            if (distance < minDistance) {
-                                minDistance = distance;
-                                closestAsteroid = asteroid;
-                            }
-                        }
-                        if (closestAsteroid) {
-                            updatedEnemy.aiState = 'mining';
-                            updatedEnemy.targetObjectId = closestAsteroid.id;
-                            updatedEnemy.stateChangeTimestamp = 0;
+                
+                if (updatedEnemy.role === 'miner' && updatedEnemy.cargo >= MINER_CARGO_PER_TRIP) {
+                    updatedEnemy.aiState = 'returning_to_base';
+                    updatedEnemy.targetObjectId = stationsRef.current[0].id;
+                } else if (updatedEnemy.role === 'miner' && !updatedEnemy.targetObjectId) {
+                    let closestAsteroid: AsteroidState | null = null;
+                    let minDistance = Infinity;
+                    for (const asteroid of asteroidsRef.current) {
+                        if (asteroid.cooldownUntil > timestamp) continue;
+                        const distance = Math.hypot(asteroid.x - updatedEnemy.x, asteroid.y - updatedEnemy.y);
+                        if (distance < minDistance) {
+                            minDistance = distance;
+                            closestAsteroid = asteroid;
                         }
                     }
-                } else { // Generic patrol for combat ships
-                    const center = updatedEnemy.patrolCenter ?? {x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2};
-                    const patrolRadius = updatedEnemy.patrolCenter ? GUARD_PATROL_RADIUS : MAP_WIDTH;
-
-                    if (!updatedEnemy.patrolTarget || Math.hypot(updatedEnemy.x - updatedEnemy.patrolTarget.x, updatedEnemy.y - updatedEnemy.patrolTarget.y) < 50) {
-                         if (timestamp - updatedEnemy.stateChangeTimestamp > 5000) { // Wait 5s at point
-                            const randomAngle = Math.random() * 2 * Math.PI;
-                            const randomDist = Math.random() * patrolRadius;
-                            updatedEnemy.patrolTarget = {
-                                x: center.x + Math.cos(randomAngle) * randomDist,
-                                y: center.y + Math.sin(randomAngle) * randomDist,
-                            };
-                         }
-                    } else {
-                        const angleToTarget = Math.atan2(updatedEnemy.patrolTarget.y - updatedEnemy.y, updatedEnemy.patrolTarget.x - updatedEnemy.x);
-                        updatedEnemy.vx = Math.cos(angleToTarget) * ENEMY_SPEED * 0.3;
-                        updatedEnemy.vy = Math.sin(angleToTarget) * ENEMY_SPEED * 0.3;
-                        updatedEnemy.stateChangeTimestamp = timestamp;
+                    if (closestAsteroid) {
+                        updatedEnemy.aiState = 'mining';
+                        updatedEnemy.targetObjectId = closestAsteroid.id;
+                        updatedEnemy.stateChangeTimestamp = 0;
                     }
                 }
                 break;
@@ -1179,15 +1204,14 @@ export function GameContainer() {
                     break;
                 }
 
-                // Avoidance behavior
                 let avoidanceVec = { x: 0, y: 0 };
                 for (const otherShip of enemiesRef.current) {
                     if (otherShip.isAlly) continue;
                     const dist = Math.hypot(updatedEnemy.x - otherShip.x, updatedEnemy.y - otherShip.y);
-                    if (dist < MINER_AVOIDANCE_RADIUS) {
+                    if (dist > 0 && dist < MINER_AVOIDANCE_RADIUS) {
                         const angleAway = Math.atan2(updatedEnemy.y - otherShip.y, updatedEnemy.x - otherShip.x);
-                        avoidanceVec.x += Math.cos(angleAway);
-                        avoidanceVec.y += Math.sin(angleAway);
+                        avoidanceVec.x += Math.cos(angleAway) / dist;
+                        avoidanceVec.y += Math.sin(angleAway) / dist;
                     }
                 }
 
@@ -1216,8 +1240,20 @@ export function GameContainer() {
                 }
                 break;
             }
+            case 'scavenging': {
+                 const targetDebris = debrisRef.current.find(d => d.id === updatedEnemy.targetObjectId);
+                 if (!targetDebris) {
+                     updatedEnemy.aiState = 'patrolling';
+                     updatedEnemy.targetObjectId = null;
+                     break;
+                 }
+                 const angleToDebris = Math.atan2(targetDebris.y - updatedEnemy.y, targetDebris.x - updatedEnemy.x);
+                 updatedEnemy.vx = Math.cos(angleToDebris) * ENEMY_SPEED * 0.5;
+                 updatedEnemy.vy = Math.sin(angleToDebris) * ENEMY_SPEED * 0.5;
+                 break;
+            }
             case 'returning_to_base': {
-                const mainStation = stationsRef.current.find(s => s.id === updatedEnemy.targetObjectId);
+                const mainStation = stationsRef.current.find(s => s.id === 1);
                 if (!mainStation) {
                      updatedEnemy.aiState = 'patrolling';
                      break;
@@ -1228,15 +1264,17 @@ export function GameContainer() {
                     updatedEnemy.vx = Math.cos(angleToStation) * ENEMY_SPEED * 0.8;
                     updatedEnemy.vy = Math.sin(angleToStation) * ENEMY_SPEED * 0.8;
                 } else {
-                    const creditsEarned = updatedEnemy.cargo * RESOURCE_PRICES.ore;
-                    if (creditsEarned > 0) {
-                         setTimeout(() => {
-                            toast({ title: "Miner Drop-off", description: `An allied miner delivered resources, +${creditsEarned} credits.` });
-                        }, 0);
-                        setPlayerData(d => ({
-                            ...d,
-                            resources: { ...d.resources, money: d.resources.money + creditsEarned }
-                        }));
+                    if (updatedEnemy.cargo > 0) {
+                        const creditsEarned = updatedEnemy.cargo * RESOURCE_PRICES.ore;
+                        if (creditsEarned > 0) {
+                            setTimeout(() => {
+                                toast({ title: "Miner Drop-off", description: `An allied miner delivered resources, +${creditsEarned} credits.` });
+                            }, 0);
+                            setPlayerData(d => ({
+                                ...d,
+                                resources: { ...d.resources, money: d.resources.money + creditsEarned }
+                            }));
+                        }
                     }
                     updatedEnemy.cargo = 0;
                     updatedEnemy.aiState = 'patrolling';
@@ -1245,15 +1283,14 @@ export function GameContainer() {
                 break;
             }
             case 'chasing': {
-                const targetShip = updatedEnemy.combatTargetId !== null 
-                    ? enemiesRef.current.find(e => e.id === updatedEnemy.combatTargetId)
-                    : null;
-                const chaseTarget = targetShip ?? playerPositionRef.current;
+                const targetShip = updatedEnemy.combatTargetId === -1 
+                    ? { x: playerPositionRef.current.x, y: playerPositionRef.current.y, isAlly: false }
+                    : enemiesRef.current.find(e => e.id === updatedEnemy.combatTargetId);
 
-                if (chaseTarget) {
-                    updatedEnemy.lastKnownPlayerPosition = { x: chaseTarget.x, y: chaseTarget.y };
-                    const distanceToTarget = Math.hypot(chaseTarget.x - updatedEnemy.x, chaseTarget.y - updatedEnemy.y);
-                    const angleToTarget = Math.atan2(chaseTarget.y - updatedEnemy.y, chaseTarget.x - updatedEnemy.x);
+                if (targetShip) {
+                    updatedEnemy.lastKnownPlayerPosition = { x: targetShip.x, y: targetShip.y };
+                    const distanceToTarget = Math.hypot(targetShip.x - updatedEnemy.x, targetShip.y - updatedEnemy.y);
+                    const angleToTarget = Math.atan2(targetShip.y - updatedEnemy.y, targetShip.x - updatedEnemy.x);
                     
                     const preferredDistance = ENEMY_AGGRO_RADIUS * 0.6;
                     if (distanceToTarget > preferredDistance) {
@@ -1272,15 +1309,13 @@ export function GameContainer() {
                     }
                 } else {
                     updatedEnemy.aiState = 'searching';
+                    updatedEnemy.combatTargetId = null;
                     updatedEnemy.stateChangeTimestamp = timestamp;
                 }
                 break;
             }
             case 'searching':
-                if (hasCombatTarget) {
-                    updatedEnemy.aiState = 'chasing';
-                    updatedEnemy.stateChangeTimestamp = timestamp;
-                } else if (timestamp - updatedEnemy.stateChangeTimestamp > ENEMY_SEARCH_DURATION_MS) {
+                if (timestamp - updatedEnemy.stateChangeTimestamp > ENEMY_SEARCH_DURATION_MS) {
                     updatedEnemy.aiState = 'patrolling';
                     updatedEnemy.lastKnownPlayerPosition = null;
                     updatedEnemy.stateChangeTimestamp = timestamp;
@@ -1296,27 +1331,54 @@ export function GameContainer() {
                     }
                 }
                 break;
-            case 'fleeing':
-                const attacker = updatedEnemy.lastAttackerId !== null ? (enemiesRef.current.find(e => e.id === updatedEnemy.lastAttackerId) ?? playerPositionRef.current) : playerPositionRef.current;
-                const angleFromAttacker = Math.atan2(updatedEnemy.y - attacker.y, updatedEnemy.x - attacker.x);
-                updatedEnemy.vx = Math.cos(angleFromAttacker) * ENEMY_SPEED * 1.2;
-                updatedEnemy.vy = Math.sin(angleFromAttacker) * ENEMY_SPEED * 1.2;
-                break;
-            case 'following':
-                 if (hasCombatTarget) {
-                     updatedEnemy.aiState = 'chasing';
-                     break;
-                 }
-                const followDistance = 150;
-                if (distanceToPlayer > followDistance) {
-                    const angleToPlayer = Math.atan2(playerPositionRef.current.y - updatedEnemy.y, playerPositionRef.current.x - updatedEnemy.x);
-                    updatedEnemy.vx = Math.cos(angleToPlayer) * ENEMY_SPEED * 0.8;
-                    updatedEnemy.vy = Math.sin(angleToPlayer) * ENEMY_SPEED * 0.8;
+            case 'fleeing': {
+                const attacker = updatedEnemy.lastAttackerId === -1 
+                    ? playerPositionRef.current
+                    : enemiesRef.current.find(e => e.id === updatedEnemy.lastAttackerId);
+                if (attacker) {
+                    const angleFromAttacker = Math.atan2(updatedEnemy.y - attacker.y, updatedEnemy.x - attacker.x);
+                    updatedEnemy.vx = Math.cos(angleFromAttacker) * ENEMY_SPEED * 1.2;
+                    updatedEnemy.vy = Math.sin(angleFromAttacker) * ENEMY_SPEED * 1.2;
                 } else {
-                    updatedEnemy.vx *= FRICTION;
-                    updatedEnemy.vy *= FRICTION;
+                    updatedEnemy.aiState = 'patrolling';
                 }
                 break;
+            }
+            case 'following': {
+                const targetToFollow = updatedEnemy.followTargetId === -1 
+                    ? playerPositionRef.current
+                    : enemiesRef.current.find(e => e.id === updatedEnemy.followTargetId);
+                
+                if (targetToFollow) {
+                    const followDistance = 150;
+                    const distanceToTarget = Math.hypot(targetToFollow.x - updatedEnemy.x, targetToFollow.y - updatedEnemy.y);
+
+                    if (distanceToTarget > followDistance) {
+                        const angleToTarget = Math.atan2(targetToFollow.y - updatedEnemy.y, targetToFollow.x - updatedEnemy.x);
+                        updatedEnemy.vx = Math.cos(angleToTarget) * ENEMY_SPEED * 0.8;
+                        updatedEnemy.vy = Math.sin(angleToTarget) * ENEMY_SPEED * 0.8;
+                    } else if (!updatedEnemy.patrolTarget || Math.hypot(updatedEnemy.x - updatedEnemy.patrolTarget.x, updatedEnemy.y - updatedEnemy.patrolTarget.y) < 50) {
+                        if (timestamp - updatedEnemy.stateChangeTimestamp > 3000) {
+                            const randomAngle = Math.random() * 2 * Math.PI;
+                            const randomDist = (Math.random() * 0.5 + 0.5) * followDistance; // 50% to 100% of follow distance
+                            updatedEnemy.patrolTarget = {
+                                x: targetToFollow.x + Math.cos(randomAngle) * randomDist,
+                                y: targetToFollow.y + Math.sin(randomAngle) * randomDist,
+                            };
+                            updatedEnemy.stateChangeTimestamp = timestamp;
+                        }
+                    } else {
+                        const angleToPatrolPoint = Math.atan2(updatedEnemy.patrolTarget.y - updatedEnemy.y, updatedEnemy.patrolTarget.x - updatedEnemy.x);
+                        updatedEnemy.vx = Math.cos(angleToPatrolPoint) * ENEMY_SPEED * 0.5;
+                        updatedEnemy.vy = Math.sin(angleToPatrolPoint) * ENEMY_SPEED * 0.5;
+                    }
+                } else {
+                    // Target to follow is gone, revert to patrolling
+                    updatedEnemy.aiState = 'patrolling';
+                    updatedEnemy.followTargetId = null;
+                }
+                break;
+            }
           }
           
           updatedEnemy.x += updatedEnemy.vx;
@@ -1407,7 +1469,6 @@ export function GameContainer() {
       
       const collectedDebrisIds = new Set<number>();
       const currentDebris = [...debrisRef.current, ...newDebrisFromKills];
-      let collectedResources: Resources = { money: 0, ore: 0, gas: 0 };
       let newDebrisFromOverflow: DebrisType[] = [];
 
       for (const d of currentDebris) {
@@ -1415,7 +1476,7 @@ export function GameContainer() {
           
           const playerDist = Math.hypot(d.x - playerPositionRef.current.x, d.y - playerPositionRef.current.y);
           if (playerDist < DEBRIS_COLLISION_RADIUS + PLAYER_COLLISION_RADIUS) {
-              const { ship, upgrades, cargo, resources } = playerDataRef.current;
+              const { ship, upgrades, cargo } = playerDataRef.current;
               const maxCargo = SHIP_DATA[ship.class].baseCargo + UPGRADE_VALUES.cargoCapacity[upgrades.cargoCapacity];
               const availableSpace = maxCargo - cargo.current;
               
@@ -1426,7 +1487,7 @@ export function GameContainer() {
               let oreToAdd = debrisResources.ore || 0;
               let gasToAdd = debrisResources.gas || 0;
 
-              if (cargoInDebris > availableSpace) {
+              if (cargoInDebris > availableSpace && cargoInDebris > 0) {
                   const overflowRatio = availableSpace / cargoInDebris;
                   oreToAdd = Math.floor(oreToAdd * overflowRatio);
                   gasToAdd = Math.floor(gasToAdd * overflowRatio);
@@ -1439,7 +1500,7 @@ export function GameContainer() {
                           id: getUniqueId(),
                           x: playerPositionRef.current.x + (Math.random() - 0.5) * 10,
                           y: playerPositionRef.current.y + (Math.random() - 0.5) * 10,
-                          resources: { ore: overflowOre, gas: overflowGas }
+                          resources: { ore: overflowOre, gas: overflowGas, money: 0 }
                       });
                   }
               }
@@ -1467,7 +1528,8 @@ export function GameContainer() {
               else if (processedEnemies[i].type === 'staff') enemyRadius = STAFF_COLLISION_RADIUS;
               const enemyDist = Math.hypot(d.x - processedEnemies[i].x, d.y - processedEnemies[i].y);
               if (enemyDist < DEBRIS_COLLISION_RADIUS + enemyRadius) {
-                  processedEnemies[i] = { ...processedEnemies[i], cargo: processedEnemies[i].cargo + (d.resources.ore || 0) + (d.resources.gas || 0) };
+                  const cargoToAdd = (d.resources.ore || 0) + (d.resources.gas || 0);
+                  processedEnemies[i] = { ...processedEnemies[i], cargo: processedEnemies[i].cargo + cargoToAdd };
                   collectedDebrisIds.add(d.id);
                   break; 
               }
