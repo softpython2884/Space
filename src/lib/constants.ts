@@ -15,8 +15,6 @@ export const INITIAL_PLAYER_DATA: PlayerData = {
     role: "Combat",
     size: "S",
     upgrades: {
-      "Laser Cannon": 2,
-      "Deflector Shields": 1,
     },
   },
   health: 900,
@@ -80,16 +78,16 @@ export const ALLY_COST = 2500;
 
 export const AI_HELP_RADIUS = 700;
 
-export const MAP_WIDTH = 8000;
-export const MAP_HEIGHT = 8000;
+export const MAP_WIDTH = 12000;
+export const MAP_HEIGHT = 12000;
 
 export const ZONES: Zone[] = [
-    { id: 'start_field', type: 'asteroid_field', x: 1500, y: MAP_HEIGHT / 2, radius: 800, density: 0.4 },
-    { id: 'enemy_field', type: 'asteroid_field', x: MAP_WIDTH - 1500, y: MAP_HEIGHT / 2, radius: 800, density: 0.4 },
-    { id: 'center_field_1', type: 'asteroid_field', x: MAP_WIDTH / 2 - 1000, y: MAP_HEIGHT / 2 - 1000, radius: 1200, density: 0.8 },
-    { id: 'center_field_2', type: 'asteroid_field', x: MAP_WIDTH / 2 + 1000, y: MAP_HEIGHT / 2 + 1000, radius: 1200, density: 0.8 },
-    { id: 'top_nebula', type: 'nebula', x: MAP_WIDTH / 2, y: 1500, radius: 1000, color: 'hsl(260 80% 50% / 0.15)' },
-    { id: 'bottom_vortex', type: 'vortex', x: MAP_WIDTH / 2, y: MAP_HEIGHT - 1500, radius: 800 },
+    { id: 'start_field', type: 'asteroid_field', x: 2500, y: MAP_HEIGHT / 2, radius: 1200, density: 0.4 },
+    { id: 'enemy_field', type: 'asteroid_field', x: MAP_WIDTH - 2500, y: MAP_HEIGHT / 2, radius: 1200, density: 0.4 },
+    { id: 'center_field_1', type: 'asteroid_field', x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 - 2000, radius: 1500, density: 0.8 },
+    { id: 'center_field_2', type: 'asteroid_field', x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 + 2000, radius: 1500, density: 0.8 },
+    { id: 'top_nebula', type: 'nebula', x: MAP_WIDTH / 2, y: 2000, radius: 1500, color: 'hsl(260 80% 50% / 0.15)' },
+    { id: 'bottom_vortex', type: 'vortex', x: MAP_WIDTH / 2, y: MAP_HEIGHT - 2000, radius: 1000 },
 ];
 
 export const UPGRADE_COSTS = {
