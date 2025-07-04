@@ -142,7 +142,6 @@ type ProjectileState = {
   y: number;
   rotation: number;
   ownerId: number;
-  isAlly: boolean;
 };
 
 export type EnemyState = EnemyStateType;
@@ -864,7 +863,7 @@ export function GameContainer() {
         let fireRotation = aimAngle;
         if (isTargeting) fireRotation = Math.atan2(currentTarget.y - playerPositionRef.current.y, currentTarget.x - playerPositionRef.current.x) * (180 / Math.PI);
 
-        setPlayerProjectiles(prev => [...prev, { id: getUniqueId(), x: playerPositionRef.current.x, y: playerPositionRef.current.y, rotation: fireRotation, ownerId: -1, isAlly: true }]);
+        setPlayerProjectiles(prev => [...prev, { id: getUniqueId(), x: playerPositionRef.current.x, y: playerPositionRef.current.y, rotation: fireRotation, ownerId: -1 }]);
         setPlayerData(d => ({ ...d, energy: d.energy - ENERGY_PER_SHOT }));
       }
       
@@ -999,8 +998,7 @@ export function GameContainer() {
       );
 
       const newEnemyProjectiles: ProjectileState[] = [];
-      const hitPlayerProjectileIds = new Set<number>();
-      const hitEnemyProjectileIds = new Set<number>();
+      const hitProjectileIds = new Set<number>();
       const newDebrisFromKills: DebrisType[] = [];
 
       let processedEnemies = enemiesRef.current.map(enemy => {
@@ -1014,12 +1012,12 @@ export function GameContainer() {
           if (enemy.type === 'frigate') collisionRadius = FRIGATE_COLLISION_RADIUS;
           else if (enemy.type === 'staff') collisionRadius = STAFF_COLLISION_RADIUS;
 
-          for (const proj of playerProjectilesRef.current) {
-              if (hitPlayerProjectileIds.has(proj.id)) continue;
+          for (const proj of [...playerProjectilesRef.current, ...enemyProjectilesRef.current]) {
+              if (hitProjectileIds.has(proj.id) || proj.ownerId === updatedEnemy.id) continue;
               const distance = Math.hypot(proj.x - updatedEnemy.x, proj.y - updatedEnemy.y);
               if (distance < collisionRadius) {
-                  hitPlayerProjectileIds.add(proj.id);
-                  updatedEnemy.health -= PLAYER_PROJECTILE_DAMAGE;
+                  hitProjectileIds.add(proj.id);
+                  updatedEnemy.health -= PLAYER_PROJECTILE_DAMAGE; // Using a single damage value for now
                   updatedEnemy.lastAttackerId = proj.ownerId;
                   if (updatedEnemy.aiState === 'patrolling' || updatedEnemy.aiState === 'guarding' || updatedEnemy.aiState === 'mining') {
                     updatedEnemy.aiState = 'chasing';
@@ -1029,20 +1027,6 @@ export function GameContainer() {
               }
           }
 
-          for (const proj of enemyProjectilesRef.current) {
-            if (hitEnemyProjectileIds.has(proj.id)) continue;
-            
-            const owner = enemiesRef.current.find(e => e.id === proj.ownerId);
-            if (!owner || owner.id === updatedEnemy.id) continue;
-            if (owner.isAlly === updatedEnemy.isAlly) continue;
-
-            const distance = Math.hypot(proj.x - updatedEnemy.x, proj.y - updatedEnemy.y);
-            if (distance < collisionRadius) {
-                hitEnemyProjectileIds.add(proj.id);
-                updatedEnemy.health -= ENEMY_PROJECTILE_DAMAGE;
-                updatedEnemy.lastAttackerId = proj.ownerId;
-            }
-          }
 
           if (updatedEnemy.health <= 0) {
               if (!updatedEnemy.isAlly) {
@@ -1307,7 +1291,7 @@ export function GameContainer() {
                     }
 
                     if (timestamp - updatedEnemy.lastShotTimestamp > ENEMY_FIRE_RATE_MS && updatedEnemy.energy >= ENEMY_ENERGY_PER_SHOT) {
-                        newEnemyProjectiles.push({ id: getUniqueId(), x: updatedEnemy.x, y: updatedEnemy.y, rotation: angleToTarget * (180 / Math.PI), ownerId: updatedEnemy.id, isAlly: updatedEnemy.isAlly || false });
+                        newEnemyProjectiles.push({ id: getUniqueId(), x: updatedEnemy.x, y: updatedEnemy.y, rotation: angleToTarget * (180 / Math.PI), ownerId: updatedEnemy.id });
                         updatedEnemy.lastShotTimestamp = timestamp;
                         updatedEnemy.energy -= ENEMY_ENERGY_PER_SHOT;
                         updatedEnemy.lastEnergyUseTimestamp = timestamp;
@@ -1401,7 +1385,6 @@ export function GameContainer() {
       }).filter(Boolean) as EnemyState[];
 
       if (newEnemyProjectiles.length > 0) setEnemyProjectiles(prev => [...prev, ...newEnemyProjectiles]);
-      if (hitPlayerProjectileIds.size > 0) setPlayerProjectiles(prev => prev.filter(p => !hitPlayerProjectileIds.has(p.id)));
       
       let playerVelocityUpdate = { ...velocityRef.current };
       if (timestamp - lastCollisionTimestamp > 500) {
@@ -1462,19 +1445,20 @@ export function GameContainer() {
       }
       
       let damageToPlayerFromProjectiles = 0;
-      for (const proj of enemyProjectilesRef.current) {
-        if (hitEnemyProjectileIds.has(proj.id)) continue;
-
-        if (proj.isAlly) continue;
+      for (const proj of [...playerProjectilesRef.current, ...enemyProjectilesRef.current]) {
+        if (hitProjectileIds.has(proj.id) || proj.ownerId === -1) continue;
 
         const distance = Math.hypot(proj.x - playerPositionRef.current.x, proj.y - playerPositionRef.current.y);
         if (distance < PLAYER_COLLISION_RADIUS) {
-          hitEnemyProjectileIds.add(proj.id);
+          hitProjectileIds.add(proj.id);
           damageToPlayerFromProjectiles += ENEMY_PROJECTILE_DAMAGE;
         }
       }
       if (damageToPlayerFromProjectiles > 0) applyDamage(damageToPlayerFromProjectiles);
-      if (hitEnemyProjectileIds.size > 0) setEnemyProjectiles(prev => prev.filter(p => !hitEnemyProjectileIds.has(p.id)));
+      if (hitProjectileIds.size > 0) {
+        setPlayerProjectiles(prev => prev.filter(p => !hitProjectileIds.has(p.id)));
+        setEnemyProjectiles(prev => prev.filter(p => !hitProjectileIds.has(p.id)));
+      }
       
       const collectedDebrisIds = new Set<number>();
       const currentDebris = [...debrisRef.current, ...newDebrisFromKills];
@@ -1605,7 +1589,6 @@ export function GameContainer() {
 
   const renderEnemy = (enemy: EnemyState) => {
     const props = {
-      key: enemy.id,
       x: enemy.x,
       y: enemy.y,
       rotation: enemy.rotation,
@@ -1616,13 +1599,13 @@ export function GameContainer() {
     };
     switch (enemy.type) {
       case 'chasseur':
-        return <EnemyShip {...props} />;
+        return <EnemyShip key={enemy.id} {...props} />;
       case 'frigate':
-        return <FrigateShip {...props} />;
+        return <FrigateShip key={enemy.id} {...props} />;
       case 'staff':
-        return <StaffShip {...props} />;
+        return <StaffShip key={enemy.id} {...props} />;
       case 'interceptor':
-        return <InterceptorShip {...props} />;
+        return <InterceptorShip key={enemy.id} {...props} />;
       default:
         return null;
     }
@@ -1648,10 +1631,10 @@ export function GameContainer() {
       }}>
         <GameMap width={MAP_WIDTH} height={MAP_HEIGHT} />
         {playerProjectiles.map((p) => (
-          <Projectile key={p.id} x={p.x} y={p.y} rotation={p.rotation} isAlly={p.isAlly} />
+          <Projectile key={p.id} x={p.x} y={p.y} rotation={p.rotation} />
         ))}
         {enemyProjectiles.map((p) => (
-          <Projectile key={p.id} x={p.x} y={p.y} rotation={p.rotation} isAlly={p.isAlly} />
+          <Projectile key={p.id} x={p.x} y={p.y} rotation={p.rotation} />
         ))}
         <PlayerShip 
           x={playerPosition.x}
