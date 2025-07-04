@@ -8,12 +8,6 @@ interface AsteroidProps {
   id: number;
 }
 
-// Simple seeded random number generator to ensure consistent shapes between server/client
-const seededRandom = (seed: number) => {
-    const x = Math.sin(seed) * 10000;
-    return x - Math.floor(x);
-};
-
 export function Asteroid({ x, y, size, rotation, id }: AsteroidProps) {
     return (
         <div
@@ -33,8 +27,6 @@ export function Asteroid({ x, y, size, rotation, id }: AsteroidProps) {
                 >
                     <g>
                         <circle cx="0" cy="0" r={size / 2.2} strokeWidth="2" />
-                        <circle cx={seededRandom(id * 1) * (size/6)} cy={seededRandom(id * 2) * (size/6)} r={size/4} className="fill-gray-500/50 stroke-gray-400/50" strokeWidth="1"/>
-                        <circle cx={seededRandom(id * 3) * (size/5) - (size/10)} cy={seededRandom(id * 4) * (size/5) - (size/10)} r={size/5} className="fill-gray-600/50" />
                     </g>
                 </svg>
             </div>

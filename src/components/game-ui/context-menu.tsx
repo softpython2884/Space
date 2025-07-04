@@ -53,10 +53,6 @@ export function ContextMenu({ x, y, targetType, onAction, onClose }: ContextMenu
                   )}
                   {targetType === 'ally' && (
                       <>
-                          <Button variant="ghost" className="justify-start" onClick={() => handleActionClick('follow_target')}>
-                              <UserPlus className="mr-2 h-4 w-4" />
-                              Follow Ally
-                          </Button>
                           <Button variant="ghost" className="justify-start" onClick={() => handleActionClick('follow_player')}>
                               <Ship className="mr-2 h-4 w-4" />
                               Follow Me

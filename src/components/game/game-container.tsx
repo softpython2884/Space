@@ -26,7 +26,7 @@ import { ShipModeSelector } from '@/components/game-ui/ship-mode-selector';
 import { CruiseStreaks } from '@/components/game/cruise-streaks';
 import { ElectricCloud } from './electric-cloud';
 import { Vortex } from './vortex';
-import { INITIAL_PLAYER_DATA, INITIAL_FACTION_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS, BEAM_INITIAL_ENERGY_COST, BEAM_DAMAGE_PER_FRAME, MAP_WIDTH, MAP_HEIGHT, ZONES } from '@/lib/constants';
+import { INITIAL_PLAYER_DATA, INITIAL_FACTION_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS, BEAM_DAMAGE_PER_FRAME, BEAM_INITIAL_ENERGY_COST, MAP_WIDTH, MAP_HEIGHT, ZONES } from '@/lib/constants';
 import type { ControlScheme, PlayerData, FactionData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState, AsteroidState, StationState, BotShipType, ContextMenuTargetType, PlayerActionType, Resources, PlayerUpgrades, PlayerShipClass, BeamState, ProjectileState, PlayerAction, EnemyAiState, OutpostState, ChatMessage, Zone, StellarBaseData } from '@/lib/types';
 import { ClientOnly } from '@/components/client-only';
 import { GameOverOverlay } from './game-over-overlay';
@@ -173,34 +173,34 @@ const generateInitialEnemies = (playerStation: StationState, enemyStation: Stati
         
         // 3 Miners
         for (let i = 0; i < 3; i++) {
-            fleet.push(createShip('Mineur', stationX + (Math.random() - 0.5) * 400, stationY + 150 + (Math.random() - 0.5) * 400, isAlly, 'guarding', { role: 'miner', patrolCenter: { x: stationX, y: stationY } }));
+            fleet.push(createShip('Mineur', stationX + (Math.random() - 0.5) * 400, stationY + 150 + (Math.random() - 0.5) * 400, isAlly, 'patrolling', { role: 'miner', patrolCenter: { x: stationX, y: stationY } }));
         }
 
         // 1 Frigate with 2 Chasseur escorts (defense)
-        const frigate = createShip('Frégate', stationX, stationY - 200, isAlly, 'guarding', { patrolCenter: { x: stationX, y: stationY } });
+        const frigate = createShip('Frégate', stationX, stationY - 200, isAlly, 'patrolling', { patrolCenter: { x: stationX, y: stationY } });
         fleet.push(frigate);
         for (let i = 0; i < 2; i++) {
             fleet.push(createShip('Chasseur', frigate.x + (i*100-50), frigate.y + 50, isAlly, 'following', { followTargetId: frigate.id, patrolCenter: { x: stationX, y: stationY } }));
         }
 
         const attackForceCommon = {
-            aiState: 'guarding' as EnemyAiState, // Start by guarding
+            aiState: 'patrolling' as EnemyAiState, // Start by patrolling
             role: 'attack' as const,
             patrolCenter: { x: stationX, y: stationY }
         };
         
         // 4 Interceptors
         for (let i = 0; i < 4; i++) {
-            fleet.push(createShip('Intercepteur', stationX + (Math.random() - 0.5) * 300, stationY - 300 + (Math.random() - 0.5) * 100, isAlly, 'guarding', attackForceCommon));
+            fleet.push(createShip('Intercepteur', stationX + (Math.random() - 0.5) * 300, stationY - 300 + (Math.random() - 0.5) * 100, isAlly, 'patrolling', attackForceCommon));
         }
         
         // 7 Chasseurs
         for (let i = 0; i < 7; i++) {
-            fleet.push(createShip('Chasseur', stationX + (Math.random() - 0.5) * 400, stationY - 400 + (Math.random() - 0.5) * 100, isAlly, 'guarding', attackForceCommon));
+            fleet.push(createShip('Chasseur', stationX + (Math.random() - 0.5) * 400, stationY - 400 + (Math.random() - 0.5) * 100, isAlly, 'patrolling', attackForceCommon));
         }
         
         // 1 Destroyer
-        fleet.push(createShip('Destroyer', stationX, stationY - 500, isAlly, 'guarding', attackForceCommon));
+        fleet.push(createShip('Destroyer', stationX, stationY - 500, isAlly, 'patrolling', attackForceCommon));
     };
 
     // Player Fleet
@@ -284,6 +284,7 @@ export function GameContainer() {
   const [activeWeapons, setActiveWeapons] = useState({ manualTurrets: true, autoTurrets: true, beam: true });
 
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [cheats, setCheats] = useState({ infiniteHealth: false, infiniteEnergy: false, infiniteMoney: false });
 
 
   // Tactical View State
@@ -507,9 +508,13 @@ export function GameContainer() {
     }
 
     if (action === 'follow_player') {
-        if (selectedAllyIdsRef.current.length > 0) {
-            addChatMessage('Commander', `Units ${selectedAllyIdsRef.current.join(', ')} ordered to follow me.`, 'text-cyan-400');
-            setEnemies(prev => prev.map(e => selectedAllyIdsRef.current.includes(e.id) ? { 
+        let idsToOrder = selectedAllyIdsRef.current;
+        if(idsToOrder.length === 0 && targetId) {
+            idsToOrder = [targetId]
+        }
+        if (idsToOrder.length > 0) {
+            addChatMessage('Commander', `Units ${idsToOrder.join(', ')} ordered to follow me.`, 'text-cyan-400');
+            setEnemies(prev => prev.map(e => idsToOrder.includes(e.id) ? { 
                 ...e, 
                 aiState: 'following', 
                 followTargetId: -1, // -1 is player
@@ -612,6 +617,7 @@ export function GameContainer() {
   }, [addChatMessage]);
 
   const applyDamage = useCallback((damage: number) => {
+    if (cheats.infiniteHealth) return;
     setPlayerData(d => {
         if (d.health <= 0) return d;
         const energyCost = damage * SHIELD_DAMAGE_TO_ENERGY_COST;
@@ -621,7 +627,7 @@ export function GameContainer() {
         }
         return { ...d, health: Math.max(0, d.health - damage) };
     });
-  }, []);
+  }, [cheats.infiniteHealth]);
 
   const handleModeChange = (newMode: ShipMode) => {
     const now = Date.now();
@@ -921,7 +927,7 @@ export function GameContainer() {
                 const distance = Math.hypot(clickWorldX - enemy.x, clickWorldY - enemy.y);
                  if (distance < ENEMY_CLICK_RADIUS) {
                     clickedOnAlly = true;
-                    if (event.shiftKey) {
+                    if (event.ctrlKey) {
                         setSelectedAllyIds(prev => prev.includes(enemy.id) ? prev.filter(id => id !== enemy.id) : [...prev, enemy.id]);
                     } else {
                         setSelectedAllyIds([enemy.id]);
@@ -930,7 +936,7 @@ export function GameContainer() {
                  }
             }
             if (!clickedOnAlly) {
-                if (!event.shiftKey) setSelectedAllyIds([]);
+                if (!event.ctrlKey) setSelectedAllyIds([]);
             }
             return;
         }
@@ -984,6 +990,7 @@ export function GameContainer() {
 
         if (isTacticalViewRef.current && selectedAllyIdsRef.current.length > 0) {
             let targetFound = false;
+            // Order to attack enemy
             for (const enemy of enemiesRef.current) {
                 if (enemy.isAlly) continue;
                 const distance = Math.hypot(clickWorldX - enemy.x, clickWorldY - enemy.y);
@@ -1010,7 +1017,6 @@ export function GameContainer() {
         for (const enemy of enemiesRef.current) {
           const distance = Math.hypot(clickWorldX - enemy.x, clickWorldY - enemy.y);
           if (distance < ENEMY_CLICK_RADIUS * 2) {
-            if (enemy.isAlly) return;
             setContextMenu({ x: event.clientX, y: event.clientY, worldX: clickWorldX, worldY: clickWorldY, targetId: enemy.id, targetType: enemy.isAlly ? 'ally' : 'enemy' });
             return;
           }
@@ -1291,7 +1297,7 @@ export function GameContainer() {
       if (activeWeapons.manualTurrets && playerShipConfig.weapons.manualTurrets && (currentTarget || isShootingManually) && canShoot && timestamp - lastFiredTimestamp.current > FIRE_RATE_MS) {
         const { manualTurrets } = playerShipConfig.weapons;
 
-        if (manualTurrets.count > 0 && playerDataRef.current.energy >= ENERGY_PER_SHOT * manualTurrets.count) {
+        if (playerDataRef.current.energy >= ENERGY_PER_SHOT * manualTurrets.count) {
             lastFiredTimestamp.current = timestamp;
             lastEnergyUseTimestamp.current = timestamp;
             setPlayerData(d => ({ ...d, energy: d.energy - (ENERGY_PER_SHOT * manualTurrets.count) }));
@@ -1534,23 +1540,37 @@ export function GameContainer() {
       const nanobotRechargeRate = UPGRADE_VALUES.nanobots[upgrades.nanobots];
       const ENERGY_REGEN_DELAY_MS = 2000;
 
-      if (antimatterRechargeRate > 0) {
-        setPlayerData(d => ({ ...d, energy: Math.min(maxEnergy, d.energy + antimatterRechargeRate) }));
+      if (cheats.infiniteMoney) {
+          setPlayerData(d => ({ ...d, resources: {...d.resources, money: 999999 } }));
+      }
+      
+      if (cheats.infiniteEnergy) {
+          setPlayerData(d => ({ ...d, energy: maxEnergy }));
+      } else {
+        if (antimatterRechargeRate > 0) {
+          setPlayerData(d => ({ ...d, energy: Math.min(maxEnergy, d.energy + antimatterRechargeRate) }));
+        }
+
+        if (shipModeRef.current === 'shield') {
+            setPlayerData(d => {
+                if (d.energy > 0) {
+                    lastEnergyUseTimestamp.current = timestamp;
+                    return { ...d, energy: Math.max(0, d.energy - SHIELD_ENERGY_DRAIN_RATE) };
+                }
+                return d;
+            });
+            if (playerDataRef.current.energy <= 0) setShipMode('normal');
+        } else if (timestamp - lastEnergyUseTimestamp.current > ENERGY_REGEN_DELAY_MS) {
+            setPlayerData(d => ({ ...d, energy: Math.min(maxEnergy, d.energy + baseEnergyRechargeRate) }));
+        }
       }
 
-      if (shipModeRef.current === 'shield') {
-          setPlayerData(d => {
-              if (d.energy > 0) {
-                  lastEnergyUseTimestamp.current = timestamp;
-                  return { ...d, energy: Math.max(0, d.energy - SHIELD_ENERGY_DRAIN_RATE) };
-              }
-              return d;
-          });
-          if (playerDataRef.current.energy <= 0) setShipMode('normal');
-      } else if (timestamp - lastEnergyUseTimestamp.current > ENERGY_REGEN_DELAY_MS) {
-          setPlayerData(d => ({ ...d, energy: Math.min(maxEnergy, d.energy + baseEnergyRechargeRate) }));
+      if (cheats.infiniteHealth) {
+          setPlayerData(d => ({ ...d, health: maxHealth }));
+      } else {
+         if(nanobotRechargeRate > 0) setPlayerData(d => ({...d, health: Math.min(maxHealth, d.health + nanobotRechargeRate)}));
       }
-      if(nanobotRechargeRate > 0) setPlayerData(d => ({...d, health: Math.min(maxHealth, d.health + nanobotRechargeRate)}));
+
       if (isDocked) {
           setPlayerData(d => ({ ...d, health: Math.min(maxHealth, d.health + STATION_PLAYER_REGEN_RATE), energy: Math.min(maxEnergy, d.energy + STATION_PLAYER_REGEN_RATE * 5) }));
       }
@@ -1732,17 +1752,25 @@ export function GameContainer() {
           
           
           // 1. Target Acquisition
-          if (updatedEnemy.aiState !== 'chasing' && updatedEnemy.aiState !== 'fleeing' && updatedEnemy.aiState !== 'recharging' && updatedEnemy.aiState !== 'moving_to_order') {
+          if (['patrolling', 'guarding', 'holding_position'].includes(updatedEnemy.aiState)) {
+              const visionSources = updatedEnemy.isAlly 
+                ? [playerPositionRef.current, ...enemiesRef.current.filter(e => e.isAlly)] 
+                : [...enemiesRef.current.filter(e => !e.isAlly)];
+              
               const potentialTargets = [
                   {id: -1, x: playerPositionRef.current.x, y: playerPositionRef.current.y, isAlly: true, health: playerDataRef.current.health}, 
                   ...enemiesRef.current
               ].filter(e => e.isAlly !== updatedEnemy.isAlly && e.health > 0);
               
               let closestTarget: {id: number, dist: number} | null = null;
+
               for (const pTarget of potentialTargets) {
-                  const dist = Math.hypot(updatedEnemy.x - pTarget.x, updatedEnemy.y - pTarget.y);
-                  if (dist < ENEMY_AGGRO_RADIUS && (!closestTarget || dist < closestTarget.dist)) {
-                      closestTarget = { id: pTarget.id, dist };
+                  const canSee = visionSources.some(source => Math.hypot(source.x - pTarget.x, source.y - pTarget.y) < ENEMY_AGGRO_RADIUS);
+                  if (canSee) {
+                     const dist = Math.hypot(updatedEnemy.x - pTarget.x, updatedEnemy.y - pTarget.y);
+                     if (!closestTarget || dist < closestTarget.dist) {
+                         closestTarget = { id: pTarget.id, dist };
+                     }
                   }
               }
 
@@ -1773,6 +1801,9 @@ export function GameContainer() {
           let finalAccel = { x: accelFromSeparation.x, y: accelFromSeparation.y };
 
           switch(updatedEnemy.aiState) {
+            case 'holding_position':
+                // Do nothing, just wait for orders or threats.
+                break;
             case 'moving_to_order': {
                 if (updatedEnemy.orderTarget) {
                     const distance = Math.hypot(updatedEnemy.orderTarget.x - updatedEnemy.x, updatedEnemy.orderTarget.y - updatedEnemy.y);
@@ -1781,7 +1812,7 @@ export function GameContainer() {
                         finalAccel.x += Math.cos(angleToTarget) * ACCELERATION * 0.8 * speedMultiplier;
                         finalAccel.y += Math.sin(angleToTarget) * ACCELERATION * 0.8 * speedMultiplier;
                     } else {
-                        updatedEnemy.aiState = 'guarding';
+                        updatedEnemy.aiState = 'holding_position';
                         updatedEnemy.orderTarget = null;
                     }
                 } else {
@@ -2101,6 +2132,7 @@ export function GameContainer() {
 
                 let closestTarget: {id: number, dist: number} | null = null;
                 for (const pTarget of potentialTargets) {
+                    if (pTarget.id === updatedEnemy.id) continue;
                     const dist = Math.hypot(updatedEnemy.x - pTarget.x, updatedEnemy.y - pTarget.y);
                     if (dist < ENEMY_AGGRO_RADIUS) {
                         updatedEnemy.aiState = 'chasing';
@@ -2506,97 +2538,76 @@ export function GameContainer() {
     }
     
     return () => cancelAnimationFrame(animationFrameId);
-  }, [viewSize, isGameOver, controlScheme, isDocked, applyDamage, handleActionSelect, handleBuyAlly, handleBuyShip, handleBuyUpgrade, handleRepairHull, handleSellResource, resetGame, addChatMessage, handleBuildShipFromTactical, handleBuildOutpost, handleRespawn, zones]);
+  }, [viewSize, isGameOver, controlScheme, isDocked, applyDamage, handleActionSelect, handleBuyAlly, handleBuyShip, handleBuyUpgrade, handleRepairHull, handleSellResource, resetGame, addChatMessage, handleBuildShipFromTactical, handleBuildOutpost, handleRespawn, zones, cheats]);
 
-  let radarRange = BASE_RADAR_RANGE;
-  if (shipMode === 'scan') radarRange = BASE_RADAR_RANGE * 2;
-  else if (shipMode === 'stealth') radarRange = STEALTH_DETECTION_RADIUS_NEAR;
+  const allies = React.useMemo(() => enemies.filter(e => e.isAlly), [enemies]);
+
+  const isEntityVisible = useCallback((entity: { x: number; y: number }) => {
+    // Player vision
+    if (Math.hypot(entity.x - playerPosition.x, entity.y - playerPosition.y) < radarRange) {
+        return true;
+    }
+    // Ally vision
+    for (const ally of allies) {
+        if (Math.hypot(entity.x - ally.x, entity.y - ally.y) < BASE_RADAR_RANGE) {
+            return true;
+        }
+    }
+    // Outpost vision
+    for (const outpost of outposts) {
+        if (Math.hypot(entity.x - outpost.x, entity.y - outpost.y) < OUTPOST_RANGE) {
+            return true;
+        }
+    }
+    return false;
+  }, [playerPosition.x, playerPosition.y, radarRange, allies, outposts]);
+
 
   const visibleEnemies = React.useMemo(() => 
     enemies.filter(e => {
-        if(isTacticalView) {
-            if (e.isAlly) return true;
-            if (Math.hypot(e.x - playerPosition.x, e.y - playerPosition.y) < radarRange) return true;
-            for (const ally of enemies.filter(a => a.isAlly)) {
-                if (Math.hypot(e.x - ally.x, e.y - ally.y) < BASE_RADAR_RANGE) return true;
-            }
-            for (const outpost of outposts) {
-                if (Math.hypot(e.x - outpost.x, e.y - outpost.y) < OUTPOST_RANGE) return true;
-            }
-            return false;
+        if (e.isAlly) return true; // Always show allies
+        if (isTacticalView) {
+            return isEntityVisible(e);
         }
-
         const distanceToPlayer = Math.hypot(e.x - playerPosition.x, e.y - playerPosition.y);
-        if (distanceToPlayer < radarRange) return true;
-
-        return false;
+        return distanceToPlayer < radarRange;
     }),
-    [enemies, playerPosition.x, playerPosition.y, radarRange, isTacticalView, outposts]
+    [enemies, playerPosition.x, playerPosition.y, radarRange, isTacticalView, isEntityVisible]
   );
   
   const visibleAsteroids = React.useMemo(() =>
     asteroids.filter(a => {
-        if(isTacticalView) {
-             if (Math.hypot(a.x - playerPosition.x, a.y - playerPosition.y) < radarRange) return true;
-            for (const ally of enemies.filter(e => e.isAlly)) {
-                if (Math.hypot(a.x - ally.x, a.y - ally.y) < BASE_RADAR_RANGE) return true;
-            }
-             for (const outpost of outposts) {
-                if (Math.hypot(a.x - outpost.x, a.y - outpost.y) < OUTPOST_RANGE) return true;
-            }
-            return false;
-        }
+        if(isTacticalView) return isEntityVisible(a);
         const distance = Math.hypot(a.x - cameraPosition.x, a.y - cameraPosition.y);
-        return shipMode === 'stealth' ? distance < STEALTH_AGGRO_RADIUS * 1.5 : distance < radarRange * 1.5;
+        return distance < radarRange * 1.5;
     }),
-    [asteroids, cameraPosition.x, cameraPosition.y, radarRange, shipMode, isTacticalView, enemies, playerPosition, outposts]
+    [asteroids, cameraPosition.x, cameraPosition.y, radarRange, isTacticalView, isEntityVisible]
   );
 
   const visibleStations = React.useMemo(() =>
     stations.filter(s => {
         if(s.owner === 'player') return true;
-        if(isTacticalView) {
-            if (Math.hypot(s.x - playerPosition.x, s.y - playerPosition.y) < radarRange * 1.5) return true;
-            for (const ally of enemies.filter(e => e.isAlly)) {
-                if (Math.hypot(s.x - ally.x, s.y - ally.y) < BASE_RADAR_RANGE * 1.5) return true;
-            }
-             for (const outpost of outposts) {
-                if (Math.hypot(s.x - outpost.x, s.y - outpost.y) < OUTPOST_RANGE * 1.5) return true;
-            }
-            return false;
-        }
+        if(isTacticalView) return isEntityVisible(s);
         const distance = Math.hypot(s.x - cameraPosition.x, s.y - cameraPosition.y);
-        return shipMode === 'stealth' ? distance < STEALTH_AGGRO_RADIUS * 1.5 : distance < radarRange * 1.5;
+        return distance < radarRange * 1.5;
     }),
-    [stations, cameraPosition.x, cameraPosition.y, radarRange, shipMode, isTacticalView, enemies, playerPosition, outposts]
+    [stations, cameraPosition.x, cameraPosition.y, radarRange, isTacticalView, isEntityVisible]
   );
 
   const visibleOutposts = React.useMemo(() =>
     outposts.filter(o => {
-        if(isTacticalView) {
-            if (Math.hypot(o.x - playerPosition.x, o.y - playerPosition.y) < radarRange) return true;
-            for (const ally of enemies.filter(e => e.isAlly)) {
-                if (Math.hypot(o.x - ally.x, o.y - ally.y) < BASE_RADAR_RANGE) return true;
-            }
-            return false;
-        }
+        if(isTacticalView) return isEntityVisible(o);
         return Math.hypot(o.x - cameraPosition.x, o.y - cameraPosition.y) < radarRange * 1.5
     }),
-    [outposts, cameraPosition.x, cameraPosition.y, radarRange, isTacticalView, enemies, playerPosition]
+    [outposts, cameraPosition.x, cameraPosition.y, radarRange, isTacticalView, isEntityVisible]
   );
   
   const visibleDebris = React.useMemo(() =>
     debris.filter(d => {
-        if(isTacticalView) {
-            if (Math.hypot(d.x - playerPosition.x, d.y - playerPosition.y) < radarRange) return true;
-            for (const ally of enemies.filter(e => e.isAlly)) {
-                if (Math.hypot(d.x - ally.x, d.y - ally.y) < BASE_RADAR_RANGE) return true;
-            }
-            return false;
-        }
+        if(isTacticalView) return isEntityVisible(d);
         return Math.hypot(d.x - cameraPosition.x, d.y - cameraPosition.y) < radarRange * 1.5
     }),
-    [debris, cameraPosition.x, cameraPosition.y, radarRange, isTacticalView, enemies, playerPosition]
+    [debris, cameraPosition.x, cameraPosition.y, radarRange, isTacticalView, isEntityVisible]
   );
   
   const containerClass = cn(
@@ -2697,7 +2708,6 @@ export function GameContainer() {
         />
         {visibleEnemies.map(enemy => {
           const props = {
-            key: enemy.id,
             x: enemy.x,
             y: enemy.y,
             rotation: enemy.rotation,
@@ -2709,13 +2719,13 @@ export function GameContainer() {
           };
           switch (enemy.type) {
             case 'Chasseur':
-              return <EnemyShip {...props} />;
+              return <EnemyShip key={enemy.id} {...props} />;
             case 'Frégate':
-              return <FrigateShip {...props} />;
+              return <FrigateShip key={enemy.id} {...props} />;
             case 'Mineur':
-              return <StaffShip {...props} />;
+              return <StaffShip key={enemy.id} {...props} />;
             case 'Intercepteur':
-              return <InterceptorShip {...props} />;
+              return <InterceptorShip key={enemy.id} {...props} />;
             default:
               return null;
           }
@@ -2818,6 +2828,8 @@ export function GameContainer() {
         onOpenChange={setIsSettingsOpen}
         controlScheme={controlScheme}
         onControlSchemeChange={setControlScheme}
+        cheats={cheats}
+        onCheatsChange={setCheats}
       />
       
       <StationMenu
