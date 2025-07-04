@@ -169,6 +169,7 @@ export function GameContainer() {
   const [cruiseState, setCruiseState] = useState<'idle' | 'charging' | 'cruising'>('idle');
   const [cooldowns, setCooldowns] = useState({ modeChange: 1, cruise: 1 });
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; targetId: number; targetType: ContextMenuTargetType; } | null>(null);
+  const [miningIntent, setMiningIntent] = useState<number | null>(null);
   
   const [miningMenuState, setMiningMenuState] = useState<{ isOpen: boolean, targetId: number | null }>({ isOpen: false, targetId: null });
   const [pillageMenuState, setPillageMenuState] = useState<{ isOpen: boolean, targetId: number | null }>({ isOpen: false, targetId: null });
@@ -234,6 +235,9 @@ export function GameContainer() {
 
   const zoomRef = useRef(zoom);
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+
+  const miningIntentRef = useRef(miningIntent);
+  useEffect(() => { miningIntentRef.current = miningIntent; }, [miningIntent]);
   
   const isPlayerActionInProgress = miningMenuState.isOpen || pillageMenuState.isOpen || boardingMenuState.isOpen;
 
@@ -279,38 +283,32 @@ export function GameContainer() {
     const targetEnemy = enemiesRef.current.find(e => e.id === targetId);
     const targetAsteroid = asteroidsRef.current.find(a => a.id === targetId);
     
-    if (!targetEnemy && !targetAsteroid) return;
+    if (action === 'mining' && targetAsteroid) {
+        const angleFromCenter = Math.atan2(
+            playerPositionRef.current.y - targetAsteroid.y,
+            playerPositionRef.current.x - targetAsteroid.x
+        );
+        const distanceToDock = (targetAsteroid.size * ASTEROID_COLLISION_RADIUS) + PLAYER_COLLISION_RADIUS + 50;
+        
+        const targetX = targetAsteroid.x + Math.cos(angleFromCenter) * distanceToDock;
+        const targetY = targetAsteroid.y + Math.sin(angleFromCenter) * distanceToDock;
 
-    const targetPosition = targetEnemy || targetAsteroid;
-    const distance = Math.hypot(targetPosition.x - playerPositionRef.current.x, targetPosition.y - playerPositionRef.current.y);
-    
-    let isOutOfRange = false;
-
-    if (targetAsteroid) {
-        // For asteroids, you need to be very close. Check distance from player edge to asteroid edge.
-        const miningRange = 50; 
-        const distanceToEdge = distance - (targetAsteroid.size / 2) - PLAYER_COLLISION_RADIUS;
-        if (distanceToEdge > miningRange) {
-            isOutOfRange = true;
-        }
-    } else if (targetEnemy) {
-        // For enemies, check center-to-center distance to the generic action range.
-        if (distance > ACTION_MAX_RANGE) {
-            isOutOfRange = true;
-        }
+        setAutoMoveTarget({ x: targetX, y: targetY });
+        setMiningIntent(targetId);
+        return;
     }
 
-    if (isOutOfRange) {
-        toast({ title: "Target out of range", description: "Get closer to perform this action.", variant: 'destructive' });
+    if (targetEnemy) {
+      const distance = Math.hypot(targetEnemy.x - playerPositionRef.current.x, targetEnemy.y - playerPositionRef.current.y);
+      if (distance > ACTION_MAX_RANGE) {
+          toast({ title: "Target out of range", description: "Get closer to perform this action.", variant: 'destructive' });
+          return;
+      }
+    } else {
         return;
     }
 
     switch(action) {
-      case 'mining':
-        if (targetAsteroid) {
-            setMiningMenuState({ isOpen: true, targetId });
-        }
-        break;
       case 'pillaging':
         if (targetEnemy) {
             setPillageMenuState({ isOpen: true, targetId });
@@ -722,6 +720,10 @@ export function GameContainer() {
               setPlayerRotation(angleToTarget * (180 / Math.PI));
           } else {
               setAutoMoveTarget(null);
+              if (miningIntentRef.current) {
+                  setMiningMenuState({ isOpen: true, targetId: miningIntentRef.current });
+                  setMiningIntent(null);
+              }
           }
         } else {
             const cos = Math.cos(rotRad);
