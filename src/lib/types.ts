@@ -147,3 +147,19 @@ export interface BeamState {
   sourceOffsetX?: number;
   sourceOffsetY?: number;
 }
+
+export type ProjectileState = {
+  id: number;
+  x: number;
+  y: number;
+  rotation: number;
+  ownerId: number;
+  type: 'basic' | 'heavy';
+};
+
+export type PlayerAction = {
+  type: PlayerActionType;
+  targetId: number;
+  startTime: number;
+  duration: number;
+};
