@@ -10,9 +10,10 @@ interface InterceptorShipProps {
   maxHealth: number;
   isTargeted: boolean;
   isAlly?: boolean;
+  isSelected?: boolean;
 }
 
-export function InterceptorShip({ x, y, rotation, health, maxHealth, isTargeted, isAlly }: InterceptorShipProps) {
+export function InterceptorShip({ x, y, rotation, health, maxHealth, isTargeted, isAlly, isSelected }: InterceptorShipProps) {
     const healthPercentage = (health / maxHealth) * 100;
 
   return (
@@ -47,6 +48,10 @@ export function InterceptorShip({ x, y, rotation, health, maxHealth, isTargeted,
           {/* Targeting indicator */}
           {isTargeted && (
               <div className={`absolute -inset-2 border-2 ${isAlly ? 'border-blue-500' : 'border-red-500'} rounded-full animate-pulse`} />
+          )}
+          {/* Selection indicator */}
+          {isSelected && (
+              <div className="absolute -inset-3 border-2 border-green-500 rounded-full" />
           )}
         </div>
       </div>
