@@ -177,6 +177,8 @@ export type ProjectileState = {
   id: number;
   x: number;
   y: number;
+  startX: number;
+  startY: number;
   rotation: number;
   ownerId: number;
   type: 'basic' | 'heavy';
