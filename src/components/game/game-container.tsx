@@ -177,30 +177,30 @@ const generateInitialEnemies = (playerStation: StationState, enemyStation: Stati
         }
 
         // 1 Frigate with 2 Chasseur escorts (defense)
-        const frigate = createShip('Frégate', stationX, stationY - 200, isAlly, 'patrolling', { patrolCenter: { x: stationX, y: stationY } });
+        const frigate = createShip('Frégate', stationX, stationY - 200, isAlly, 'guarding', { patrolCenter: { x: stationX, y: stationY } });
         fleet.push(frigate);
         for (let i = 0; i < 2; i++) {
             fleet.push(createShip('Chasseur', frigate.x + (i*100-50), frigate.y + 50, isAlly, 'following', { followTargetId: frigate.id, patrolCenter: { x: stationX, y: stationY } }));
         }
 
         const attackForceCommon = {
-            aiState: 'patrolling' as EnemyAiState, // Start by patrolling
+            aiState: 'guarding' as EnemyAiState, // Start by guarding
             role: 'attack' as const,
             patrolCenter: { x: stationX, y: stationY }
         };
         
         // 4 Interceptors
         for (let i = 0; i < 4; i++) {
-            fleet.push(createShip('Intercepteur', stationX + (Math.random() - 0.5) * 300, stationY - 300 + (Math.random() - 0.5) * 100, isAlly, 'patrolling', attackForceCommon));
+            fleet.push(createShip('Intercepteur', stationX + (Math.random() - 0.5) * 300, stationY - 300 + (Math.random() - 0.5) * 100, isAlly, 'guarding', attackForceCommon));
         }
         
         // 7 Chasseurs
         for (let i = 0; i < 7; i++) {
-            fleet.push(createShip('Chasseur', stationX + (Math.random() - 0.5) * 400, stationY - 400 + (Math.random() - 0.5) * 100, isAlly, 'patrolling', attackForceCommon));
+            fleet.push(createShip('Chasseur', stationX + (Math.random() - 0.5) * 400, stationY - 400 + (Math.random() - 0.5) * 100, isAlly, 'guarding', attackForceCommon));
         }
         
         // 1 Destroyer
-        fleet.push(createShip('Destroyer', stationX, stationY - 500, isAlly, 'patrolling', attackForceCommon));
+        fleet.push(createShip('Destroyer', stationX, stationY - 500, isAlly, 'guarding', attackForceCommon));
     };
 
     // Player Fleet
@@ -290,6 +290,7 @@ export function GameContainer() {
   const [cameraPosition, setCameraPosition] = useState({ x: 2500, y: MAP_HEIGHT / 2 + 200 });
   const [isTacticalView, setIsTacticalView] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
+  const [selectionBox, setSelectionBox] = useState<{ startX: number; startY: number; endX: number; endY: number; } | null>(null);
   const lastMousePosForPan = useRef({ x: 0, y: 0 });
   const lastAiFactionUpdate = useRef(0);
   const lastAttackWaveTimestamp = useRef(0);
@@ -390,7 +391,7 @@ export function GameContainer() {
 
   const addChatMessage = useCallback((sender: string, text: string, color?: string) => {
     setChatMessages(prev => {
-        const newId = uniqueIdCounterRef.current++;
+        const newId = getUniqueId();
         const newMessage: ChatMessage = { id: newId, sender, text, color };
         const newMessages = [...prev, newMessage];
         if (newMessages.length > 50) {
@@ -879,7 +880,9 @@ export function GameContainer() {
     const handleKeyUp = (event: KeyboardEvent) => keysPressed.current.delete(event.key.toLowerCase());
     
     const handleMouseMove = (event: MouseEvent) => {
+        const oldMousePos = { ...mousePosition.current };
         mousePosition.current = { x: event.clientX, y: event.clientY };
+
         if (isPanningRef.current) {
             const dx = event.clientX - lastMousePosForPan.current.x;
             const dy = event.clientY - lastMousePosForPan.current.y;
@@ -890,6 +893,11 @@ export function GameContainer() {
             }));
 
             lastMousePosForPan.current = { x: event.clientX, y: event.clientY };
+        } else if (isLeftMouseDown.current && isTacticalViewRef.current) {
+            setSelectionBox(prev => {
+                if (!prev) return null;
+                return { ...prev, endX: event.clientX, endY: event.clientY };
+            });
         }
     };
 
@@ -903,6 +911,7 @@ export function GameContainer() {
       const clickWorldY = cameraPositionRef.current.y + (mousePosition.current.y - viewSize.height / 2) / zoomRef.current;
       
       if (event.button === 0) { // Left Click
+        isLeftMouseDown.current = true;
         setContextMenu(null);
         if (isTacticalViewRef.current) {
             let clickedOnAlly = false;
@@ -921,32 +930,43 @@ export function GameContainer() {
             }
             if (!clickedOnAlly) {
                  if (!event.shiftKey) setSelectedAllyIds([]);
-                 setIsPanning(true);
-                 lastMousePosForPan.current = { x: event.clientX, y: event.clientY };
+                 // Start drawing selection box instead of panning immediately
+                 setSelectionBox({ startX: event.clientX, startY: event.clientY, endX: event.clientX, endY: event.clientY });
             }
             return;
         }
 
-        isLeftMouseDown.current = true;
         setSelectedAllyIds([]);
 
-        let clickedOnShip = false;
+        let clickedOnSomething = false;
+        // Check for enemy ship click
         for (const enemy of enemiesRef.current) {
             const distance = Math.hypot(clickWorldX - enemy.x, clickWorldY - enemy.y);
-            if (distance < ENEMY_CLICK_RADIUS) {
-                clickedOnShip = true;
-                if (!enemy.isAlly) {
-                    setTargetId(enemy.id === targetIdRef.current ? null : enemy.id);
-                } else {
-                    setTargetId(null);
-                }
+            if (distance < ENEMY_CLICK_RADIUS && !enemy.isAlly) {
+                setTargetId(enemy.id === targetIdRef.current ? null : enemy.id);
                 setAutoMoveTarget(null);
+                clickedOnSomething = true;
                 break;
             }
         }
-        if (!clickedOnShip) {
+        // Check for enemy station click if no ship was clicked
+        if (!clickedOnSomething) {
+            for (const station of stationsRef.current) {
+                if (station.owner === 'enemy') {
+                    const distance = Math.hypot(clickWorldX - station.x, clickWorldY - station.y);
+                    if (distance < STATION_CLICK_RADIUS) {
+                        setTargetId(station.id + 10000 === targetIdRef.current ? null : station.id + 10000);
+                        setAutoMoveTarget(null);
+                        clickedOnSomething = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if (!clickedOnSomething) {
             setTargetId(null);
         }
+
       } else if (event.button === 1) { // Middle Click
         event.preventDefault();
         setAutoMoveTarget({ x: clickWorldX, y: clickWorldY });
@@ -1011,12 +1031,43 @@ export function GameContainer() {
     };
     
     const handleMouseUp = (event: MouseEvent) => {
-      if (event.button === 0) {
-        isLeftMouseDown.current = false;
+        if (event.button === 0) {
+            isLeftMouseDown.current = false;
+            if (selectionBox) {
+                const { startX, startY, endX, endY } = selectionBox;
+                const minX = Math.min(startX, endX);
+                const minY = Math.min(startY, endY);
+                const maxX = Math.max(startX, endX);
+                const maxY = Math.max(startY, endY);
+
+                const selectedIds = enemiesRef.current
+                    .filter(e => {
+                        if (!e.isAlly) return false;
+                        const screenX = (e.x - cameraPositionRef.current.x) * zoomRef.current + viewSize.width / 2;
+                        const screenY = (e.y - cameraPositionRef.current.y) * zoomRef.current + viewSize.height / 2;
+                        return screenX >= minX && screenX <= maxX && screenY >= minY && screenY <= maxY;
+                    })
+                    .map(e => e.id);
+
+                if (event.shiftKey) {
+                    setSelectedAllyIds(prev => {
+                        const newSet = new Set(prev);
+                        selectedIds.forEach(id => {
+                            if (newSet.has(id)) newSet.delete(id);
+                            else newSet.add(id);
+                        });
+                        return Array.from(newSet);
+                    });
+                } else {
+                    setSelectedAllyIds(selectedIds);
+                }
+
+                setSelectionBox(null);
+            }
+        }
         if(isPanningRef.current) {
             setIsPanning(false);
         }
-      }
     };
     
     const handleWheel = (event: WheelEvent) => {
@@ -1120,13 +1171,13 @@ export function GameContainer() {
       // Apply environmental damage from zones
       for(const zone of zones) {
           if (zone.type === 'nebula') {
-              const checkAndDamage = (entity: {x:number, y:number, health:number}, applyDmg: (d:number) => void) => {
+              const checkAndDamage = (entity: {x:number, y:number, health:number}, applyDmg: (d:number) => void, isAlly: boolean) => {
                   const distToCenter = Math.hypot(entity.x - zone.x, entity.y - zone.y);
                   if (distToCenter < zone.radius) {
                       applyDmg(NEBULA_DAMAGE_PER_FRAME);
                   }
               }
-              checkAndDamage(playerPositionRef.current, (dmg) => applyDamage(dmg));
+              checkAndDamage(playerPositionRef.current, (dmg) => applyDamage(dmg), true);
               setEnemies(prev => prev.map(e => {
                   const dist = Math.hypot(e.x - zone.x, e.y - zone.y);
                   if(dist < zone.radius) {
@@ -1172,7 +1223,7 @@ export function GameContainer() {
       const aimAngle = Math.atan2(mouseWorldY - playerPositionRef.current.y, mouseWorldX - playerPositionRef.current.x) * (180 / Math.PI);
       setAimRotation(aimAngle);
       
-      if (isLeftMouseDown.current) {
+      if (!isTacticalViewRef.current && isLeftMouseDown.current) {
         setPlayerRotation(aimAngle);
       }
 
@@ -1253,7 +1304,11 @@ export function GameContainer() {
       }));
 
       
-      const currentTarget = enemiesRef.current.find(e => e.id === targetIdRef.current);
+      const currentTarget = targetIdRef.current !== null
+        ? (targetIdRef.current >= 10000 
+            ? stationsRef.current.find(s => s.id === targetIdRef.current! - 10000) 
+            : enemiesRef.current.find(e => e.id === targetIdRef.current))
+        : null;
       const canShoot = (shipMode === 'normal' || shipMode === 'stealth' || shipMode === 'shield') && cruiseStateRef.current === 'idle' && !isPlayerActionInProgress;
       const isShootingManually = keysPressed.current.has(' ');
       const playerShipConfig = SHIP_DATA[playerDataRef.current.ship.class];
@@ -1350,7 +1405,7 @@ export function GameContainer() {
         
       // Beam weapon logic for player
       const { beam } = playerShipConfig.weapons;
-      const isTryingToShootBeam = activeWeapons.beam && beam && beam.count > 0 && currentTarget && !currentTarget.isAlly && (isLeftMouseDown.current || isShootingManually);
+      const isTryingToShootBeam = activeWeapons.beam && beam && beam.count > 0 && currentTarget && !('owner' in currentTarget) && (isLeftMouseDown.current || isShootingManually);
       const existingPlayerBeams = activeBeamsRef.current.filter(b => b.sourceId === -1);
       
       if (isTryingToShootBeam) {
@@ -1374,16 +1429,7 @@ export function GameContainer() {
                 setActiveBeams(prev => [...prev, ...newBeams]);
             }
         } else {
-             // Continue draining energy for existing beams
-             setActiveBeams(prev => {
-                const playerBeams = prev.filter(b => b.sourceId === -1);
-                if (playerDataRef.current.energy > 0) {
-                    setPlayerData(d => ({ ...d, energy: Math.max(0, d.energy - BEAM_DAMAGE_PER_FRAME / 2) })); // Drain energy
-                    return prev;
-                } else {
-                    return prev.filter(b => b.sourceId !== -1); // Remove player beams if out of energy
-                }
-            });
+             // Continue draining energy for existing beams (Now removed as per request)
         }
       } else {
           if (existingPlayerBeams.length > 0) {
@@ -1425,8 +1471,8 @@ export function GameContainer() {
                                   if (overflowOre > 0 || overflowGas > 0) {
                                       setDebris(prev => [...prev, {
                                           id: getUniqueId(),
-                                          x: d.x + (Math.random() - 0.5) * 80,
-                                          y: d.y + (Math.random() - 0.5) * 80,
+                                          x: playerPositionRef.current.x + (Math.random() * 100 - 50) + 50,
+                                          y: playerPositionRef.current.y + (Math.random() * 100 - 50) + 50,
                                           resources: { ore: overflowOre, gas: overflowGas, money: 0 }
                                       }]);
                                   }
@@ -1704,7 +1750,7 @@ export function GameContainer() {
           
           
           // 1. Target Acquisition
-          if (updatedEnemy.aiState !== 'chasing' && updatedEnemy.aiState !== 'fleeing' && updatedEnemy.aiState !== 'recharging' && updatedEnemy.aiState !== 'following' && updatedEnemy.aiState !== 'moving_to_order') {
+          if (updatedEnemy.aiState !== 'chasing' && updatedEnemy.aiState !== 'fleeing' && updatedEnemy.aiState !== 'recharging' && updatedEnemy.aiState !== 'moving_to_order') {
               const potentialTargets = [
                   {id: -1, x: playerPositionRef.current.x, y: playerPositionRef.current.y, isAlly: true, health: playerDataRef.current.health}, 
                   ...enemiesRef.current
@@ -1719,8 +1765,10 @@ export function GameContainer() {
               }
 
               if (closestTarget) {
-                  updatedEnemy.combatTargetId = closestTarget.id;
-                  updatedEnemy.aiState = 'chasing';
+                  if (updatedEnemy.aiState !== 'following') { // Don't interrupt follow order unless attacked
+                    updatedEnemy.combatTargetId = closestTarget.id;
+                    updatedEnemy.aiState = 'chasing';
+                  }
               }
           }
 
@@ -1898,14 +1946,22 @@ export function GameContainer() {
                     finalAccel.y += Math.sin(angleToStation) * ACCELERATION * 0.8 * speedMultiplier;
                 } else {
                     // Reached base
-                    if (updatedEnemy.cargo > 0 && !updatedEnemy.isAlly) {
-                        const creditsEarned = updatedEnemy.cargo * RESOURCE_PRICES.ore;
-                        if (creditsEarned > 0) {
-                             setEnemyFactionData(d => ({ ...d, money: d.money + creditsEarned }));
-                        }
+                    if (updatedEnemy.cargo > 0) {
+                         if (updatedEnemy.isAlly) {
+                            const creditsEarned = updatedEnemy.cargo * RESOURCE_PRICES.ore;
+                            if (creditsEarned > 0) {
+                                setPlayerData(d => ({ ...d, resources: {...d.resources, money: d.resources.money + creditsEarned} }));
+                                addChatMessage('System', `Miner #${updatedEnemy.id} deposited resources for ${creditsEarned} credits.`, 'text-green-400')
+                            }
+                         } else {
+                            const creditsEarned = updatedEnemy.cargo * RESOURCE_PRICES.ore;
+                            if (creditsEarned > 0) {
+                                setEnemyFactionData(d => ({ ...d, money: d.money + creditsEarned }));
+                            }
+                         }
                     }
                     updatedEnemy.cargo = 0;
-                    updatedEnemy.aiState = 'patrolling';
+                    updatedEnemy.aiState = 'guarding';
                     updatedEnemy.health = updatedEnemy.maxHealth; // Full heal at base
                     updatedEnemy.energy = updatedEnemy.maxEnergy; // Full energy at base
                     updatedEnemy.targetObjectId = null;
@@ -1928,9 +1984,10 @@ export function GameContainer() {
                     updatedEnemy.lastKnownPlayerPosition = { x: targetShip.x, y: targetShip.y };
                     const distanceToTarget = Math.hypot(targetShip.x - updatedEnemy.x, targetShip.y - updatedEnemy.y);
                     
-                    if (distanceToTarget > ENEMY_AGGRO_RADIUS * 1.2 && updatedEnemy.combatTargetId !== -1) { // Player can be chased further
+                    if (distanceToTarget > ENEMY_AGGRO_RADIUS * 1.2) {
                         updatedEnemy.aiState = 'searching';
                         updatedEnemy.combatTargetId = null;
+                        if (updatedEnemy.followTargetId) updatedEnemy.aiState = 'following'; // Return to following if it was the previous state
                         break;
                     }
 
@@ -1979,6 +2036,7 @@ export function GameContainer() {
                     updatedEnemy.aiState = 'searching';
                     updatedEnemy.combatTargetId = null;
                     updatedEnemy.stateChangeTimestamp = timestamp;
+                    if (updatedEnemy.followTargetId) updatedEnemy.aiState = 'following'; // Return to following
                     currentActiveBeams = currentActiveBeams.filter(b => b.sourceId !== updatedEnemy.id);
                 }
                 break;
@@ -2055,6 +2113,23 @@ export function GameContainer() {
                 break;
             }
             case 'following': {
+                 // Check for nearby enemies to engage
+                const potentialTargets = [...enemiesRef.current.filter(e => !e.isAlly)];
+                if(!updatedEnemy.isAlly) potentialTargets.push({ ...playerDataRef.current, x: playerPositionRef.current.x, y: playerPositionRef.current.y, isAlly: true, id: -1 });
+
+                let closestTarget: {id: number, dist: number} | null = null;
+                for (const pTarget of potentialTargets) {
+                    const dist = Math.hypot(updatedEnemy.x - pTarget.x, updatedEnemy.y - pTarget.y);
+                    if (dist < ENEMY_AGGRO_RADIUS) {
+                        updatedEnemy.aiState = 'chasing';
+                        updatedEnemy.combatTargetId = pTarget.id;
+                        closestTarget = {id: pTarget.id, dist }; // break and chase
+                        break;
+                    }
+                }
+
+                if (closestTarget) break; // Switched to chasing, so skip follow logic
+
                 const targetToFollow = updatedEnemy.followTargetId === -1 
                     ? playerPositionRef.current
                     : enemiesRef.current.find(e => e.id === updatedEnemy.followTargetId);
@@ -2434,44 +2509,45 @@ export function GameContainer() {
   else if (shipMode === 'stealth') radarRange = STEALTH_DETECTION_RADIUS_NEAR;
 
   const visibleEnemies = React.useMemo(() => 
-    isTacticalView 
-      ? enemies 
-      : enemies.filter(e => Math.hypot(e.x - cameraPosition.x, e.y - cameraPosition.y) < radarRange * 1.5),
-    [enemies, cameraPosition.x, cameraPosition.y, radarRange, isTacticalView]
+    enemies.filter(e => {
+        const isPlayerAlly = e.isAlly;
+        // Simple check for now: player sees everything in their radar
+        if (isPlayerAlly) return true;
+        const distanceToPlayer = Math.hypot(e.x - playerPosition.x, e.y - playerPosition.y);
+        if (distanceToPlayer < radarRange) return true;
+        // Check if visible by any ally
+        for (const ally of enemies.filter(a => a.isAlly)) {
+            if (Math.hypot(e.x - ally.x, e.y - ally.y) < BASE_RADAR_RANGE) return true;
+        }
+        return false;
+    }),
+    [enemies, playerPosition.x, playerPosition.y, radarRange]
   );
   
   const visibleAsteroids = React.useMemo(() =>
-    isTacticalView
-      ? asteroids
-      : asteroids.filter(a => {
-          const distance = Math.hypot(a.x - cameraPosition.x, a.y - cameraPosition.y);
-          return shipMode === 'stealth' ? distance < STEALTH_AGGRO_RADIUS * 1.5 : distance < radarRange * 1.5;
-      }),
-    [asteroids, cameraPosition.x, cameraPosition.y, radarRange, shipMode, isTacticalView]
+    asteroids.filter(a => {
+        const distance = Math.hypot(a.x - cameraPosition.x, a.y - cameraPosition.y);
+        return shipMode === 'stealth' ? distance < STEALTH_AGGRO_RADIUS * 1.5 : distance < radarRange * 1.5;
+    }),
+    [asteroids, cameraPosition.x, cameraPosition.y, radarRange, shipMode]
   );
 
   const visibleStations = React.useMemo(() =>
-    isTacticalView
-      ? stations
-      : stations.filter(s => {
-          const distance = Math.hypot(s.x - cameraPosition.x, s.y - cameraPosition.y);
-          return shipMode === 'stealth' ? distance < STEALTH_AGGRO_RADIUS * 1.5 : distance < radarRange * 1.5;
-      }),
-    [stations, cameraPosition.x, cameraPosition.y, radarRange, shipMode, isTacticalView]
+    stations.filter(s => {
+        const distance = Math.hypot(s.x - cameraPosition.x, s.y - cameraPosition.y);
+        return shipMode === 'stealth' ? distance < STEALTH_AGGRO_RADIUS * 1.5 : distance < radarRange * 1.5;
+    }),
+    [stations, cameraPosition.x, cameraPosition.y, radarRange, shipMode]
   );
 
   const visibleOutposts = React.useMemo(() =>
-    isTacticalView
-      ? outposts
-      : outposts.filter(o => Math.hypot(o.x - cameraPosition.x, o.y - cameraPosition.y) < radarRange * 1.5),
-    [outposts, cameraPosition.x, cameraPosition.y, radarRange, isTacticalView]
+    outposts.filter(o => Math.hypot(o.x - cameraPosition.x, o.y - cameraPosition.y) < radarRange * 1.5),
+    [outposts, cameraPosition.x, cameraPosition.y, radarRange]
   );
   
   const visibleDebris = React.useMemo(() =>
-    isTacticalView
-      ? debris
-      : debris.filter(d => Math.hypot(d.x - cameraPosition.x, d.y - cameraPosition.y) < radarRange * 1.5),
-    [debris, cameraPosition.x, cameraPosition.y, radarRange, isTacticalView]
+    debris.filter(d => Math.hypot(d.x - cameraPosition.x, d.y - cameraPosition.y) < radarRange * 1.5),
+    [debris, cameraPosition.x, cameraPosition.y, radarRange]
   );
   
   const containerClass = cn(
@@ -2567,6 +2643,7 @@ export function GameContainer() {
         />
         {visibleEnemies.map(enemy => {
           const props = {
+            key: enemy.id,
             x: enemy.x,
             y: enemy.y,
             rotation: enemy.rotation,
@@ -2578,13 +2655,13 @@ export function GameContainer() {
           };
           switch (enemy.type) {
             case 'Chasseur':
-              return <EnemyShip key={enemy.id} {...props} />;
+              return <EnemyShip {...props} />;
             case 'Frégate':
-              return <FrigateShip key={enemy.id} {...props} />;
+              return <FrigateShip {...props} />;
             case 'Mineur':
-              return <StaffShip key={enemy.id} {...props} />;
+              return <StaffShip {...props} />;
             case 'Intercepteur':
-              return <InterceptorShip key={enemy.id} {...props} />;
+              return <InterceptorShip {...props} />;
             default:
               return null;
           }
@@ -2607,6 +2684,18 @@ export function GameContainer() {
         <ActionProgress
           actionType={playerAction.type}
           progress={((Date.now() - playerAction.startTime) / playerAction.duration) * 100}
+        />
+       )}
+      
+       {selectionBox && (
+        <div
+            className="absolute border-2 border-dashed border-cyan-400 bg-cyan-400/10 pointer-events-none"
+            style={{
+                left: Math.min(selectionBox.startX, selectionBox.endX),
+                top: Math.min(selectionBox.startY, selectionBox.endY),
+                width: Math.abs(selectionBox.startX - selectionBox.endX),
+                height: Math.abs(selectionBox.startY - selectionBox.endY),
+            }}
         />
        )}
 
