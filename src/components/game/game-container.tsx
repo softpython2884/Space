@@ -1890,7 +1890,7 @@ export function GameContainer() {
             }
             case 'searching':
                 currentActiveBeams = currentActiveBeams.filter(b => b.sourceId !== updatedEnemy.id);
-                if (timestamp - updatedEnemy.stateChangeTimestamp > ENEMY_SEARCH_DURATION_MS) {
+                if (timestamp - updatedEnemy.stateChangeTimestamp > 3000) {
                     updatedEnemy.aiState = 'patrolling';
                     updatedEnemy.lastKnownPlayerPosition = null;
                     updatedEnemy.stateChangeTimestamp = timestamp;
@@ -2440,7 +2440,6 @@ export function GameContainer() {
         />
         {visibleEnemies.map(enemy => {
           const props = {
-            key: enemy.id,
             x: enemy.x,
             y: enemy.y,
             rotation: enemy.rotation,
@@ -2452,13 +2451,13 @@ export function GameContainer() {
           };
           switch (enemy.type) {
             case 'Chasseur':
-              return <EnemyShip {...props} />;
+              return <EnemyShip key={enemy.id} {...props} />;
             case 'Frégate':
-              return <FrigateShip {...props} />;
+              return <FrigateShip key={enemy.id} {...props} />;
             case 'Mineur':
-              return <StaffShip {...props} />;
+              return <StaffShip key={enemy.id} {...props} />;
             case 'Intercepteur':
-              return <InterceptorShip {...props} />;
+              return <InterceptorShip key={enemy.id} {...props} />;
             default:
               return null;
           }
