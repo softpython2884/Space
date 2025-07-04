@@ -17,12 +17,12 @@ const InterceptorModel = ({ className }: { className?: string }) => (
 );
 
 const FrigateModel = ({ className }: { className?: string }) => (
-    <svg width="60" height="60" viewBox="0 0 60 60" className={className}>
-        <polygon points="30,5 55,30 50,55 10,55 5,30" strokeWidth="2" />
-        <polygon points="20,5 40,5 45,15 15,15" strokeWidth="1.5" />
-        <rect x="27" y="15" width="6" height="25" />
-        <polygon points="20,25 5,40 15,40" strokeWidth="1.5" />
-        <polygon points="40,25 55,40 45,40" strokeWidth="1.5" />
+    <svg width="60" height="70" viewBox="0 0 60 70" className={className}>
+        <polygon points="30,0 45,25 40,70 20,70 15,25" strokeWidth="2" />
+        <polygon points="30,10 40,30 35,35 25,35 20,30" />
+        <path d="M 45 25 L 55 35 L 50 60 L 40 70" strokeWidth="2" fillOpacity="0.5" />
+        <path d="M 15 25 L 5 35 L 10 60 L 20 70" strokeWidth="2" fillOpacity="0.5" />
+        <rect x="25" y="65" width="10" height="5" />
     </svg>
 );
 
@@ -38,12 +38,12 @@ const DestroyerModel = ({ className }: { className?: string }) => (
 );
 
 const CarrierModel = ({ className }: { className?: string }) => (
-    <svg width="100" height="100" viewBox="0 0 100 100" className={className}>
-        <polygon points="50,5 90,40 80,95 20,95 10,40" strokeWidth="3" />
-        <rect x="35" y="15" width="30" height="15" strokeWidth="2"/>
-        <path d="M 20 45 L 30 45 L 30 70 L 20 70 Z" strokeWidth="2" />
-        <path d="M 80 45 L 70 45 L 70 70 L 80 70 Z" strokeWidth="2" />
-        <rect x="40" y="50" width="20" height="30" strokeWidth="2" fillOpacity="0.5"/>
+    <svg width="80" height="120" viewBox="0 0 80 120" className={className}>
+        <polygon points="20,10 60,10 70,30 70,90 60,110 20,110 10,90 10,30" strokeWidth="2.5" />
+        <polygon points="30,0 50,0 55,10 25,10" strokeWidth="2" />
+        <path d="M 15 35 L 65 35" strokeWidth="1" strokeDasharray="4 2" />
+        <path d="M 15 85 L 65 85" strokeWidth="1" strokeDasharray="4 2" />
+        <rect x="30" y="105" width="20" height="15" strokeWidth="1.5" />
     </svg>
 );
 
@@ -56,11 +56,11 @@ const CargoModel = ({ className }: { className?: string }) => (
 );
 
 const MinerModel = ({ className }: { className?: string }) => (
-    <svg width="50" height="30" viewBox="0 0 50 30" className={className}>
-      <rect x="5" y="10" width="40" height="10" strokeWidth="2" />
-      <rect x="10" y="5" width="8" height="20" />
-      <rect x="32" y="5" width="8" height="20" />
-      <polygon points="0,15 5,12 5,18" />
+    <svg width="30" height="50" viewBox="0 0 30 50" className={className}>
+      <rect x="10" y="5" width="10" height="40" strokeWidth="2" />
+      <rect x="5" y="10" width="20" height="8" />
+      <rect x="5" y="32" width="20" height="8" />
+      <polygon points="15,0 12,5 18,5" />
     </svg>
 );
 
