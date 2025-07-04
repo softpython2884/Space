@@ -40,7 +40,7 @@ export function Beam({ id, x1, y1, x2, y2, type, isAlly }: BeamProps) {
                 style={{ filter: `url(#${shadowId})`, opacity: 0.7 }}
             />
              <line
-                x1={x1} y1}
+                x1={x1} y1={y1}
                 x2={x2} y2={y2}
                 stroke="white"
                 strokeWidth={isHeavy ? 1 : 0.5}
