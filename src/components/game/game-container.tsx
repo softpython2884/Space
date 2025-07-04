@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -396,6 +397,7 @@ export function GameContainer() {
   useEffect(() => { activeBeamsRef.current = activeBeams; }, [activeBeams]);
   
   const isPlayerActionInProgress = playerAction !== null;
+  const allies = React.useMemo(() => enemies.filter(e => e.isAlly), [enemies]);
   const radarRange = shipMode === 'scan' ? BASE_RADAR_RANGE * 1.5 : BASE_RADAR_RANGE;
 
   useEffect(() => {
@@ -497,7 +499,8 @@ export function GameContainer() {
                 ...e, 
                 aiState: newAiState, 
                 orderTarget: worldCoords, 
-                combatTargetId: null 
+                combatTargetId: null,
+                followTargetId: null,
             } : e));
         }
         return;
@@ -1040,7 +1043,7 @@ export function GameContainer() {
                 const distance = Math.hypot(clickWorldX - enemy.x, clickWorldY - enemy.y);
                  if (distance < ENEMY_CLICK_RADIUS) {
                     clickedOnAlly = true;
-                    if (event.ctrlKey) {
+                    if (event.ctrlKey || event.metaKey) {
                         setSelectedAllyIds(prev => prev.includes(enemy.id) ? prev.filter(id => id !== enemy.id) : [...prev, enemy.id]);
                     } else {
                         setSelectedAllyIds([enemy.id]);
@@ -1049,7 +1052,7 @@ export function GameContainer() {
                  }
             }
             if (!clickedOnAlly) {
-                if (!event.ctrlKey) setSelectedAllyIds([]);
+                if (!event.ctrlKey && !event.metaKey) setSelectedAllyIds([]);
             }
             return;
         }
@@ -1115,13 +1118,7 @@ export function GameContainer() {
                 }
             }
             if (!targetFound) {
-                 addChatMessage('Commander', `Units ${selectedAllyIdsRef.current.join(', ')} ordered to move.`, 'text-cyan-400');
-                 setEnemies(prev => prev.map(e => selectedAllyIdsRef.current.includes(e.id) ? { 
-                    ...e, 
-                    aiState: 'moving_to_order', 
-                    orderTarget: {x: clickWorldX, y: clickWorldY}, 
-                    combatTargetId: null 
-                } : e));
+                 setContextMenu({ x: event.clientX, y: event.clientY, worldX: clickWorldX, worldY: clickWorldY, targetId: null, targetType: 'tactical_space' });
             }
             return;
         }
@@ -1858,13 +1855,15 @@ export function GameContainer() {
             
             if (targetToFollow) {
                 const distanceToTarget = Math.hypot(targetToFollow.x - updatedEnemy.x, targetToFollow.y - updatedEnemy.y);
-                const playerIsCruising = cruiseStateRef.current === 'cruising';
+                const isTargetCruising = updatedEnemy.followTargetId === -1 
+                    ? cruiseStateRef.current === 'cruising'
+                    : enemiesRef.current.find(e => e.id === updatedEnemy.followTargetId)?.cruiseState === 'cruising';
                 const canCruise = timestamp >= (updatedEnemy.cruiseAvailableAt || 0) && updatedEnemy.energy >= CRUISE_ENERGY_COST;
 
-                if ((playerIsCruising || distanceToTarget > 400) && updatedEnemy.cruiseState === 'idle' && canCruise) {
+                if ((isTargetCruising || distanceToTarget > 400) && updatedEnemy.cruiseState === 'idle' && canCruise) {
                     updatedEnemy.cruiseState = 'charging';
                     updatedEnemy.energy -= CRUISE_ENERGY_COST;
-                } else if (!playerIsCruising && distanceToTarget < 300 && updatedEnemy.cruiseState !== 'idle') {
+                } else if (!isTargetCruising && distanceToTarget < 300 && updatedEnemy.cruiseState !== 'idle') {
                     updatedEnemy.cruiseState = 'idle';
                 }
             }
@@ -2380,6 +2379,11 @@ export function GameContainer() {
                         const angleToTarget = Math.atan2(targetToFollow.y - updatedEnemy.y, targetToFollow.x - updatedEnemy.x);
                         finalAccel.x += Math.cos(angleToTarget) * ACCELERATION * 0.8;
                         finalAccel.y += Math.sin(angleToTarget) * ACCELERATION * 0.8;
+                    } else {
+                        // Apply braking force if too close
+                        const brakingForce = Math.min(updatedEnemy.vx, updatedEnemy.vy) > 0.1 ? 0.95 : 1;
+                        updatedEnemy.vx *= brakingForce;
+                        updatedEnemy.vy *= brakingForce;
                     }
 
                 } else {
@@ -2887,9 +2891,6 @@ export function GameContainer() {
     return () => cancelAnimationFrame(animationFrameId);
   }, [viewSize, isGameOver, controlScheme, isDocked, applyDamage, handleActionSelect, handleBuyAlly, handleBuyShip, handleBuyUpgrade, handleRepairHull, handleSellResource, resetGame, addChatMessage, handleBuildShipFromTactical, handleBuildOutpost, handleRespawn, zones, cheats, handleCallReinforcements, handleAllAttack, handleAllFollow, handleAllHold]);
 
-  const allies = React.useMemo(() => enemies.filter(e => e.isAlly), [enemies]);
-
-
   const isEntityVisible = useCallback((entity: { x: number; y: number }) => {
     // Player vision
     if (Math.hypot(entity.x - playerPosition.x, entity.y - playerPosition.y) < radarRange) {
@@ -3056,7 +3057,6 @@ export function GameContainer() {
         />
         {visibleEnemies.map(enemy => {
           const props = {
-            key: enemy.id,
             x: enemy.x,
             y: enemy.y,
             rotation: enemy.rotation,
@@ -3068,19 +3068,19 @@ export function GameContainer() {
           };
           switch (enemy.type) {
             case 'Chasseur':
-              return <EnemyShip {...props} />;
+              return <EnemyShip key={enemy.id} {...props} />;
             case 'Frégate':
-              return <FrigateShip {...props} />;
+              return <FrigateShip key={enemy.id} {...props} />;
             case 'Mineur':
-              return <StaffShip {...props} />;
+              return <StaffShip key={enemy.id} {...props} />;
             case 'Intercepteur':
-              return <InterceptorShip {...props} />;
+              return <InterceptorShip key={enemy.id} {...props} />;
             case 'Destroyer':
-              return <DestroyerShip {...props} />;
+              return <DestroyerShip key={enemy.id} {...props} />;
             case 'Porteur':
-              return <CarrierShip {...props} />;
+              return <CarrierShip key={enemy.id} {...props} />;
             case 'Cargo':
-              return <CargoShip {...props} />;
+              return <CargoShip key={enemy.id} {...props} />;
             default:
               return null;
           }
