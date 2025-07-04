@@ -747,6 +747,7 @@ export function GameContainer() {
             setIsSettingsOpen(open => !open);
             setAutoMoveTarget(null);
             setContextMenu(null);
+            setIsStationMenuOpen(false);
             return;
         }
         if (isModalOpen) return;
@@ -1425,7 +1426,8 @@ export function GameContainer() {
       const newEnemyProjectiles: ProjectileState[] = [];
       const hitProjectileIds = new Set<number>();
       const newDebrisFromKills: DebrisType[] = [];
-      let newActiveBeams = [...activeBeamsRef.current];
+
+      let currentActiveBeams = [...activeBeamsRef.current];
 
       let processedEnemies = enemiesRef.current.map(enemy => {
           let updatedEnemy = { ...enemy };
@@ -1596,18 +1598,21 @@ export function GameContainer() {
 
                   if(closestTarget) {
                     updatedEnemy.combatTargetId = closestTarget;
-                  } else if (!updatedEnemy.isAlly) {
-                      // If no other target, attack the station
-                      const station = stationsRef.current[0];
-                      if(station) {
-                        const distToStation = Math.hypot(updatedEnemy.x - station.x, updatedEnemy.y - station.y);
-                        if (distToStation < aggroRadius * 2) {
-                            updatedEnemy.combatTargetId = station.id + 1000; // Special ID for station
-                        }
-                      }
                   }
               }
           }
+          
+           // If no other target, non-allies will consider attacking the station
+          if(updatedEnemy.combatTargetId === null && !updatedEnemy.isAlly) {
+            const station = stationsRef.current[0];
+            if(station && station.health > 0) {
+              const distToStation = Math.hypot(updatedEnemy.x - station.x, updatedEnemy.y - station.y);
+              if (distToStation < aggroRadius * 2) {
+                  updatedEnemy.combatTargetId = station.id + 1000; // Special ID for station
+              }
+            }
+          }
+
 
           if (updatedEnemy.combatTargetId !== null && updatedEnemy.aiState !== 'chasing' && updatedEnemy.aiState !== 'fleeing' && !isMiner && !updatedEnemy.orderTarget) {
               updatedEnemy.aiState = 'chasing';
@@ -1817,6 +1822,12 @@ export function GameContainer() {
                     updatedEnemy.aiState = 'fleeing';
                     break;
                 }
+
+                if (updatedEnemy.energy <= 0) {
+                    updatedEnemy.aiState = 'fleeing';
+                    currentActiveBeams = currentActiveBeams.filter(b => b.sourceId !== updatedEnemy.id);
+                    break;
+                }
                 
                 let targetShip: {x:number, y:number, health:number, isAlly?:boolean} | null = null;
                 if(updatedEnemy.combatTargetId === -1) {
@@ -1851,8 +1862,8 @@ export function GameContainer() {
                         }
                     }
 
-                    if (enemyShipInfo.weapons.beam && updatedEnemy.energy > 0) {
-                        const isAlreadyBeaming = activeBeamsRef.current.some(b => b.sourceId === updatedEnemy.id);
+                    if (enemyShipInfo.weapons.beam && enemyShipInfo.weapons.beam.count > 0 && updatedEnemy.energy > 0) {
+                        const isAlreadyBeaming = currentActiveBeams.some(b => b.sourceId === updatedEnemy.id);
                         if (!isAlreadyBeaming) {
                             const newBeams: BeamState[] = [];
                             const shipRotRad = updatedEnemy.rotation * (Math.PI / 180);
@@ -1869,7 +1880,7 @@ export function GameContainer() {
                                     sourceOffsetY: rotatedOffsetY,
                                 });
                             }
-                            newActiveBeams = [...newActiveBeams, ...newBeams];
+                           currentActiveBeams = [...currentActiveBeams, ...newBeams];
                         }
                     }
 
@@ -1877,12 +1888,12 @@ export function GameContainer() {
                     updatedEnemy.aiState = 'searching';
                     updatedEnemy.combatTargetId = null;
                     updatedEnemy.stateChangeTimestamp = timestamp;
-                    newActiveBeams = newActiveBeams.filter(b => b.sourceId !== updatedEnemy.id);
+                    currentActiveBeams = currentActiveBeams.filter(b => b.sourceId !== updatedEnemy.id);
                 }
                 break;
             }
             case 'searching':
-                newActiveBeams = newActiveBeams.filter(b => b.sourceId !== updatedEnemy.id);
+                currentActiveBeams = currentActiveBeams.filter(b => b.sourceId !== updatedEnemy.id);
                 if (timestamp - updatedEnemy.stateChangeTimestamp > ENEMY_SEARCH_DURATION_MS) {
                     updatedEnemy.aiState = 'patrolling';
                     updatedEnemy.lastKnownPlayerPosition = null;
@@ -1900,7 +1911,7 @@ export function GameContainer() {
                 }
                 break;
             case 'fleeing': {
-                newActiveBeams = newActiveBeams.filter(b => b.sourceId !== updatedEnemy.id);
+                currentActiveBeams = currentActiveBeams.filter(b => b.sourceId !== updatedEnemy.id);
                 const attacker = updatedEnemy.lastAttackerId === -1 
                     ? playerPositionRef.current
                     : enemiesRef.current.find(e => e.id === updatedEnemy.lastAttackerId);
@@ -1985,7 +1996,7 @@ export function GameContainer() {
 
       if (newEnemyProjectiles.length > 0) setEnemyProjectiles(prev => [...prev, ...newEnemyProjectiles]);
       
-      newActiveBeams = newActiveBeams.map(beam => {
+      const finalBeams = currentActiveBeams.map(beam => {
           let source: { x: number; y: number; rotation?: number; energy?: number, maxEnergy?: number } | null = null;
           let target: { x: number; y: number; isAlly?: boolean } | null = null;
           
@@ -1998,7 +2009,10 @@ export function GameContainer() {
           if (beam.targetId === -1) {
               target = playerPositionRef.current;
           } else if(beam.targetId > 1000) {
-              target = stationsRef.current.find(s => s.id === beam.targetId - 1000) || null;
+              const station = stationsRef.current.find(s => s.id === beam.targetId - 1000);
+              if (station) {
+                target = { x: station.x, y: station.y, isAlly: true };
+              }
           } else {
               target = processedEnemies.find(e => e.id === beam.targetId) || null;
           }
@@ -2016,12 +2030,16 @@ export function GameContainer() {
           let hasEnergy = true;
           if (beam.sourceId === -1) {
               if (playerDataRef.current.energy < energyDrain) hasEnergy = false;
-              setPlayerData(d => ({ ...d, energy: Math.max(0, d.energy - energyDrain) }));
-              if(hasEnergy) lastEnergyUseTimestamp.current = timestamp;
+              if (hasEnergy) {
+                setPlayerData(d => ({ ...d, energy: Math.max(0, d.energy - energyDrain) }));
+                lastEnergyUseTimestamp.current = timestamp;
+              }
           } else {
               const sourceEnemy = processedEnemies.find(e => e.id === beam.sourceId);
               if (sourceEnemy && sourceEnemy.energy < energyDrain) hasEnergy = false;
-              processedEnemies = processedEnemies.map(e => e.id === beam.sourceId ? { ...e, energy: Math.max(0, e.energy - energyDrain), lastEnergyUseTimestamp: timestamp } : e);
+              if(hasEnergy) {
+                processedEnemies = processedEnemies.map(e => e.id === beam.sourceId ? { ...e, energy: Math.max(0, e.energy - energyDrain), lastEnergyUseTimestamp: timestamp } : e);
+              }
           }
           
           if (!hasEnergy) return null;
@@ -2045,8 +2063,8 @@ export function GameContainer() {
 
           return beam;
       }).filter(Boolean) as BeamState[];
-      setActiveBeams(newActiveBeams);
-
+      
+      setActiveBeams(finalBeams);
       
       let playerVelocityUpdate = { ...velocityRef.current };
       if (timestamp - lastCollisionTimestamp > 500) {
