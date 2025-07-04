@@ -82,8 +82,8 @@ export const MAP_WIDTH = 12000;
 export const MAP_HEIGHT = 12000;
 
 export const ZONES: Zone[] = [
-    { id: 'start_field', type: 'asteroid_field', x: 2500, y: MAP_HEIGHT / 2, radius: 1200, density: 0.4 },
-    { id: 'enemy_field', type: 'asteroid_field', x: MAP_WIDTH - 2500, y: MAP_HEIGHT / 2, radius: 1200, density: 0.4 },
+    { id: 'start_field', type: 'asteroid_field', x: 4000, y: MAP_HEIGHT / 2, radius: 1500, density: 0.4 },
+    { id: 'enemy_field', type: 'asteroid_field', x: MAP_WIDTH - 4000, y: MAP_HEIGHT / 2, radius: 1500, density: 0.4 },
     { id: 'center_field_1', type: 'asteroid_field', x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 - 2000, radius: 1500, density: 0.8 },
     { id: 'center_field_2', type: 'asteroid_field', x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 + 2000, radius: 1500, density: 0.8 },
     { id: 'top_nebula', type: 'nebula', x: MAP_WIDTH / 2, y: 2000, radius: 1500, color: 'hsl(260 80% 50% / 0.15)' },
