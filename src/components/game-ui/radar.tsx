@@ -14,13 +14,15 @@ interface RadarProps {
 
 const RADAR_SIZE = 256; // pixels
 
-const RadarDot = ({ color, size = 'w-2 h-2', pulse = false, type = 'dot' }: { color: string, size?: string, pulse?: boolean, type?: 'dot' | 'triangle' | 'square' }) => {
+const RadarDot = ({ color, size = 'w-2 h-2', pulse = false, type = 'dot' }: { color: string, size?: string, pulse?: boolean, type?: 'dot' | 'triangle' | 'square' | 'circle' }) => {
     const icon = () => {
         switch(type) {
             case 'triangle':
                 return <div style={{width: 0, height: 0, borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderBottom: '10px solid hsl(var(--primary))'}}/>
             case 'square':
                  return <div className={cn(size, color)} />;
+            case 'circle':
+                return <div className={cn("rounded-full", size, color, 'border-2')} />;
             default:
                 return <div className={cn("rounded-full", size, color)} />;
         }
@@ -116,7 +118,7 @@ export function Radar({ playerPosition, enemies, stations, asteroids, radarRange
                 </div>
                 
                 {enemies.map(e => renderObjectOnRadar(e, `enemy-${e.id}`, getEnemyIcon(e)))}
-                {stations.map(s => renderObjectOnRadar(s, `station-${s.id}`, <RadarDot color="bg-blue-400" size="w-3 h-3" pulse />))}
+                {stations.map(s => renderObjectOnRadar(s, `station-${s.id}`, <RadarDot color="border-blue-400" type="circle" pulse />))}
                 {asteroids.map(a => renderObjectOnRadar(a, `asteroid-${a.id}`, <RadarDot color="bg-gray-500" />))}
             </div>
 

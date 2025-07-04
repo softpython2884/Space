@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -27,11 +26,14 @@ import { ClientOnly } from '@/components/client-only';
 import { GameOverOverlay } from './game-over-overlay';
 import { MilitaryViewOverlay } from './military-view-overlay';
 import { ContextMenu } from '../game-ui/context-menu';
-import { ActionProgress } from '../game-ui/action-progress';
 import { StationMenu } from '../game-ui/station-menu';
 import { PlayerUpgradesDisplay } from '../game-ui/player-upgrades';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { MiningMenu } from '../game-ui/mining-menu';
+import { PillageMenu } from '../game-ui/pillage-menu';
+import { BoardingMenu } from '../game-ui/boarding-menu';
+
 
 let ACCELERATION = 0.1;
 let STRAFE_ACCELERATION = 0.05;
@@ -59,7 +61,7 @@ const FRIGATE_COLLISION_RADIUS = 30;
 const STAFF_COLLISION_RADIUS = 25;
 const DEBRIS_COLLISION_RADIUS = 20;
 const STATION_COLLISION_RADIUS = 75;
-const ASTEROID_COLLISION_RADIUS = 0.45; // More accurate hitbox, smaller than the visual size
+const ASTEROID_COLLISION_RADIUS = 0.4; // More accurate hitbox, smaller than the visual size
 
 const PLAYER_PROJECTILE_DAMAGE = 10;
 const ENEMY_PROJECTILE_DAMAGE = 5;
@@ -102,13 +104,7 @@ const ENEMY_FLEE_HEALTH_THRESHOLD = 0.3;
 const ENEMY_RAM_HEALTH_ADVANTAGE = 1.5;
 
 // Action constants
-const MINING_DURATION_MS = 5000;
-const PILLAGE_DURATION_MS = 2000;
-const PILLAGE_ENERGY_COST = 40;
 const PILLAGE_DAMAGE = 15;
-const BOARDING_DURATION_MS = 7000;
-const BOARDING_ENERGY_COST = 60;
-const BOARDING_SUCCESS_CHANCE = 0.4;
 const BOARDING_FAIL_DAMAGE = 20;
 const ACTION_MAX_RANGE = 200;
 
@@ -174,7 +170,10 @@ export function GameContainer() {
   const [cruiseState, setCruiseState] = useState<'idle' | 'charging' | 'cruising'>('idle');
   const [cooldowns, setCooldowns] = useState({ modeChange: 1, cruise: 1 }); // 1 means available
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; targetId: number; targetType: ContextMenuTargetType; } | null>(null);
-  const [playerAction, setPlayerAction] = useState<{ type: PlayerActionType; targetId: number; startTime: number; duration: number; } | null>(null);
+  
+  const [miningMenuState, setMiningMenuState] = useState<{ isOpen: boolean, targetId: number | null }>({ isOpen: false, targetId: null });
+  const [pillageMenuState, setPillageMenuState] = useState<{ isOpen: boolean, targetId: number | null }>({ isOpen: false, targetId: null });
+  const [boardingMenuState, setBoardingMenuState] = useState<{ isOpen: boolean, targetId: number | null }>({ isOpen: false, targetId: null });
 
   const [playerData, setPlayerData] = useState<PlayerData>(JSON.parse(JSON.stringify(INITIAL_PLAYER_DATA)));
   const [vesselSystems, setVesselSystems] = useState<VesselSystemsData>({ shields: 'Online', weapons: 'Ready', power: 'Optimal' });
@@ -234,11 +233,10 @@ export function GameContainer() {
   const shipModeRef = useRef(shipMode);
   useEffect(() => { shipModeRef.current = shipMode; }, [shipMode]);
 
-  const playerActionRef = useRef(playerAction);
-  useEffect(() => { playerActionRef.current = playerAction; }, [playerAction]);
-
   const zoomRef = useRef(zoom);
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+  
+  const isPlayerActionInProgress = miningMenuState.isOpen || pillageMenuState.isOpen || boardingMenuState.isOpen;
 
   const resetGame = () => {
     setPlayerPosition({ x: MAP_WIDTH / 2 + 200, y: MAP_HEIGHT / 2 + 200 });
@@ -255,7 +253,6 @@ export function GameContainer() {
     setIsGameOver(false);
     setShipMode('normal');
     setCruiseState('idle');
-    setPlayerAction(null);
     setContextMenu(null);
     modeChangeAvailableAtRef.current = 0;
     cruiseAvailableAtRef.current = 0;
@@ -268,7 +265,6 @@ export function GameContainer() {
 
   const handleActionSelect = (action: PlayerActionType | 'open_station_menu', targetId: number) => {
     setContextMenu(null);
-    if (playerActionRef.current) return;
 
     if (action === 'open_station_menu') {
         const station = stationsRef.current.find(s => s.id === targetId);
@@ -283,37 +279,92 @@ export function GameContainer() {
 
     const targetEnemy = enemiesRef.current.find(e => e.id === targetId);
     const targetAsteroid = asteroidsRef.current.find(a => a.id === targetId);
+    
+    const target = targetEnemy || targetAsteroid;
+    if (!target) return;
+
+    const distance = Math.hypot(target.x - playerPositionRef.current.x, target.y - playerPositionRef.current.y);
+
+    if (distance > ACTION_MAX_RANGE) {
+        toast({ title: "Target out of range", description: "Get closer to perform this action.", variant: 'destructive' });
+        return;
+    }
 
     switch(action) {
       case 'mining':
         if (targetAsteroid) {
-            setPlayerAction({ type: 'mining', targetId, startTime: Date.now(), duration: MINING_DURATION_MS });
+            setMiningMenuState({ isOpen: true, targetId });
         }
         break;
       case 'pillaging':
         if (targetEnemy) {
-          if (playerDataRef.current.energy < PILLAGE_ENERGY_COST) {
-            return;
-          }
-          setPlayerData(d => ({ ...d, energy: d.energy - PILLAGE_ENERGY_COST }));
-          lastEnergyUseTimestamp.current = Date.now();
-          setPlayerAction({ type: 'pillaging', targetId, startTime: Date.now(), duration: PILLAGE_DURATION_MS });
+            setPillageMenuState({ isOpen: true, targetId });
         }
         break;
       case 'boarding':
         if (targetEnemy) {
-            if (targetEnemy.isAlly) {
-                return;
-            }
-          if (playerDataRef.current.energy < BOARDING_ENERGY_COST) {
-            return;
-          }
-          setPlayerData(d => ({ ...d, energy: d.energy - BOARDING_ENERGY_COST }));
-          lastEnergyUseTimestamp.current = Date.now();
-          setPlayerAction({ type: 'boarding', targetId, startTime: Date.now(), duration: BOARDING_DURATION_MS });
+            setBoardingMenuState({ isOpen: true, targetId });
         }
         break;
     }
+  };
+
+  const handleMiningComplete = (resourcesGained: { ore: number }) => {
+    setPlayerData(d => {
+        const maxCargo = UPGRADE_VALUES.cargoCapacity[d.upgrades.cargoCapacity];
+        const availableSpace = maxCargo - d.cargo.current;
+        const oreToAdd = Math.min(resourcesGained.ore, availableSpace);
+        return {
+            ...d,
+            resources: { ...d.resources, ore: d.resources.ore + oreToAdd },
+            cargo: { ...d.cargo, current: d.cargo.current + oreToAdd }
+        };
+    });
+    setAsteroids(prev => prev.filter(a => a.id !== miningMenuState.targetId));
+    setMiningMenuState({ isOpen: false, targetId: null });
+  };
+
+  const handlePillagingComplete = () => {
+    const targetEnemy = enemiesRef.current.find(e => e.id === pillageMenuState.targetId);
+    if (!targetEnemy) {
+        setPillageMenuState({ isOpen: false, targetId: null });
+        return;
+    }
+
+    setPlayerData(d => ({ ...d, energy: d.energy - CRUISE_ENERGY_COST }));
+    lastEnergyUseTimestamp.current = Date.now();
+
+    setEnemies(prev => prev.map(e => e.id === pillageMenuState.targetId ? { ...e, health: Math.max(0, e.health - PILLAGE_DAMAGE) } : e));
+    const newDebris: DebrisType = {
+        id: Date.now(),
+        x: targetEnemy.x,
+        y: targetEnemy.y,
+        resources: {
+            money: Math.floor(Math.random() * 51),
+            ore: Math.floor(Math.random() * 11),
+            gas: Math.floor(Math.random() * 6),
+        }
+    };
+    setDebris(prev => [...prev, newDebris]);
+    setPillageMenuState({ isOpen: false, targetId: null });
+  };
+
+  const handleBoardingComplete = (result: { success: boolean }) => {
+    const targetEnemy = enemiesRef.current.find(e => e.id === boardingMenuState.targetId);
+    if (!targetEnemy) {
+        setBoardingMenuState({ isOpen: false, targetId: null });
+        return;
+    }
+    
+    setPlayerData(d => ({ ...d, energy: d.energy - CRUISE_ENERGY_COST }));
+    lastEnergyUseTimestamp.current = Date.now();
+
+    if (result.success) {
+        setEnemies(prev => prev.map(e => e.id === boardingMenuState.targetId ? { ...e, isAlly: true, aiState: 'following' } : e));
+    } else {
+        applyDamage(BOARDING_FAIL_DAMAGE);
+    }
+    setBoardingMenuState({ isOpen: false, targetId: null });
   };
 
   const handleModeChange = (newMode: ShipMode) => {
@@ -322,7 +373,6 @@ export function GameContainer() {
         return;
     }
     if (cruiseStateRef.current !== 'idle') return;
-    if (playerActionRef.current) return;
 
     if (newMode === 'cruise') {
         if (now < cruiseAvailableAtRef.current) {
@@ -358,8 +408,7 @@ export function GameContainer() {
             lastEnergyUseTimestamp.current = Date.now();
             return { ...d, energy: Math.max(0, d.energy - energyCost) };
         }
-        const maxHealth = UPGRADE_VALUES.maxHealth[d.upgrades.maxHealth];
-        return { ...d, health: Math.max(0, (d.health * maxHealth / 100) - damage) };
+        return { ...d, health: Math.max(0, d.health - damage) };
     });
   };
 
@@ -425,16 +474,17 @@ export function GameContainer() {
     ));
   };
 
+  const isModalOpen = isSettingsOpen || isGameOver || isStationMenuOpen || miningMenuState.isOpen || pillageMenuState.isOpen || boardingMenuState.isOpen;
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
         if (event.key === 'Escape') {
             setIsSettingsOpen(open => !open);
             setAutoMoveTarget(null);
             setContextMenu(null);
-            if (playerActionRef.current) setPlayerAction(null);
             return;
         }
-        if (isSettingsOpen || isGameOver || isStationMenuOpen) return;
+        if (isModalOpen) return;
         
         keysPressed.current.add(event.key.toLowerCase());
         
@@ -448,7 +498,7 @@ export function GameContainer() {
     const handleContextMenu = (event: MouseEvent) => event.preventDefault();
     
     const handleMouseDown = (event: MouseEvent) => {
-      if (isSettingsOpen || isGameOver || isStationMenuOpen) return;
+      if (isModalOpen) return;
       if ((event.target as HTMLElement).closest('[data-ui-element="true"]')) return;
       
       const clickWorldX = playerPositionRef.current.x + (mousePosition.current.x - viewSize.width / 2) / zoomRef.current;
@@ -507,7 +557,7 @@ export function GameContainer() {
     };
     
     const handleWheel = (event: WheelEvent) => {
-        if (isSettingsOpen || isGameOver || isStationMenuOpen) return;
+        if (isModalOpen) return;
         event.preventDefault();
         setZoom(prevZoom => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prevZoom - event.deltaY * ZOOM_SENSITIVITY)));
     };
@@ -530,7 +580,7 @@ export function GameContainer() {
       window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, [viewSize, isSettingsOpen, isGameOver, isStationMenuOpen]);
+  }, [viewSize, isModalOpen]);
 
   useEffect(() => {
       const container = containerRef.current;
@@ -561,19 +611,19 @@ export function GameContainer() {
     };
     const maxHealth = UPGRADE_VALUES.maxHealth[upgrades.maxHealth];
 
-    if (shipMode === 'cruise' || shipMode === 'scan' || !!playerAction) newSystems.weapons = 'Offline';
+    if (shipMode === 'cruise' || shipMode === 'scan' || isPlayerActionInProgress) newSystems.weapons = 'Offline';
     else if (energy < ENERGY_PER_SHOT) newSystems.weapons = 'Offline';
 
     if (shipMode === 'stealth') newSystems.shields = 'Offline';
     else if (shipMode === 'shield') newSystems.shields = 'Online';
-    else if ((health * 100 / maxHealth) < 50) newSystems.shields = 'Damaged';
+    else if ((health / maxHealth * 100) < 50) newSystems.shields = 'Damaged';
     if (health <= 0) newSystems.shields = 'Offline';
     
     if (energy <= 0) newSystems.power = 'Offline';
     else if (energy < 40) newSystems.power = 'Damaged';
 
     setVesselSystems(newSystems);
-  }, [playerData, shipMode, playerAction]);
+  }, [playerData, shipMode, isPlayerActionInProgress]);
 
   useEffect(() => {
     const mainStation = stations[0];
@@ -595,92 +645,9 @@ export function GameContainer() {
     let lastCollisionTimestamp = 0;
 
     const gameLoop = (timestamp: number) => {
-      if (isSettingsOpen || isGameOver || isStationMenuOpen) {
+      if (isModalOpen) {
         animationFrameId = requestAnimationFrame(gameLoop);
         return;
-      }
-      
-      let actionVelocity: {x: number, y: number} | null = null;
-      let isInputDisabled = false;
-      
-      const currentAction = playerActionRef.current;
-      if (currentAction) {
-          isInputDisabled = true;
-          const { type, targetId, startTime, duration } = currentAction;
-          const now = timestamp;
-          const isTimeUp = now - startTime > duration;
-          let isTargetValid = true;
-          let keepSticking = false; // specific for boarding
-
-          if (type === 'mining') {
-              const targetAsteroid = asteroidsRef.current.find(a => a.id === targetId);
-              const distanceToTarget = targetAsteroid ? Math.hypot(targetAsteroid.x - playerPositionRef.current.x, targetAsteroid.y - playerPositionRef.current.y) : Infinity;
-              isTargetValid = !!targetAsteroid && distanceToTarget <= ACTION_MAX_RANGE;
-
-              if (isTargetValid && isTimeUp) {
-                  const oreGained = Math.floor(Math.random() * 51) + 25;
-                  setPlayerData(d => {
-                      const maxCargo = UPGRADE_VALUES.cargoCapacity[d.upgrades.cargoCapacity];
-                      const availableSpace = maxCargo - d.cargo.current;
-                      const oreToAdd = Math.min(oreGained, availableSpace);
-                      return {
-                          ...d,
-                          resources: { ...d.resources, ore: d.resources.ore + oreToAdd },
-                          cargo: { ...d.cargo, current: d.cargo.current + oreToAdd }
-                      };
-                  });
-                  setAsteroids(prev => prev.filter(a => a.id !== targetId));
-              }
-          } else if (type === 'pillaging') {
-              const targetEnemy = enemiesRef.current.find(e => e.id === targetId);
-              const distanceToTarget = targetEnemy ? Math.hypot(targetEnemy.x - playerPositionRef.current.x, targetEnemy.y - playerPositionRef.current.y) : Infinity;
-              isTargetValid = !!targetEnemy && distanceToTarget <= ACTION_MAX_RANGE;
-
-              if (isTargetValid && isTimeUp) {
-                  if (targetEnemy) {
-                      setEnemies(prev => prev.map(e => e.id === targetId ? { ...e, health: Math.max(0, e.health - PILLAGE_DAMAGE) } : e));
-                      const newDebris: DebrisType = {
-                          id: Date.now(),
-                          x: targetEnemy.x,
-                          y: targetEnemy.y,
-                          resources: {
-                              money: Math.floor(Math.random() * 51),
-                              ore: Math.floor(Math.random() * 11),
-                              gas: Math.floor(Math.random() * 6),
-                          }
-                      };
-                      setDebris(prev => [...prev, newDebris]);
-                  }
-              }
-          } else if (type === 'boarding') {
-              const targetEnemy = enemiesRef.current.find(e => e.id === targetId);
-              const distanceToTarget = targetEnemy ? Math.hypot(targetEnemy.y - playerPositionRef.current.y, targetEnemy.x - playerPositionRef.current.x) : Infinity;
-              isTargetValid = !!targetEnemy && distanceToTarget <= ACTION_MAX_RANGE * 1.5;
-
-              if (isTargetValid) {
-                  const stickDistance = PLAYER_COLLISION_RADIUS + ENEMY_COLLISION_RADIUS + 5;
-                  if (distanceToTarget > stickDistance) {
-                      const angleToTarget = Math.atan2(targetEnemy.y - playerPositionRef.current.y, targetEnemy.x - playerPositionRef.current.x);
-                      actionVelocity = { x: Math.cos(angleToTarget) * MAX_SPEED * 0.5, y: Math.sin(angleToTarget) * MAX_SPEED * 0.5 };
-                  } else {
-                      actionVelocity = { x: targetEnemy.vx, y: targetEnemy.vy };
-                  }
-                  keepSticking = true; // Stay in action state until time is up, even if close
-
-                  if (isTimeUp) {
-                      if (Math.random() < BOARDING_SUCCESS_CHANCE) {
-                          setEnemies(prev => prev.map(e => e.id === targetId ? { ...e, isAlly: true, aiState: 'following' } : e));
-                      } else {
-                          applyDamage(BOARDING_FAIL_DAMAGE);
-                      }
-                      keepSticking = false; // Action is done
-                  }
-              }
-          }
-
-          if (!isTargetValid || (isTimeUp && !keepSticking)) {
-              setPlayerAction(null);
-          }
       }
       
       if (cruiseStateRef.current === 'charging') {
@@ -723,7 +690,7 @@ export function GameContainer() {
       }
 
       const accelVec = { x: 0, y: 0 };
-      const isMovementDisabled = shipModeRef.current === 'scan' || cruiseStateRef.current === 'charging' || isInputDisabled;
+      const isMovementDisabled = isPlayerActionInProgress || shipModeRef.current === 'scan' || cruiseStateRef.current === 'charging';
 
       if (!isMovementDisabled) {
         const rotRad = playerRotationRef.current * (Math.PI / 180);
@@ -768,18 +735,9 @@ export function GameContainer() {
         }
       }
       
-      let newVx, newVy;
-      if (actionVelocity) {
-        newVx = actionVelocity.x;
-        newVy = actionVelocity.y;
-      } else if (isInputDisabled) {
-        newVx = 0;
-        newVy = 0;
-      } else {
-        newVx = (velocityRef.current.x + accelVec.x) * FRICTION;
-        newVy = (velocityRef.current.y + accelVec.y) * FRICTION;
-      }
-
+      let newVx = (velocityRef.current.x + accelVec.x) * FRICTION;
+      let newVy = (velocityRef.current.y + accelVec.y) * FRICTION;
+      
       const calculatedSpeed = Math.hypot(newVx, newVy);
       setSpeed(calculatedSpeed);
 
@@ -798,7 +756,7 @@ export function GameContainer() {
 
       
       const currentTarget = enemiesRef.current.find(e => e.id === targetIdRef.current);
-      const canShoot = playerDataRef.current.energy >= ENERGY_PER_SHOT && (shipMode === 'normal' || shipMode === 'stealth' || shipMode === 'shield') && cruiseStateRef.current === 'idle' && !playerActionRef.current;
+      const canShoot = playerDataRef.current.energy >= ENERGY_PER_SHOT && (shipMode === 'normal' || shipMode === 'stealth' || shipMode === 'shield') && cruiseStateRef.current === 'idle';
       const isTargeting = currentTarget && !currentTarget.isAlly;
       const isShootingManually = keysPressed.current.has(' ');
 
@@ -832,7 +790,7 @@ export function GameContainer() {
       } else if (timestamp - lastEnergyUseTimestamp.current > ENERGY_REGEN_DELAY_MS) {
           setPlayerData(d => ({ ...d, energy: Math.min(100, d.energy + energyRechargeRate) }));
       }
-      if(nanobotRechargeRate > 0) setPlayerData(d => ({...d, health: Math.min(100, (d.health * maxHealth / 100) + nanobotRechargeRate) * 100 / maxHealth}));
+      if(nanobotRechargeRate > 0) setPlayerData(d => ({...d, health: Math.min(100, (d.health / maxHealth * 100) + nanobotRechargeRate)}));
       if (isDocked) setPlayerData(d => ({ ...d, health: Math.min(100, d.health + STATION_PLAYER_REGEN_RATE), energy: Math.min(100, d.energy + STATION_PLAYER_REGEN_RATE) }));
       
       setStations(prev => prev.map(station => {
@@ -1162,7 +1120,7 @@ export function GameContainer() {
     }
     
     return () => cancelAnimationFrame(animationFrameId);
-  }, [viewSize, isSettingsOpen, isGameOver, isStationMenuOpen, controlScheme, isDocked]);
+  }, [viewSize, isModalOpen, controlScheme, isDocked]);
 
   let radarRange = BASE_RADAR_RANGE;
   if (shipMode === 'scan') radarRange = BASE_RADAR_RANGE * 2;
@@ -1231,6 +1189,11 @@ export function GameContainer() {
       maxHull: mainStation.maxHealth,
   } : null;
 
+  const targetAsteroidForMenu = asteroids.find(a => a.id === miningMenuState.targetId) || null;
+  const targetEnemyForPillageMenu = enemies.find(e => e.id === pillageMenuState.targetId) || null;
+  const targetEnemyForBoardingMenu = enemies.find(e => e.id === boardingMenuState.targetId) || null;
+
+
   return (
     <div
       ref={containerRef}
@@ -1274,12 +1237,6 @@ export function GameContainer() {
        )}
        {playerData.energy <= 0 && (
           <div className="absolute inset-0 pointer-events-none" style={{ boxShadow: 'inset 0 0 80px 30px rgba(0, 150, 255, 0.3)' }} />
-       )}
-       {playerAction && (
-        <ActionProgress 
-            actionType={playerAction.type}
-            progress={(Date.now() - playerAction.startTime) / playerAction.duration * 100}
-        />
        )}
 
       <div className="absolute top-4 left-4 z-10 flex flex-col gap-4" data-ui-element="true">
@@ -1346,6 +1303,41 @@ export function GameContainer() {
         onSellResource={handleSellResource}
         onBuyUpgrade={handleBuyUpgrade}
         onRepairHull={handleRepairHull}
+      />
+
+      <MiningMenu 
+        isOpen={miningMenuState.isOpen}
+        onOpenChange={(isOpen) => {
+            if (!isOpen) {
+                setMiningMenuState({ isOpen: false, targetId: null });
+            }
+        }}
+        targetAsteroid={targetAsteroidForMenu}
+        onComplete={handleMiningComplete}
+      />
+      
+      <PillageMenu
+        isOpen={pillageMenuState.isOpen}
+        onOpenChange={(isOpen) => {
+            if (!isOpen) {
+                setPillageMenuState({ isOpen: false, targetId: null });
+            }
+        }}
+        targetEnemy={targetEnemyForPillageMenu}
+        onComplete={handlePillagingComplete}
+        playerEnergy={playerData.energy}
+      />
+
+      <BoardingMenu
+        isOpen={boardingMenuState.isOpen}
+        onOpenChange={(isOpen) => {
+            if (!isOpen) {
+                setBoardingMenuState({ isOpen: false, targetId: null });
+            }
+        }}
+        targetEnemy={targetEnemyForBoardingMenu}
+        onComplete={handleBoardingComplete}
+        playerEnergy={playerData.energy}
       />
 
       <GameOverOverlay isOpen={isGameOver} onRestart={resetGame} />
