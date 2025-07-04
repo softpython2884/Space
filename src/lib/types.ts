@@ -108,6 +108,10 @@ export type EnemyState = {
   patrolTarget?: { x: number, y: number } | null;
   followTargetId?: number | null;
   shipMode?: ShipMode;
+  cruiseState?: 'idle' | 'charging' | 'cruising';
+  cruiseChargeStartTimestamp?: number;
+  cruiseDurationStartTimestamp?: number;
+  cruiseAvailableAt?: number;
 };
 
 export type AsteroidState = {
