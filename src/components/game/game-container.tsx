@@ -46,7 +46,6 @@ const MAP_WIDTH = 4000;
 const MAP_HEIGHT = 4000;
 const FIRE_RATE_MS = 250; 
 const ENEMY_CLICK_RADIUS = 30;
-const ASTEROID_CLICK_RADIUS = 60;
 const STATION_CLICK_RADIUS = 75;
 
 const BASE_RADAR_RANGE = 1200;
@@ -125,11 +124,11 @@ type ProjectileState = {
 export type EnemyState = EnemyStateType;
 
 const generateInitialEnemies = (): EnemyState[] => [
-    { id: 1, type: 'chasseur', x: MAP_WIDTH / 2 + 1500, y: MAP_HEIGHT / 2 + 1500, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0 },
-    { id: 2, type: 'chasseur', x: MAP_WIDTH / 2 - 1600, y: MAP_HEIGHT / 2 - 1200, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0 },
-    { id: 3, type: 'frigate', x: MAP_WIDTH / 2 + 800, y: MAP_HEIGHT / 2 + 1800, vx: 0, vy: 0, health: 300, maxHealth: 300, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 10, lastEnergyUseTimestamp: 0 },
-    { id: 4, type: 'staff', x: 850, y: 850, vx: 0.5, vy: -0.5, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: 0, maxEnergy: 0, cargo: 20, lastEnergyUseTimestamp: 0 },
-    { id: 5, type: 'staff', x: 2800, y: 3000, vx: -0.5, vy: 0.5, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: 0, maxEnergy: 0, cargo: 20, lastEnergyUseTimestamp: 0 },
+    { id: 1, type: 'chasseur', x: MAP_WIDTH / 2 + 1500, y: MAP_HEIGHT / 2 + 1500, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: false },
+    { id: 2, type: 'chasseur', x: MAP_WIDTH / 2 - 1600, y: MAP_HEIGHT / 2 - 1200, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: false },
+    { id: 3, type: 'frigate', x: MAP_WIDTH / 2 + 800, y: MAP_HEIGHT / 2 + 1800, vx: 0, vy: 0, health: 300, maxHealth: 300, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 10, lastEnergyUseTimestamp: 0, isAlly: false },
+    { id: 4, type: 'staff', x: 850, y: 850, vx: 0.5, vy: -0.5, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: 0, maxEnergy: 0, cargo: 20, lastEnergyUseTimestamp: 0, isAlly: false },
+    { id: 5, type: 'staff', x: 2800, y: 3000, vx: -0.5, vy: 0.5, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: 0, maxEnergy: 0, cargo: 20, lastEnergyUseTimestamp: 0, isAlly: false },
 ];
 
 const generateInitialAsteroids = (): AsteroidState[] => [
@@ -168,7 +167,7 @@ export function GameContainer() {
   const [autoMoveTarget, setAutoMoveTarget] = useState<{ x: number, y: number } | null>(null);
   const [shipMode, setShipMode] = useState<ShipMode>('normal');
   const [cruiseState, setCruiseState] = useState<'idle' | 'charging' | 'cruising'>('idle');
-  const [cooldowns, setCooldowns] = useState({ modeChange: 1, cruise: 1 }); // 1 means available
+  const [cooldowns, setCooldowns] = useState({ modeChange: 1, cruise: 1 });
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; targetId: number; targetType: ContextMenuTargetType; } | null>(null);
   
   const [miningMenuState, setMiningMenuState] = useState<{ isOpen: boolean, targetId: number | null }>({ isOpen: false, targetId: null });
@@ -283,7 +282,12 @@ export function GameContainer() {
     const target = targetEnemy || targetAsteroid;
     if (!target) return;
 
-    const distance = Math.hypot(target.x - playerPositionRef.current.x, target.y - playerPositionRef.current.y);
+    let distance = Math.hypot(target.x - playerPositionRef.current.x, target.y - playerPositionRef.current.y);
+
+    // For large objects like asteroids, check distance to edge, not center
+    if (targetAsteroid) {
+        distance -= targetAsteroid.size / 2;
+    }
 
     if (distance > ACTION_MAX_RANGE) {
         toast({ title: "Target out of range", description: "Get closer to perform this action.", variant: 'destructive' });
@@ -537,7 +541,7 @@ export function GameContainer() {
         }
         for (const asteroid of asteroidsRef.current) {
           const distance = Math.hypot(clickWorldX - asteroid.x, clickWorldY - asteroid.y);
-          if (distance < (asteroid.size * ASTEROID_COLLISION_RADIUS * 2)) {
+          if (distance < asteroid.size / 2) { // Check if click is within the asteroid's radius
             setContextMenu({ x: event.clientX, y: event.clientY, targetId: asteroid.id, targetType: 'asteroid' });
             return;
           }
@@ -790,8 +794,8 @@ export function GameContainer() {
       } else if (timestamp - lastEnergyUseTimestamp.current > ENERGY_REGEN_DELAY_MS) {
           setPlayerData(d => ({ ...d, energy: Math.min(100, d.energy + energyRechargeRate) }));
       }
-      if(nanobotRechargeRate > 0) setPlayerData(d => ({...d, health: Math.min(100, (d.health / maxHealth * 100) + nanobotRechargeRate)}));
-      if (isDocked) setPlayerData(d => ({ ...d, health: Math.min(100, d.health + STATION_PLAYER_REGEN_RATE), energy: Math.min(100, d.energy + STATION_PLAYER_REGEN_RATE) }));
+      if(nanobotRechargeRate > 0) setPlayerData(d => ({...d, health: Math.min(maxHealth, d.health + nanobotRechargeRate)}));
+      if (isDocked) setPlayerData(d => ({ ...d, health: Math.min(maxHealth, d.health + STATION_PLAYER_REGEN_RATE), energy: Math.min(100, d.energy + STATION_PLAYER_REGEN_RATE) }));
       
       setStations(prev => prev.map(station => {
         if (timestamp - station.lastHitTimestamp > STATION_SHIELD_REGEN_DELAY_MS) {
