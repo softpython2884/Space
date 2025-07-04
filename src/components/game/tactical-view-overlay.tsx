@@ -101,13 +101,6 @@ export function TacticalViewOverlay({ isOpen, playerResources, onBuildShip, onBu
                                 </div>
                             </ScrollArea>
                         </div>
-                        <div>
-                            <h4 className="text-lg font-semibold mb-2">Fleet Orders</h4>
-                            <div className="space-y-2">
-                                <Button className="w-full justify-start" disabled><Ship className="mr-2"/>Form Fleet Alpha</Button>
-                                <Button className="w-full justify-start" disabled><UserPlus className="mr-2"/>Assign to Fleet</Button>
-                            </div>
-                        </div>
                     </CardContent>
                     <CardFooter className='p-3'>
                         <div className="text-sm flex items-center gap-2 text-yellow-400">
