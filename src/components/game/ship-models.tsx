@@ -57,10 +57,12 @@ const CargoModel = ({ className }: { className?: string }) => (
 
 const MinerModel = ({ className }: { className?: string }) => (
     <svg width="30" height="50" viewBox="0 0 30 50" className={className}>
-      <rect x="10" y="5" width="10" height="40" strokeWidth="2" />
-      <rect x="5" y="10" width="20" height="8" />
-      <rect x="5" y="32" width="20" height="8" />
-      <polygon points="15,0 12,5 18,5" />
+      <g transform="rotate(-90 15 25)">
+        <rect x="10" y="5" width="10" height="40" strokeWidth="2" />
+        <rect x="5" y="10" width="20" height="8" />
+        <rect x="5" y="32" width="20" height="8" />
+        <polygon points="15,0 12,5 18,5" />
+      </g>
     </svg>
 );
 

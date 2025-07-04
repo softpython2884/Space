@@ -142,6 +142,7 @@ type ProjectileState = {
   y: number;
   rotation: number;
   ownerId: number;
+  type: 'basic' | 'heavy';
 };
 
 export type EnemyState = EnemyStateType;
@@ -162,8 +163,8 @@ const generateInitialEnemies = (): EnemyState[] => {
     { id: 1, type: 'chasseur', x: MAP_WIDTH / 2 + 1500, y: MAP_HEIGHT / 2 + 1500, vx: 0, vy: 0, rotation: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
     { id: 2, type: 'chasseur', x: MAP_WIDTH / 2 - 1600, y: MAP_HEIGHT / 2 - 1200, vx: 0, vy: 0, rotation: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
     { id: 3, type: 'frigate', x: MAP_WIDTH / 2 + 800, y: MAP_HEIGHT / 2 + 1800, vx: 0, vy: 0, rotation: 0, health: 300, maxHealth: 300, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 10, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
-    { id: 4, type: 'staff', x: 850, y: 850, vx: 0.5, vy: -0.5, rotation: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 20, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
-    { id: 5, type: 'staff', x: 2800, y: 3000, vx: -0.5, vy: 0.5, rotation: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 20, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
+    { id: 4, type: 'staff', x: 850, y: 850, vx: 0.5, vy: -0.5, rotation: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 20, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null, role: 'miner' },
+    { id: 5, type: 'staff', x: 2800, y: 3000, vx: -0.5, vy: 0.5, rotation: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 20, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null, role: 'miner' },
 
     // Allied Escort
     { id: 6, type: 'frigate', x: stationX - 150, y: stationY, vx: 0, vy: 0, rotation: 0, health: 300, maxHealth: 300, lastShotTimestamp: 0, aiState: 'guarding', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'escort', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
@@ -862,8 +863,14 @@ export function GameContainer() {
         
         let fireRotation = aimAngle;
         if (isTargeting) fireRotation = Math.atan2(currentTarget.y - playerPositionRef.current.y, currentTarget.x - playerPositionRef.current.x) * (180 / Math.PI);
+        
+        const playerShipClass = playerDataRef.current.ship.class;
+        let projectileType: 'basic' | 'heavy' = 'basic';
+        if (playerShipClass === 'Frégate' || playerShipClass === 'Destroyer') {
+            projectileType = 'heavy';
+        }
 
-        setPlayerProjectiles(prev => [...prev, { id: getUniqueId(), x: playerPositionRef.current.x, y: playerPositionRef.current.y, rotation: fireRotation, ownerId: -1 }]);
+        setPlayerProjectiles(prev => [...prev, { id: getUniqueId(), x: playerPositionRef.current.x, y: playerPositionRef.current.y, rotation: fireRotation, ownerId: -1, type: projectileType }]);
         setPlayerData(d => ({ ...d, energy: d.energy - ENERGY_PER_SHOT }));
       }
       
@@ -878,20 +885,35 @@ export function GameContainer() {
                       const asteroid = asteroidsRef.current.find(a => a.id === action.targetId);
                       if (asteroid && asteroid.mineableCharges > 0) {
                           const oreGained = Math.floor(Math.random() * 26) + 25;
+                          const gasGained = Math.random() > 0.7 ? Math.floor(Math.random() * 5) + 1 : 0; // 30% chance for 1-5 gas
+                          
                           setPlayerData(d => {
                               const { ship, upgrades } = d;
                               const maxCargo = SHIP_DATA[ship.class].baseCargo + UPGRADE_VALUES.cargoCapacity[upgrades.cargoCapacity];
                               const availableSpace = maxCargo - d.cargo.current;
-                              const oreToAdd = Math.min(oreGained, availableSpace);
+                              
+                              const cargoToGain = oreGained + gasGained;
+                              let oreToAdd = oreGained;
+                              let gasToAdd = gasGained;
+
+                              if (cargoToGain > availableSpace && cargoToGain > 0) {
+                                  const ratio = availableSpace / cargoToGain;
+                                  oreToAdd = Math.floor(oreToAdd * ratio);
+                                  gasToAdd = Math.floor(gasToAdd * ratio);
+                              }
                               
                               setTimeout(() => {
-                                toast({ title: "Mining Successful", description: `Extracted ${oreToAdd} units of ore.` });
+                                toast({ title: "Mining Successful", description: `Extracted ${oreToAdd} ore and ${gasToAdd} gas.` });
                               }, 0);
 
                               return {
                                   ...d,
-                                  resources: { ...d.resources, ore: d.resources.ore + oreToAdd },
-                                  cargo: { current: d.cargo.current + oreToAdd }
+                                  resources: { 
+                                      ...d.resources, 
+                                      ore: d.resources.ore + oreToAdd,
+                                      gas: d.resources.gas + gasToAdd,
+                                  },
+                                  cargo: { current: Math.max(0, d.cargo.current + oreToAdd + gasToAdd) }
                               };
                           });
                           
@@ -1016,7 +1038,6 @@ export function GameContainer() {
           for (const proj of [...playerProjectilesRef.current, ...enemyProjectilesRef.current]) {
               if (hitProjectileIds.has(proj.id)) continue;
               if (proj.ownerId === updatedEnemy.id) continue; // Can't hit self
-              if (proj.ownerId === -1 && updatedEnemy.isAlly) continue; // Player can't hit ally
               
               const projOwner = proj.ownerId === -1 ? {isAlly: true} : enemiesRef.current.find(e => e.id === proj.ownerId);
               if (projOwner && projOwner.isAlly === updatedEnemy.isAlly) continue; // Faction check
@@ -1024,10 +1045,15 @@ export function GameContainer() {
               const distance = Math.hypot(proj.x - updatedEnemy.x, proj.y - updatedEnemy.y);
               if (distance < collisionRadius) {
                   hitProjectileIds.add(proj.id);
-                  updatedEnemy.health -= PLAYER_PROJECTILE_DAMAGE; // Using a single damage value for now
+                  const damage = proj.ownerId === -1 ? PLAYER_PROJECTILE_DAMAGE : ENEMY_PROJECTILE_DAMAGE;
+                  updatedEnemy.health -= proj.type === 'heavy' ? damage * 1.5 : damage;
                   updatedEnemy.lastAttackerId = proj.ownerId;
                   
-                  if (updatedEnemy.aiState !== 'chasing' && updatedEnemy.aiState !== 'fleeing') {
+                  const isMiner = updatedEnemy.role === 'miner';
+
+                  if (isMiner) {
+                      updatedEnemy.aiState = 'fleeing';
+                  } else if (updatedEnemy.aiState !== 'chasing' && updatedEnemy.aiState !== 'fleeing') {
                     updatedEnemy.aiState = 'chasing';
                     updatedEnemy.stateChangeTimestamp = timestamp;
                     
@@ -1067,6 +1093,7 @@ export function GameContainer() {
           const canSeePlayer = distanceToPlayer < aggroRadius;
 
           // 1. State Transitions
+          const isMiner = updatedEnemy.role === 'miner';
           const shouldFlee = (updatedEnemy.health / updatedEnemy.maxHealth) < ENEMY_FLEE_HEALTH_THRESHOLD;
           if (updatedEnemy.aiState !== 'fleeing' && shouldFlee && updatedEnemy.lastAttackerId !== null) {
               updatedEnemy.aiState = 'fleeing';
@@ -1080,17 +1107,11 @@ export function GameContainer() {
               } else {
                   updatedEnemy.aiState = 'patrolling';
               }
-          } else if (updatedEnemy.role === 'miner' && (updatedEnemy.aiState === 'patrolling' || updatedEnemy.aiState === 'mining')) {
-              let fleeFromThreat = false;
-              for (const otherShip of enemiesRef.current) {
-                  if (otherShip.isAlly) continue;
-                  const distToEnemy = Math.hypot(updatedEnemy.x - otherShip.x, updatedEnemy.y - otherShip.y);
-                  if (distToEnemy < MINER_AVOIDANCE_RADIUS * 1.5) {
-                      updatedEnemy.aiState = 'fleeing';
-                      updatedEnemy.lastAttackerId = otherShip.id;
-                      fleeFromThreat = true;
-                      break;
-                  }
+          } else if (isMiner) {
+              if (updatedEnemy.cargo >= MINER_CARGO_PER_TRIP && updatedEnemy.aiState !== 'returning_to_base') {
+                  updatedEnemy.aiState = 'returning_to_base';
+              } else if (updatedEnemy.aiState === 'patrolling' && updatedEnemy.cargo < MINER_CARGO_PER_TRIP) {
+                  updatedEnemy.aiState = 'mining'; // Switch to mining if patrolling and not full
               }
           } else {
               // Group Aggro
@@ -1132,7 +1153,7 @@ export function GameContainer() {
               }
           }
 
-          if (updatedEnemy.combatTargetId !== null && updatedEnemy.aiState !== 'chasing' && updatedEnemy.aiState !== 'fleeing') {
+          if (updatedEnemy.combatTargetId !== null && updatedEnemy.aiState !== 'chasing' && updatedEnemy.aiState !== 'fleeing' && !isMiner) {
               updatedEnemy.aiState = 'chasing';
           } else if (updatedEnemy.combatTargetId === null && updatedEnemy.aiState === 'chasing') {
               updatedEnemy.aiState = 'searching';
@@ -1140,7 +1161,7 @@ export function GameContainer() {
           }
 
           // New state transitions for cargo and scavenging
-          if (updatedEnemy.cargo > 0 && updatedEnemy.aiState !== 'chasing' && updatedEnemy.aiState !== 'fleeing' && updatedEnemy.aiState !== 'returning_to_base') {
+          if (!isMiner && updatedEnemy.cargo > 0 && updatedEnemy.aiState !== 'chasing' && updatedEnemy.aiState !== 'fleeing' && updatedEnemy.aiState !== 'returning_to_base') {
               updatedEnemy.aiState = 'returning_to_base';
           } else if ((updatedEnemy.aiState === 'patrolling' || updatedEnemy.aiState === 'guarding' || updatedEnemy.aiState === 'following') && updatedEnemy.cargo <= 0) {
               let closestDebris = null;
@@ -1182,10 +1203,23 @@ export function GameContainer() {
                     updatedEnemy.vy = Math.sin(angleToTarget) * ENEMY_SPEED * 0.3;
                 }
                 
-                if (updatedEnemy.role === 'miner' && updatedEnemy.cargo >= MINER_CARGO_PER_TRIP) {
+                if (isMiner && updatedEnemy.cargo >= MINER_CARGO_PER_TRIP) {
                     updatedEnemy.aiState = 'returning_to_base';
-                    updatedEnemy.targetObjectId = stationsRef.current[0].id;
-                } else if (updatedEnemy.role === 'miner' && !updatedEnemy.targetObjectId) {
+                } else if (isMiner && updatedEnemy.aiState !== 'mining') {
+                     updatedEnemy.aiState = 'mining';
+                     updatedEnemy.targetObjectId = null; // will find a new one
+                }
+                break;
+            }
+            case 'mining': {
+                if (!isMiner) { // Non-miners shouldn't be in this state
+                    updatedEnemy.aiState = 'patrolling';
+                    break;
+                }
+                let targetAsteroid = asteroidsRef.current.find(a => a.id === updatedEnemy.targetObjectId);
+
+                // Find a new asteroid if needed
+                if (!targetAsteroid || targetAsteroid.cooldownUntil > timestamp) {
                     let closestAsteroid: AsteroidState | null = null;
                     let minDistance = Infinity;
                     for (const asteroid of asteroidsRef.current) {
@@ -1197,24 +1231,20 @@ export function GameContainer() {
                         }
                     }
                     if (closestAsteroid) {
-                        updatedEnemy.aiState = 'mining';
                         updatedEnemy.targetObjectId = closestAsteroid.id;
-                        updatedEnemy.stateChangeTimestamp = 0;
+                        targetAsteroid = closestAsteroid;
+                        updatedEnemy.stateChangeTimestamp = 0; // Reset timer for new target
+                    } else {
+                        // No asteroids available, go back to patrolling
+                        updatedEnemy.aiState = 'patrolling';
+                        updatedEnemy.targetObjectId = null;
+                        break;
                     }
-                }
-                break;
-            }
-            case 'mining': {
-                const targetAsteroid = asteroidsRef.current.find(a => a.id === updatedEnemy.targetObjectId);
-                if (!targetAsteroid || targetAsteroid.cooldownUntil > timestamp) {
-                    updatedEnemy.aiState = 'patrolling';
-                    updatedEnemy.targetObjectId = null;
-                    break;
                 }
 
                 let avoidanceVec = { x: 0, y: 0 };
                 for (const otherShip of enemiesRef.current) {
-                    if (otherShip.isAlly) continue;
+                    if (otherShip.isAlly || otherShip.id === updatedEnemy.id) continue;
                     const dist = Math.hypot(updatedEnemy.x - otherShip.x, updatedEnemy.y - otherShip.y);
                     if (dist > 0 && dist < MINER_AVOIDANCE_RADIUS) {
                         const angleAway = Math.atan2(updatedEnemy.y - otherShip.y, updatedEnemy.x - otherShip.x);
@@ -1241,7 +1271,7 @@ export function GameContainer() {
                     }
                     if (timestamp - updatedEnemy.stateChangeTimestamp > MINER_SIMULATED_MINE_TIME_MS) {
                         updatedEnemy.cargo = (updatedEnemy.cargo || 0) + MINER_CARGO_PER_TRIP;
-                        updatedEnemy.aiState = 'patrolling';
+                        updatedEnemy.aiState = 'returning_to_base';
                         updatedEnemy.targetObjectId = null;
                         updatedEnemy.stateChangeTimestamp = timestamp;
                     }
@@ -1293,6 +1323,10 @@ export function GameContainer() {
                 break;
             }
             case 'chasing': {
+                if (isMiner) { // Double check to prevent miners from attacking
+                    updatedEnemy.aiState = 'fleeing';
+                    break;
+                }
                 const targetShip = updatedEnemy.combatTargetId === -1 
                     ? { x: playerPositionRef.current.x, y: playerPositionRef.current.y, isAlly: false }
                     : enemiesRef.current.find(e => e.id === updatedEnemy.combatTargetId);
@@ -1312,7 +1346,11 @@ export function GameContainer() {
                     }
 
                     if (timestamp - updatedEnemy.lastShotTimestamp > ENEMY_FIRE_RATE_MS && updatedEnemy.energy >= ENEMY_ENERGY_PER_SHOT) {
-                        newEnemyProjectiles.push({ id: getUniqueId(), x: updatedEnemy.x, y: updatedEnemy.y, rotation: angleToTarget * (180 / Math.PI), ownerId: updatedEnemy.id });
+                        let projectileType: 'basic' | 'heavy' = 'basic';
+                        if (updatedEnemy.type === 'frigate') {
+                            projectileType = 'heavy';
+                        }
+                        newEnemyProjectiles.push({ id: getUniqueId(), x: updatedEnemy.x, y: updatedEnemy.y, rotation: angleToTarget * (180 / Math.PI), ownerId: updatedEnemy.id, type: projectileType });
                         updatedEnemy.lastShotTimestamp = timestamp;
                         updatedEnemy.energy -= ENEMY_ENERGY_PER_SHOT;
                         updatedEnemy.lastEnergyUseTimestamp = timestamp;
@@ -1475,7 +1513,8 @@ export function GameContainer() {
         const distance = Math.hypot(proj.x - playerPositionRef.current.x, proj.y - playerPositionRef.current.y);
         if (distance < PLAYER_COLLISION_RADIUS) {
           hitProjectileIds.add(proj.id);
-          damageToPlayerFromProjectiles += ENEMY_PROJECTILE_DAMAGE;
+          const damage = ENEMY_PROJECTILE_DAMAGE;
+          damageToPlayerFromProjectiles += proj.type === 'heavy' ? damage * 1.5 : damage;
         }
       }
       if (damageToPlayerFromProjectiles > 0) applyDamage(damageToPlayerFromProjectiles);
@@ -1522,17 +1561,20 @@ export function GameContainer() {
                   }
               }
               
-              setPlayerData(prev => ({
-                ...prev,
-                resources: {
-                    money: prev.resources.money + moneyToAdd,
-                    ore: prev.resources.ore + oreToAdd,
-                    gas: prev.resources.gas + gasToAdd,
-                },
-                cargo: {
-                    current: Math.min(maxCargo, Math.max(0, prev.cargo.current + oreToAdd + gasToAdd)),
+              setPlayerData(prev => {
+                const newCargo = Math.min(maxCargo, Math.max(0, prev.cargo.current + oreToAdd + gasToAdd));
+                return {
+                    ...prev,
+                    resources: {
+                        money: prev.resources.money + moneyToAdd,
+                        ore: prev.resources.ore + oreToAdd,
+                        gas: prev.resources.gas + gasToAdd,
+                    },
+                    cargo: {
+                        current: newCargo,
+                    }
                 }
-              }));
+              });
 
               collectedDebrisIds.add(d.id);
               continue;
@@ -1613,6 +1655,7 @@ export function GameContainer() {
 
   const renderEnemy = (enemy: EnemyState) => {
     const props = {
+      key: enemy.id,
       x: enemy.x,
       y: enemy.y,
       rotation: enemy.rotation,
@@ -1623,13 +1666,13 @@ export function GameContainer() {
     };
     switch (enemy.type) {
       case 'chasseur':
-        return <EnemyShip key={enemy.id} {...props} />;
+        return <EnemyShip {...props} />;
       case 'frigate':
-        return <FrigateShip key={enemy.id} {...props} />;
+        return <FrigateShip {...props} />;
       case 'staff':
-        return <StaffShip key={enemy.id} {...props} />;
+        return <StaffShip {...props} />;
       case 'interceptor':
-        return <InterceptorShip key={enemy.id} {...props} />;
+        return <InterceptorShip {...props} />;
       default:
         return null;
     }
@@ -1655,10 +1698,10 @@ export function GameContainer() {
       }}>
         <GameMap width={MAP_WIDTH} height={MAP_HEIGHT} />
         {playerProjectiles.map((p) => (
-          <Projectile key={`player-proj-${p.id}`} x={p.x} y={p.y} rotation={p.rotation} />
+          <Projectile key={`player-proj-${p.id}`} x={p.x} y={p.y} rotation={p.rotation} type={p.type} />
         ))}
         {enemyProjectiles.map((p) => (
-          <Projectile key={`enemy-proj-${p.id}`} x={p.x} y={p.y} rotation={p.rotation} />
+          <Projectile key={`enemy-proj-${p.id}`} x={p.x} y={p.y} rotation={p.rotation} type={p.type} />
         ))}
         <PlayerShip 
           x={playerPosition.x}
