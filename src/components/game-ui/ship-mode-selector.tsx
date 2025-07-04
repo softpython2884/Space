@@ -58,6 +58,8 @@ export function ShipModeSelector({ currentMode, onModeChange, cooldowns, playerE
               else if (!hasEnoughEnergy) tooltipText = `Énergie insuffisante (${cruiseEnergyCost} requis)`;
           } else if (mode.value === 'shield' && !hasEnoughEnergy) {
               tooltipText = `Énergie insuffisante`;
+          } else if (mode.value === 'scan') {
+              tooltipText = 'Scan Mode (Radar +50%)';
           }
 
           return (
