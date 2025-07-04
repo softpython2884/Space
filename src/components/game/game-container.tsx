@@ -26,7 +26,7 @@ import { ShipModeSelector } from '@/components/game-ui/ship-mode-selector';
 import { CruiseStreaks } from '@/components/game/cruise-streaks';
 import { ElectricCloud } from './electric-cloud';
 import { Vortex } from './vortex';
-import { INITIAL_PLAYER_DATA, INITIAL_FACTION_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS, BEAM_INITIAL_ENERGY_COST, MAP_WIDTH, MAP_HEIGHT, ZONES } from '@/lib/constants';
+import { INITIAL_PLAYER_DATA, INITIAL_FACTION_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS, BEAM_INITIAL_ENERGY_COST, BEAM_DAMAGE_PER_FRAME, MAP_WIDTH, MAP_HEIGHT, ZONES } from '@/lib/constants';
 import type { ControlScheme, PlayerData, FactionData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState, AsteroidState, StationState, BotShipType, ContextMenuTargetType, PlayerActionType, Resources, PlayerUpgrades, PlayerShipClass, BeamState, ProjectileState, PlayerAction, EnemyAiState, OutpostState, ChatMessage, Zone, StellarBaseData } from '@/lib/types';
 import { ClientOnly } from '@/components/client-only';
 import { GameOverOverlay } from './game-over-overlay';
@@ -2517,51 +2517,82 @@ export function GameContainer() {
   const visibleEnemies = React.useMemo(() => 
     enemies.filter(e => {
         const isPlayerAlly = e.isAlly;
-        // Simple check for now: player sees everything in their radar
+        if(isTacticalView) {
+            // In tactical view, check if visible by any player-owned entity
+            if (Math.hypot(e.x - playerPosition.x, e.y - playerPosition.y) < radarRange) return true;
+            for (const ally of enemies.filter(a => a.isAlly)) {
+                if (Math.hypot(e.x - ally.x, e.y - ally.y) < BASE_RADAR_RANGE) return true;
+            }
+            return false;
+        }
+
+        // Normal view logic
         if (isPlayerAlly) return true;
         const distanceToPlayer = Math.hypot(e.x - playerPosition.x, e.y - playerPosition.y);
         if (distanceToPlayer < radarRange) return true;
-        // Check if visible by any ally
-        for (const ally of enemies.filter(a => a.isAlly)) {
-            if (Math.hypot(e.x - ally.x, e.y - ally.y) < BASE_RADAR_RANGE) return true;
-        }
+
         return false;
     }),
-    [enemies, playerPosition.x, playerPosition.y, radarRange]
+    [enemies, playerPosition.x, playerPosition.y, radarRange, isTacticalView]
   );
   
   const visibleAsteroids = React.useMemo(() =>
     asteroids.filter(a => {
-        if(isTacticalView) return true;
+        if(isTacticalView) {
+             if (Math.hypot(a.x - playerPosition.x, a.y - playerPosition.y) < radarRange) return true;
+            for (const ally of enemies.filter(e => e.isAlly)) {
+                if (Math.hypot(a.x - ally.x, a.y - ally.y) < BASE_RADAR_RANGE) return true;
+            }
+            return false;
+        }
         const distance = Math.hypot(a.x - cameraPosition.x, a.y - cameraPosition.y);
         return shipMode === 'stealth' ? distance < STEALTH_AGGRO_RADIUS * 1.5 : distance < radarRange * 1.5;
     }),
-    [asteroids, cameraPosition.x, cameraPosition.y, radarRange, shipMode, isTacticalView]
+    [asteroids, cameraPosition.x, cameraPosition.y, radarRange, shipMode, isTacticalView, enemies, playerPosition]
   );
 
   const visibleStations = React.useMemo(() =>
     stations.filter(s => {
-        if(isTacticalView) return true;
+        if(s.owner === 'player') return true;
+        if(isTacticalView) {
+            if (Math.hypot(s.x - playerPosition.x, s.y - playerPosition.y) < radarRange) return true;
+            for (const ally of enemies.filter(e => e.isAlly)) {
+                if (Math.hypot(s.x - ally.x, s.y - ally.y) < BASE_RADAR_RANGE * 1.5) return true;
+            }
+            return false;
+        }
         const distance = Math.hypot(s.x - cameraPosition.x, s.y - cameraPosition.y);
         return shipMode === 'stealth' ? distance < STEALTH_AGGRO_RADIUS * 1.5 : distance < radarRange * 1.5;
     }),
-    [stations, cameraPosition.x, cameraPosition.y, radarRange, shipMode, isTacticalView]
+    [stations, cameraPosition.x, cameraPosition.y, radarRange, shipMode, isTacticalView, enemies, playerPosition]
   );
 
   const visibleOutposts = React.useMemo(() =>
     outposts.filter(o => {
-        if(isTacticalView) return true;
+        if(isTacticalView) {
+            if (Math.hypot(o.x - playerPosition.x, o.y - playerPosition.y) < radarRange) return true;
+            for (const ally of enemies.filter(e => e.isAlly)) {
+                if (Math.hypot(o.x - ally.x, o.y - ally.y) < BASE_RADAR_RANGE) return true;
+            }
+            return false;
+        }
         return Math.hypot(o.x - cameraPosition.x, o.y - cameraPosition.y) < radarRange * 1.5
     }),
-    [outposts, cameraPosition.x, cameraPosition.y, radarRange, isTacticalView]
+    [outposts, cameraPosition.x, cameraPosition.y, radarRange, isTacticalView, enemies, playerPosition]
   );
   
   const visibleDebris = React.useMemo(() =>
     debris.filter(d => {
-        if(isTacticalView) return true;
+        if(isTacticalView) {
+            if (Math.hypot(d.x - playerPosition.x, d.y - playerPosition.y) < radarRange) return true;
+            for (const ally of enemies.filter(e => e.isAlly)) {
+                if (Math.hypot(d.x - ally.x, d.y - ally.y) < BASE_RADAR_RANGE) return true;
+            }
+            return false;
+        }
         return Math.hypot(d.x - cameraPosition.x, d.y - cameraPosition.y) < radarRange * 1.5
     }),
-    [debris, cameraPosition.x, cameraPosition.y, radarRange, isTacticalView]
+    [debris, cameraPosition.x, cameraPosition.y, radarRange, isTacticalView, enemies, playerPosition]
   );
   
   const containerClass = cn(
@@ -2661,6 +2692,7 @@ export function GameContainer() {
         />
         {visibleEnemies.map(enemy => {
           const props = {
+            key: enemy.id,
             x: enemy.x,
             y: enemy.y,
             rotation: enemy.rotation,
@@ -2672,13 +2704,13 @@ export function GameContainer() {
           };
           switch (enemy.type) {
             case 'Chasseur':
-              return <EnemyShip key={enemy.id} {...props} />;
+              return <EnemyShip {...props} />;
             case 'Frégate':
-              return <FrigateShip key={enemy.id} {...props} />;
+              return <FrigateShip {...props} />;
             case 'Mineur':
-              return <StaffShip key={enemy.id} {...props} />;
+              return <StaffShip {...props} />;
             case 'Intercepteur':
-              return <InterceptorShip key={enemy.id} {...props} />;
+              return <InterceptorShip {...props} />;
             default:
               return null;
           }
