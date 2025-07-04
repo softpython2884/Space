@@ -26,7 +26,7 @@ import { ShipModeSelector } from '@/components/game-ui/ship-mode-selector';
 import { CruiseStreaks } from '@/components/game/cruise-streaks';
 import { ElectricCloud } from './electric-cloud';
 import { Vortex } from './vortex';
-import { INITIAL_PLAYER_DATA, INITIAL_FACTION_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS, BEAM_DAMAGE_PER_FRAME, BEAM_INITIAL_ENERGY_COST, MAP_WIDTH, MAP_HEIGHT, ZONES } from '@/lib/constants';
+import { INITIAL_PLAYER_DATA, INITIAL_FACTION_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS, AI_HELP_RADIUS, MAP_WIDTH, MAP_HEIGHT, ZONES, BEAM_DAMAGE_PER_FRAME } from '@/lib/constants';
 import type { ControlScheme, PlayerData, FactionData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState, AsteroidState, StationState, BotShipType, ContextMenuTargetType, PlayerActionType, Resources, PlayerUpgrades, PlayerShipClass, BeamState, ProjectileState, PlayerAction, EnemyAiState, OutpostState, ChatMessage, Zone, StellarBaseData } from '@/lib/types';
 import { ClientOnly } from '@/components/client-only';
 import { GameOverOverlay } from './game-over-overlay';
@@ -103,7 +103,6 @@ const SHIELD_DAMAGE_TO_ENERGY_COST = 0.5;
 const MODE_CHANGE_COOLDOWN_MS = 2000;
 
 // Enemy AI Constants
-const AI_HELP_RADIUS = 700;
 const ENEMY_MAX_ENERGY = 100;
 const ENEMY_ENERGY_PER_SHOT = 10;
 const ENEMY_ENERGY_REGEN_RATE = 0.05;
@@ -140,6 +139,9 @@ const STATION_INTERACTION_RADIUS = 300;
 const STATION_PLAYER_REGEN_RATE = 0.1;
 const STATION_SHIELD_REGEN_RATE = 0.05;
 const STATION_SHIELD_REGEN_DELAY_MS = 5000;
+
+const BEAM_RANGE = 1000;
+const BEAM_ENERGY_DRAIN_PER_FRAME = 0.25;
 
 let uniqueIdCounter = 0;
 const getUniqueId = () => {
@@ -1387,43 +1389,51 @@ export function GameContainer() {
         
       // Beam weapon logic for player (AUTOMATIC)
       const { beam } = playerShipConfig.weapons;
+      const isBeamWeaponEnabled = activeWeapons.beam && beam && beam.count > 0 && canShoot;
+      let beamTarget: EnemyState | null = null;
+
+      // Find a target if the beam weapon is enabled
+      if (isBeamWeaponEnabled && playerDataRef.current.energy > 0) {
+          let minDistance = BEAM_RANGE;
+          for (const enemy of enemiesRef.current) {
+              if (!enemy.isAlly) {
+                  const distance = Math.hypot(enemy.x - playerPositionRef.current.x, enemy.y - playerPositionRef.current.y);
+                  if (distance < minDistance) {
+                      minDistance = distance;
+                      beamTarget = enemy;
+                  }
+              }
+          }
+      }
+
+      // Manage active beams based on the target
       const existingPlayerBeams = activeBeamsRef.current.filter(b => b.sourceId === -1);
-      const isBeamActive = activeWeapons.beam && beam && beam.count > 0 && canShoot;
 
-      if (isBeamActive && existingPlayerBeams.length === 0) {
-        if (playerDataRef.current.energy >= BEAM_INITIAL_ENERGY_COST) {
-            let beamTarget = null;
-            let minDistance = ENEMY_AGGRO_RADIUS;
-            for (const enemy of enemiesRef.current) {
-                if (!enemy.isAlly) {
-                    const distance = Math.hypot(enemy.x - playerPositionRef.current.x, enemy.y - playerPositionRef.current.y);
-                    if (distance < minDistance) {
-                        minDistance = distance;
-                        beamTarget = enemy;
-                    }
-                }
-            }
+      if (beamTarget) { // If we have a target
+          setPlayerData(d => ({ ...d, energy: Math.max(0, d.energy - BEAM_ENERGY_DRAIN_PER_FRAME) }));
+          lastEnergyUseTimestamp.current = timestamp;
 
-            if (beamTarget) {
-                setPlayerData(d => ({...d, energy: d.energy - BEAM_INITIAL_ENERGY_COST}));
-                lastEnergyUseTimestamp.current = timestamp;
-                const newBeams: BeamState[] = [];
-                for (const offset of beam.offsets) {
-                    newBeams.push({
-                        id: getUniqueId(),
-                        sourceId: -1,
-                        targetId: beamTarget.id,
-                        type: beam.type,
-                        sourceOffsetX: offset.x,
-                        sourceOffsetY: offset.y,
-                        isAlly: true
-                    });
-                }
-                setActiveBeams(prev => [...prev, ...newBeams]);
-            }
-        }
-      } else if (!isBeamActive && existingPlayerBeams.length > 0) {
-         setActiveBeams(prev => prev.filter(b => b.sourceId !== -1));
+          if (existingPlayerBeams.length === 0) { // If no beam exists, create it
+              const newBeams: BeamState[] = [];
+              for (const offset of beam.offsets) {
+                  newBeams.push({
+                      id: getUniqueId(),
+                      sourceId: -1,
+                      targetId: beamTarget.id,
+                      type: beam.type,
+                      sourceOffsetX: offset.x,
+                      sourceOffsetY: offset.y,
+                      isAlly: true
+                  });
+              }
+              setActiveBeams(prev => [...prev, ...newBeams]);
+          } else { // If beam exists, just update its target
+              setActiveBeams(prev => prev.map(b => b.sourceId === -1 ? { ...b, targetId: beamTarget!.id } : b));
+          }
+      } else { // If no target, remove player beams
+          if (existingPlayerBeams.length > 0) {
+              setActiveBeams(prev => prev.filter(b => b.sourceId !== -1));
+          }
       }
 
       if (playerActionRef.current) {
@@ -1683,7 +1693,7 @@ export function GameContainer() {
               if (proj.ownerId === updatedEnemy.id) continue;
               
               const projOwnerIsPlayer = proj.ownerId === -1 || outpostsRef.current.some(o => o.id === proj.ownerId);
-              const projOwner = projOwnerIsPlayer ? null : enemiesRef.current.find(e => e.id === proj.ownerId);
+              const projOwner = enemiesRef.current.find(e => e.id === proj.ownerId);
 
               // Faction check: can't hit allies
               if ((projOwnerIsPlayer && updatedEnemy.isAlly) || (projOwner && projOwner.isAlly === updatedEnemy.isAlly)) {
@@ -2024,10 +2034,10 @@ export function GameContainer() {
                         }
                     }
 
-                    if (enemyShipInfo.weapons.beam && enemyShipInfo.weapons.beam.count > 0 && updatedEnemy.energy > BEAM_INITIAL_ENERGY_COST) {
+                    if (enemyShipInfo.weapons.beam && enemyShipInfo.weapons.beam.count > 0 && updatedEnemy.energy > BEAM_ENERGY_DRAIN_PER_FRAME) {
                         const isAlreadyBeaming = currentActiveBeams.some(b => b.sourceId === updatedEnemy.id);
                         if (!isAlreadyBeaming) {
-                            updatedEnemy.energy -= BEAM_INITIAL_ENERGY_COST;
+                            updatedEnemy.energy -= BEAM_ENERGY_DRAIN_PER_FRAME;
                             const newBeams: BeamState[] = [];
                             for (const offset of enemyShipInfo.weapons.beam.offsets) {
                                 newBeams.push({
@@ -2219,18 +2229,10 @@ export function GameContainer() {
           if (!source || !target) return null;
       
           const frameDamage = BEAM_DAMAGE_PER_FRAME;
+          // Apply damage to ships only. Station damage is handled in a separate block.
           if (beam.targetId === -1) {
               applyDamage(frameDamage);
-          } else if(beam.targetId >= 10000) {
-              setStations(prev => prev.map(s => {
-                  if (s.id === beam.targetId - 10000) {
-                    let shieldDamage = Math.min(s.shield, frameDamage);
-                    let healthDamage = frameDamage - shieldDamage;
-                    return { ...s, shield: s.shield - shieldDamage, health: s.health - healthDamage, lastHitTimestamp: timestamp };
-                  }
-                  return s;
-              }));
-          } else {
+          } else if(beam.targetId < 10000) {
               processedEnemies = processedEnemies.map(e => e.id === beam.targetId ? { ...e, health: Math.max(0, e.health - frameDamage) } : e);
           }
 
@@ -2313,15 +2315,17 @@ export function GameContainer() {
       }
       if (damageToPlayerFromProjectiles > 0) applyDamage(damageToPlayerFromProjectiles);
       
-      setStations(prevStations => prevStations.map(station => {
+      // Damage calculation for stations
+      const stationsWithDamage = [...stationsRef.current].map(station => {
           let newStation = {...station};
+          
+          // Projectile damage
           for (const proj of [...playerProjectilesRef.current, ...enemyProjectilesRef.current]) {
               if (hitProjectileIds.has(proj.id)) continue;
               
               const projOwnerIsPlayer = proj.ownerId === -1 || outpostsRef.current.some(o => o.id === proj.ownerId);
               const projOwner = enemiesRef.current.find(e => e.id === proj.ownerId);
 
-              // Don't damage station if shot by its own faction
               if ((station.owner === 'player' && (projOwnerIsPlayer || (projOwner && projOwner.isAlly))) || 
                   (station.owner === 'enemy' && (!projOwnerIsPlayer && (!projOwner || !projOwner.isAlly)))) {
                 continue;
@@ -2339,8 +2343,22 @@ export function GameContainer() {
                   newStation.lastHitTimestamp = timestamp;
               }
           }
+
+          // Beam damage
+          for (const beam of finalBeams) {
+              if (beam.targetId === station.id + 10000) {
+                  const frameDamage = BEAM_DAMAGE_PER_FRAME;
+                  let shieldDamage = Math.min(newStation.shield, frameDamage);
+                  let healthDamage = frameDamage - shieldDamage;
+
+                  newStation.shield -= shieldDamage;
+                  newStation.health -= healthDamage;
+                  newStation.lastHitTimestamp = timestamp;
+              }
+          }
           return newStation;
-      }));
+      });
+      setStations(stationsWithDamage);
 
 
       if (hitProjectileIds.size > 0) {
@@ -2709,7 +2727,6 @@ export function GameContainer() {
         />
         {visibleEnemies.map(enemy => {
           const props = {
-            key: enemy.id,
             x: enemy.x,
             y: enemy.y,
             rotation: enemy.rotation,
@@ -2721,13 +2738,13 @@ export function GameContainer() {
           };
           switch (enemy.type) {
             case 'Chasseur':
-              return <EnemyShip {...props} />;
+              return <EnemyShip key={enemy.id} {...props} />;
             case 'Frégate':
-              return <FrigateShip {...props} />;
+              return <FrigateShip key={enemy.id} {...props} />;
             case 'Mineur':
-              return <StaffShip {...props} />;
+              return <StaffShip key={enemy.id} {...props} />;
             case 'Intercepteur':
-              return <InterceptorShip {...props} />;
+              return <InterceptorShip key={enemy.id} {...props} />;
             default:
               return null;
           }
