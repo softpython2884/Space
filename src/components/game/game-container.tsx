@@ -31,7 +31,7 @@ import { ElectricCloud } from './electric-cloud';
 import { Vortex } from './vortex';
 import { Explosion } from './explosion';
 import { WarpInEffect } from './warp-in-effect';
-import { MINING_DEPLETION_CHARGES, GAS_ASTEROID_EXPLOSION_RADIUS, GAS_ASTEROID_EXPLOSION_DAMAGE, ELECTRIC_ASTEROID_ENERGY_YIELD, BEAM_ENERGY_DRAIN_PER_FRAME, BEAM_DAMAGE_PER_FRAME, INITIAL_PLAYER_DATA, INITIAL_FACTION_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS, OUTPOST_REGEN_RATE, OUTPOST_REGEN_RADIUS, AI_HELP_RADIUS, MAP_WIDTH, MAP_HEIGHT, ZONES, REINFORCEMENT_COST, REINFORCEMENT_COOLDOWN_MS, STATION_FIRE_RATE_MS, STATION_RANGE, STATION_PROJECTILE_DAMAGE, STATION_DEFENSE_WAVE_COOLDOWN_MS, STATION_DEFENSE_WAVE_SIZE } from '@/lib/constants';
+import { MINING_DEPLETION_CHARGES, GAS_ASTEROID_EXPLOSION_RADIUS, GAS_ASTEROID_EXPLOSION_DAMAGE, ELECTRIC_ASTEROID_ENERGY_YIELD, BEAM_ENERGY_DRAIN_PER_FRAME, BEAM_DAMAGE_PER_FRAME, BEAM_RANGE, INITIAL_PLAYER_DATA, INITIAL_FACTION_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS, OUTPOST_REGEN_RATE, OUTPOST_REGEN_RADIUS, AI_HELP_RADIUS, MAP_WIDTH, MAP_HEIGHT, ZONES, REINFORCEMENT_COST, REINFORCEMENT_COOLDOWN_MS, STATION_FIRE_RATE_MS, STATION_RANGE, STATION_PROJECTILE_DAMAGE, STATION_DEFENSE_WAVE_COOLDOWN_MS, STATION_DEFENSE_WAVE_SIZE } from '@/lib/constants';
 import type { ControlScheme, PlayerData, FactionData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState, AsteroidState, StationState, BotShipType, ContextMenuTargetType, PlayerActionType, Resources, PlayerUpgrades, PlayerShipClass, BeamState, ProjectileState, PlayerAction, EnemyAiState, OutpostState, ChatMessage, Zone, Effect, StellarBaseData } from '@/lib/types';
 import { ClientOnly } from '@/components/client-only';
 import { GameOverOverlay } from './game-over-overlay';
@@ -3240,6 +3240,7 @@ export function GameContainer() {
         />
         {visibleEnemies.map(enemy => {
           const props = {
+            key: enemy.id,
             x: enemy.x,
             y: enemy.y,
             rotation: enemy.rotation,
@@ -3251,19 +3252,19 @@ export function GameContainer() {
           };
           switch (enemy.type) {
             case 'Chasseur':
-              return <EnemyShip key={enemy.id} {...props} />;
+              return <EnemyShip {...props} />;
             case 'Frégate':
-              return <FrigateShip key={enemy.id} {...props} />;
+              return <FrigateShip {...props} />;
             case 'Mineur':
-              return <StaffShip key={enemy.id} {...props} />;
+              return <StaffShip {...props} />;
             case 'Intercepteur':
-              return <InterceptorShip key={enemy.id} {...props} />;
+              return <InterceptorShip {...props} />;
             case 'Destroyer':
-              return <DestroyerShip key={enemy.id} {...props} />;
+              return <DestroyerShip {...props} />;
             case 'Porteur':
-              return <CarrierShip key={enemy.id} {...props} />;
+              return <CarrierShip {...props} />;
             case 'Cargo':
-              return <CargoShip key={enemy.id} {...props} />;
+              return <CargoShip {...props} />;
             default:
               return null;
           }

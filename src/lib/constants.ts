@@ -18,7 +18,7 @@ export const INITIAL_PLAYER_DATA: PlayerData = {
     },
   },
   health: 900,
-  energy: 1000,
+  energy: 10000,
   cargo: {
     current: 0,
   },
@@ -68,7 +68,7 @@ export const SHIP_DATA: Record<PlayerShipClass, {
 
 export const GAS_ASTEROID_EXPLOSION_RADIUS = 250;
 export const GAS_ASTEROID_EXPLOSION_DAMAGE = 50;
-export const MINING_DEPLETION_CHARGES = 4;
+export const MINING_DEPLETION_CHARGES = 2;
 export const ELECTRIC_ASTEROID_ENERGY_YIELD = 2500;
 
 export const BEAM_DAMAGE_PER_FRAME = 0.5;
