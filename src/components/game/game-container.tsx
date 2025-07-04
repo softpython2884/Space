@@ -18,6 +18,7 @@ import { SpeedIndicator } from '../game-ui/speed-indicator';
 import { SettingsMenu } from '../game-ui/settings-menu';
 import { PlayerStatus } from '@/components/game-ui/player-status';
 import { ResourceDisplay } from '@/components/game-ui/resource-display';
+import { WeaponControl } from '@/components/game-ui/weapon-control';
 import { ChatBox } from '@/components/game-ui/chat-box';
 import { StellarBaseStatus } from '@/components/game-ui/stellar-base-status';
 import { VesselSystems } from '@/components/game-ui/vessel-systems';
@@ -69,8 +70,8 @@ const PLAYER_PROJECTILE_DAMAGE = 10;
 const HEAVY_PLAYER_PROJECTILE_DAMAGE = 20;
 const ENEMY_PROJECTILE_DAMAGE = 5;
 
-const BEAM_ENERGY_DRAIN_PER_FRAME = 0.1;
-const HEAVY_BEAM_ENERGY_DRAIN_PER_FRAME = 0.2;
+const BEAM_ENERGY_DRAIN_PER_FRAME = 0.05;
+const HEAVY_BEAM_ENERGY_DRAIN_PER_FRAME = 0.1;
 const BEAM_DAMAGE_PER_FRAME = 0.15;
 const HEAVY_BEAM_DAMAGE_PER_FRAME = 0.3;
 const BEAM_RAMP_UP_TIME_MS = 2000;
@@ -238,6 +239,8 @@ export function GameContainer() {
   const [vesselSystems, setVesselSystems] = useState<VesselSystemsData>({ shields: 'Online', weapons: 'Ready', power: 'Optimal' });
   const [isDocked, setIsDocked] = useState(false);
   const [selectedAllyIds, setSelectedAllyIds] = useState<number[]>([]);
+  const [activeWeapons, setActiveWeapons] = useState({ manualTurrets: true, autoTurrets: true, beam: true });
+
 
   // Tactical View State
   const [cameraPosition, setCameraPosition] = useState({ x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 });
@@ -688,6 +691,13 @@ export function GameContainer() {
     toast({ title: "Escort Hired!", description: `A Chasseur escort has joined your fleet.` });
   }, [toast]);
 
+  const handleToggleWeapon = useCallback((weapon: 'manualTurrets' | 'autoTurrets' | 'beam') => {
+    setActiveWeapons(prev => ({
+        ...prev,
+        [weapon]: !prev[weapon]
+    }));
+  }, []);
+
   const isModalOpen = isSettingsOpen || isGameOver || isStationMenuOpen;
 
   useEffect(() => {
@@ -1068,11 +1078,8 @@ export function GameContainer() {
       const playerShipConfig = SHIP_DATA[playerDataRef.current.ship.class];
       const hasUpgradedWeapons = playerDataRef.current.upgrades.maxHealth > 0; // Placeholder for weapon upgrade
 
-      if ((currentTarget || isShootingManually) && canShoot && timestamp - lastFiredTimestamp.current > FIRE_RATE_MS) {
+      if (activeWeapons.manualTurrets && (currentTarget || isShootingManually) && canShoot && timestamp - lastFiredTimestamp.current > FIRE_RATE_MS) {
         lastFiredTimestamp.current = timestamp;
-        
-        let fireRotation = aimAngle;
-        if (currentTarget) fireRotation = Math.atan2(currentTarget.y - playerPositionRef.current.y, currentTarget.x - playerPositionRef.current.x) * (180 / Math.PI);
         
         const newProjectiles: ProjectileState[] = [];
         const { manualTurrets } = playerShipConfig.weapons;
@@ -1088,19 +1095,33 @@ export function GameContainer() {
                     const rotatedOffsetX = offset.x * Math.cos(shipRotRad) - offset.y * Math.sin(shipRotRad);
                     const rotatedOffsetY = offset.x * Math.sin(shipRotRad) + offset.y * Math.cos(shipRotRad);
                     
+                    const turretX = playerPositionRef.current.x + rotatedOffsetX;
+                    const turretY = playerPositionRef.current.y + rotatedOffsetY;
+
+                    let fireRotation = aimAngle;
+                    if (currentTarget) {
+                        fireRotation = Math.atan2(currentTarget.y - turretY, currentTarget.x - turretX) * (180 / Math.PI);
+                    } else {
+                         const mouseVecX = mouseWorldX - playerPositionRef.current.x;
+                         const mouseVecY = mouseWorldY - playerPositionRef.current.y;
+                         const adjustedMouseX = turretX + mouseVecX;
+                         const adjustedMouseY = turretY + mouseVecY;
+                         fireRotation = Math.atan2(adjustedMouseY - turretY, adjustedMouseX - turretX) * (180 / Math.PI);
+                    }
+
                     newProjectiles.push({ 
                         id: getUniqueId(), 
-                        x: playerPositionRef.current.x + rotatedOffsetX, 
-                        y: playerPositionRef.current.y + rotatedOffsetY, 
+                        x: turretX, 
+                        y: turretY, 
                         rotation: fireRotation, 
                         ownerId: -1, 
                         type: manualTurrets.type 
                     });
                 }
+                if (newProjectiles.length > 0) {
+                    setPlayerProjectiles(prev => [...prev, ...newProjectiles]);
+                }
             }
-        }
-        if (newProjectiles.length > 0) {
-            setPlayerProjectiles(prev => [...prev, ...newProjectiles]);
         }
       }
 
@@ -1108,7 +1129,7 @@ export function GameContainer() {
       const { autoTurrets } = playerShipConfig.weapons;
       const hasAutoTurrets = autoTurrets && autoTurrets.count > 0 && hasUpgradedWeapons;
 
-      if (hasAutoTurrets && timestamp - lastPlayerAutoShotTimestamp.current > AUTO_TURRET_FIRE_RATE_MS) {
+      if (activeWeapons.autoTurrets && hasAutoTurrets && timestamp - lastPlayerAutoShotTimestamp.current > AUTO_TURRET_FIRE_RATE_MS) {
         if (playerDataRef.current.energy >= AUTO_TURRET_ENERGY_COST * autoTurrets.count) {
             let autoTarget: EnemyState | null = null;
             let minDistance = ENEMY_AGGRO_RADIUS;
@@ -1148,7 +1169,7 @@ export function GameContainer() {
         
       // Beam weapon logic for player
       const { beam } = playerShipConfig.weapons;
-      const isShootingTargetWithBeams = beam && beam.count > 0 && currentTarget && !currentTarget.isAlly && isLeftMouseDown.current && canShoot;
+      const isShootingTargetWithBeams = activeWeapons.beam && beam && beam.count > 0 && currentTarget && !currentTarget.isAlly && (isLeftMouseDown.current || isShootingManually) && canShoot;
       
       const existingPlayerBeams = activeBeamsRef.current.filter(b => b.sourceId === -1);
 
@@ -2276,6 +2297,7 @@ export function GameContainer() {
         />
         {visibleEnemies.map(enemy => {
           const props = {
+            key: enemy.id,
             x: enemy.x,
             y: enemy.y,
             rotation: enemy.rotation,
@@ -2288,13 +2310,13 @@ export function GameContainer() {
           };
           switch (enemy.type) {
             case 'Chasseur':
-              return <EnemyShip key={enemy.id} {...props} />;
+              return <EnemyShip {...props} />;
             case 'Frégate':
-              return <FrigateShip key={enemy.id} {...props} />;
+              return <FrigateShip {...props} />;
             case 'Mineur':
-              return <StaffShip key={enemy.id} {...props} />;
+              return <StaffShip {...props} />;
             case 'Intercepteur':
-              return <InterceptorShip key={enemy.id} {...props} />;
+              return <InterceptorShip {...props} />;
             default:
               return null;
           }
@@ -2338,9 +2360,14 @@ export function GameContainer() {
         <VesselSystems systems={vesselSystems} />
       </div>
 
-      <div className="absolute top-4 right-4 z-10 flex flex-col gap-4" data-ui-element="true">
+      <div className="absolute top-4 right-4 z-10 flex flex-col items-end gap-4" data-ui-element="true">
         <PlayerStatus data={playerData} />
         <ResourceDisplay resources={playerData.resources} />
+        <WeaponControl 
+            shipClass={playerData.ship.class}
+            activeWeapons={activeWeapons}
+            onToggleWeapon={handleToggleWeapon}
+        />
       </div>
       
       <div className="absolute bottom-4 left-4 z-10 flex flex-col items-start gap-4" data-ui-element="true">
