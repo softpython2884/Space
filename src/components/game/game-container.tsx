@@ -8,6 +8,9 @@ import { EnemyShip } from './enemy-ship';
 import { FrigateShip } from './frigate-ship';
 import { StaffShip } from './staff-ship';
 import { InterceptorShip } from './interceptor-ship';
+import { DestroyerShip } from './destroyer-ship';
+import { CarrierShip } from './carrier-ship';
+import { CargoShip } from './cargo-ship';
 import { Asteroid } from './asteroid';
 import { SpaceStation } from './space-station';
 import { Outpost } from './outpost';
@@ -26,7 +29,7 @@ import { ShipModeSelector } from '@/components/game-ui/ship-mode-selector';
 import { CruiseStreaks } from '@/components/game/cruise-streaks';
 import { ElectricCloud } from './electric-cloud';
 import { Vortex } from './vortex';
-import { INITIAL_PLAYER_DATA, INITIAL_FACTION_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS, AI_HELP_RADIUS, MAP_WIDTH, MAP_HEIGHT, ZONES, BEAM_DAMAGE_PER_FRAME, BEAM_RANGE, REINFORCEMENT_COST, REINFORCEMENT_COOLDOWN_MS } from '@/lib/constants';
+import { BEAM_RANGE, INITIAL_PLAYER_DATA, INITIAL_FACTION_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS, AI_HELP_RADIUS, MAP_WIDTH, MAP_HEIGHT, ZONES, BEAM_DAMAGE_PER_FRAME, REINFORCEMENT_COST, REINFORCEMENT_COOLDOWN_MS } from '@/lib/constants';
 import type { ControlScheme, PlayerData, FactionData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState, AsteroidState, StationState, BotShipType, ContextMenuTargetType, PlayerActionType, Resources, PlayerUpgrades, PlayerShipClass, BeamState, ProjectileState, PlayerAction, EnemyAiState, OutpostState, ChatMessage, Zone, StellarBaseData } from '@/lib/types';
 import { ClientOnly } from '@/components/client-only';
 import { GameOverOverlay } from './game-over-overlay';
@@ -790,6 +793,7 @@ export function GameContainer() {
           aiState: 'guarding', lastKnownPlayerPosition: null, stateChangeTimestamp: 0,
           energy: shipInfo.maxEnergy, maxEnergy: shipInfo.maxEnergy, cargo: 0, lastEnergyUseTimestamp: 0,
           isAlly: true, combatTargetId: null, lastAttackerId: null, patrolTarget: null, patrolCenter: {x: spawnX, y: spawnY},
+          role: shipType === 'Mineur' ? 'miner' : 'attack',
           cruiseState: 'idle', cruiseAvailableAt: 0,
       };
 
@@ -1832,7 +1836,7 @@ export function GameContainer() {
               }
               if (updatedEnemy.id === targetIdRef.current) setTargetId(null);
               if (selectedAllyIdsRef.current.includes(updatedEnemy.id)) {
-                  setSelectedAllyIds(prev => prev.filter(id => id !== updatedEnemy.id));
+                  setSelectedAllyIds(prev => prev.filter(id => id !== enemy.id));
               }
               return null;
           }
@@ -2818,7 +2822,6 @@ export function GameContainer() {
         />
         {visibleEnemies.map(enemy => {
           const props = {
-            key: enemy.id,
             x: enemy.x,
             y: enemy.y,
             rotation: enemy.rotation,
@@ -2830,13 +2833,19 @@ export function GameContainer() {
           };
           switch (enemy.type) {
             case 'Chasseur':
-              return <EnemyShip {...props} />;
+              return <EnemyShip key={enemy.id} {...props} />;
             case 'Frégate':
-              return <FrigateShip {...props} />;
+              return <FrigateShip key={enemy.id} {...props} />;
             case 'Mineur':
-              return <StaffShip {...props} />;
+              return <StaffShip key={enemy.id} {...props} />;
             case 'Intercepteur':
-              return <InterceptorShip {...props} />;
+              return <InterceptorShip key={enemy.id} {...props} />;
+            case 'Destroyer':
+              return <DestroyerShip key={enemy.id} {...props} />;
+            case 'Porteur':
+                return <CarrierShip key={enemy.id} {...props} />;
+            case 'Cargo':
+                return <CargoShip key={enemy.id} {...props} />;
             default:
               return null;
           }
