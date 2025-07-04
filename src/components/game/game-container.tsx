@@ -2419,19 +2419,41 @@ export function GameContainer() {
         lastAiFactionUpdate.current = timestamp;
         
         const enemyStation = stationsRef.current.find(s => s.owner === 'enemy');
-        
-        if(enemyStation && enemyFactionDataRef.current.shipCounts.Mineur < 2 && enemyFactionDataRef.current.money >= SHIP_DATA.Mineur.cost) {
-            setEnemyFactionData(d => ({ ...d, money: d.money - SHIP_DATA.Mineur.cost }));
-            const newShip = createNewShip('Mineur', false, enemyStation);
-            setEnemies(e => [...e, newShip]);
-            setEnemyFactionData(d => ({ ...d, shipCounts: { ...d.shipCounts, Mineur: d.shipCounts.Mineur + 1 }}));
-        }
+        if (enemyStation) {
+            let moneyToSpend = 0;
+            const shipsToBuild: BotShipType[] = [];
+            const updatedShipCounts = { ...enemyFactionDataRef.current.shipCounts };
+            let currentMoney = enemyFactionDataRef.current.money;
 
-        if(enemyStation && enemyFactionDataRef.current.money >= SHIP_DATA.Chasseur.cost * 2) {
-            setEnemyFactionData(d => ({ ...d, money: d.money - SHIP_DATA.Chasseur.cost }));
-            const newShip = createNewShip('Chasseur', false, enemyStation);
-            setEnemies(e => [...e, newShip]);
-            setEnemyFactionData(d => ({ ...d, shipCounts: { ...d.shipCounts, Chasseur: d.shipCounts.Chasseur + 1 }}));
+            const buildQueue: { type: BotShipType, maxCount: number }[] = [
+                { type: 'Mineur', maxCount: 3 },
+                { type: 'Chasseur', maxCount: 7 },
+                { type: 'Intercepteur', maxCount: 4 },
+                { type: 'Destroyer', maxCount: 1 },
+                { type: 'Frégate', maxCount: 1 },
+            ];
+
+            for (const item of buildQueue) {
+                const shipInfo = SHIP_DATA[item.type];
+                if (updatedShipCounts[item.type] < item.maxCount && currentMoney >= shipInfo.cost) {
+                    shipsToBuild.push(item.type);
+                    moneyToSpend += shipInfo.cost;
+                    currentMoney -= shipInfo.cost;
+                    updatedShipCounts[item.type]++;
+                    // Only build one ship per tick to avoid huge bursts
+                    break; 
+                }
+            }
+            
+            if (shipsToBuild.length > 0) {
+                const newShips = shipsToBuild.map(type => createNewShip(type, false, enemyStation));
+                setEnemies(e => [...e, ...newShips]);
+                setEnemyFactionData(d => ({
+                    ...d,
+                    money: d.money - moneyToSpend,
+                    shipCounts: updatedShipCounts
+                }));
+            }
         }
       }
 
@@ -2492,9 +2514,8 @@ export function GameContainer() {
 
   const visibleEnemies = React.useMemo(() => 
     enemies.filter(e => {
-        const isPlayerAlly = e.isAlly;
         if(isTacticalView) {
-            // In tactical view, check if visible by any player-owned entity
+            if (e.isAlly) return true;
             if (Math.hypot(e.x - playerPosition.x, e.y - playerPosition.y) < radarRange) return true;
             for (const ally of enemies.filter(a => a.isAlly)) {
                 if (Math.hypot(e.x - ally.x, e.y - ally.y) < BASE_RADAR_RANGE) return true;
@@ -2505,8 +2526,6 @@ export function GameContainer() {
             return false;
         }
 
-        // Normal view logic
-        if (isPlayerAlly) return true;
         const distanceToPlayer = Math.hypot(e.x - playerPosition.x, e.y - playerPosition.y);
         if (distanceToPlayer < radarRange) return true;
 
@@ -2678,6 +2697,7 @@ export function GameContainer() {
         />
         {visibleEnemies.map(enemy => {
           const props = {
+            key: enemy.id,
             x: enemy.x,
             y: enemy.y,
             rotation: enemy.rotation,
@@ -2689,13 +2709,13 @@ export function GameContainer() {
           };
           switch (enemy.type) {
             case 'Chasseur':
-              return <EnemyShip key={enemy.id} {...props} />;
+              return <EnemyShip {...props} />;
             case 'Frégate':
-              return <FrigateShip key={enemy.id} {...props} />;
+              return <FrigateShip {...props} />;
             case 'Mineur':
-              return <StaffShip key={enemy.id} {...props} />;
+              return <StaffShip {...props} />;
             case 'Intercepteur':
-              return <InterceptorShip key={enemy.id} {...props} />;
+              return <InterceptorShip {...props} />;
             default:
               return null;
           }
