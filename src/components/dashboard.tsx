@@ -6,8 +6,9 @@ import { Heart, Zap, Container, CircleDollarSign, Mountain, Flame, Star, Ship } 
 
 export function Dashboard() {
   const data = INITIAL_PLAYER_DATA; // Note: This component uses static initial data.
-  const maxHealth = SHIP_DATA[data.ship.class].baseHealth + UPGRADE_VALUES.maxHealth[data.upgrades.maxHealth];
+  const maxHealth = SHIP_DATA[data.ship.class].baseHealth * 3 + UPGRADE_VALUES.maxHealth[data.upgrades.maxHealth];
   const maxCargo = SHIP_DATA[data.ship.class].baseCargo + UPGRADE_VALUES.cargoCapacity[data.upgrades.cargoCapacity];
+  const maxEnergy = SHIP_DATA[data.ship.class].maxEnergy;
 
   return (
     <Card className="bg-secondary/40 border-secondary">
@@ -32,18 +33,18 @@ export function Dashboard() {
             <div className="flex items-center gap-2">
               <Heart className="h-5 w-5 text-primary" />
               <span className="font-medium">Health</span>
-              <span className="ml-auto text-muted-foreground">{data.health}%</span>
+              <span className="ml-auto text-muted-foreground">{data.health} / {maxHealth}</span>
             </div>
-            <Progress value={data.health} aria-label={`${data.health}% Health`} />
+            <Progress value={(data.health / maxHealth) * 100} aria-label={`${data.health}% Health`} />
         </div>
 
         <div className="grid gap-4">
             <div className="flex items-center gap-2">
               <Zap className="h-5 w-5 text-primary" />
               <span className="font-medium">Energy</span>
-              <span className="ml-auto text-muted-foreground">{data.energy}%</span>
+              <span className="ml-auto text-muted-foreground">{data.energy} / {maxEnergy}</span>
             </div>
-            <Progress value={data.energy} aria-label={`${data.energy}% Energy`} />
+            <Progress value={(data.energy / maxEnergy) * 100} aria-label={`${data.energy}% Energy`} />
         </div>
         
         <div className="grid gap-4">

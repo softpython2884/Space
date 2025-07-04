@@ -23,6 +23,7 @@ export interface PlayerUpgrades {
   energyRecharge: number;
   nanobots: number;
   cargoCapacity: number;
+  antimatterReactor: number;
 }
 
 export interface WeaponConfig {
