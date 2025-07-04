@@ -43,6 +43,8 @@ export const SHIP_DATA: Record<PlayerShipClass, { name: PlayerShipClass, descrip
 
 export const ALLY_COST = 2500;
 
+export const AI_HELP_RADIUS = 700;
+
 
 export const UPGRADE_COSTS = {
   maxHealth: [100, 250, 500, 1000, 2000],
