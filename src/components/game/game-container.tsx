@@ -1012,17 +1012,33 @@ export function GameContainer() {
           if (enemy.type === 'frigate') collisionRadius = FRIGATE_COLLISION_RADIUS;
           else if (enemy.type === 'staff') collisionRadius = STAFF_COLLISION_RADIUS;
 
+          // Projectile hits on this enemy
           for (const proj of [...playerProjectilesRef.current, ...enemyProjectilesRef.current]) {
-              if (hitProjectileIds.has(proj.id) || proj.ownerId === updatedEnemy.id) continue;
+              if (hitProjectileIds.has(proj.id)) continue;
+              if (proj.ownerId === updatedEnemy.id) continue; // Can't hit self
+              if (proj.ownerId === -1 && updatedEnemy.isAlly) continue; // Player can't hit ally
+              
+              const projOwner = proj.ownerId === -1 ? {isAlly: true} : enemiesRef.current.find(e => e.id === proj.ownerId);
+              if (projOwner && projOwner.isAlly === updatedEnemy.isAlly) continue; // Faction check
+
               const distance = Math.hypot(proj.x - updatedEnemy.x, proj.y - updatedEnemy.y);
               if (distance < collisionRadius) {
                   hitProjectileIds.add(proj.id);
                   updatedEnemy.health -= PLAYER_PROJECTILE_DAMAGE; // Using a single damage value for now
                   updatedEnemy.lastAttackerId = proj.ownerId;
-                  if (updatedEnemy.aiState === 'patrolling' || updatedEnemy.aiState === 'guarding' || updatedEnemy.aiState === 'mining') {
+                  
+                  if (updatedEnemy.aiState !== 'chasing' && updatedEnemy.aiState !== 'fleeing') {
                     updatedEnemy.aiState = 'chasing';
                     updatedEnemy.stateChangeTimestamp = timestamp;
-                    updatedEnemy.lastKnownPlayerPosition = { ...playerPositionRef.current };
+                    
+                    const attacker = proj.ownerId === -1 
+                        ? {x: playerPositionRef.current.x, y: playerPositionRef.current.y} 
+                        : enemiesRef.current.find(e => e.id === proj.ownerId);
+
+                    if (attacker) {
+                        updatedEnemy.lastKnownPlayerPosition = { x: attacker.x, y: attacker.y };
+                        updatedEnemy.combatTargetId = proj.ownerId === -1 ? -1 : proj.ownerId;
+                    }
                   }
               }
           }
@@ -1123,7 +1139,10 @@ export function GameContainer() {
               updatedEnemy.stateChangeTimestamp = timestamp;
           }
 
-          if (updatedEnemy.aiState === 'patrolling' || updatedEnemy.aiState === 'guarding' || updatedEnemy.aiState === 'following') {
+          // New state transitions for cargo and scavenging
+          if (updatedEnemy.cargo > 0 && updatedEnemy.aiState !== 'chasing' && updatedEnemy.aiState !== 'fleeing' && updatedEnemy.aiState !== 'returning_to_base') {
+              updatedEnemy.aiState = 'returning_to_base';
+          } else if ((updatedEnemy.aiState === 'patrolling' || updatedEnemy.aiState === 'guarding' || updatedEnemy.aiState === 'following') && updatedEnemy.cargo <= 0) {
               let closestDebris = null;
               let minDebrisDist = AI_SCAVENGE_RADIUS;
               for(const d of debrisRef.current) {
@@ -1254,15 +1273,17 @@ export function GameContainer() {
                     updatedEnemy.vy = Math.sin(angleToStation) * ENEMY_SPEED * 0.8;
                 } else {
                     if (updatedEnemy.cargo > 0) {
-                        const creditsEarned = updatedEnemy.cargo * RESOURCE_PRICES.ore;
-                        if (creditsEarned > 0) {
-                            setTimeout(() => {
-                                toast({ title: "Miner Drop-off", description: `An allied miner delivered resources, +${creditsEarned} credits.` });
-                            }, 0);
-                            setPlayerData(d => ({
-                                ...d,
-                                resources: { ...d.resources, money: d.resources.money + creditsEarned }
-                            }));
+                        if (updatedEnemy.isAlly) {
+                            const creditsEarned = updatedEnemy.cargo * RESOURCE_PRICES.ore;
+                            if (creditsEarned > 0) {
+                                setTimeout(() => {
+                                    toast({ title: "Ally Drop-off", description: `An allied ${updatedEnemy.type} delivered resources, +${creditsEarned} credits.` });
+                                }, 0);
+                                setPlayerData(d => ({
+                                    ...d,
+                                    resources: { ...d.resources, money: d.resources.money + creditsEarned }
+                                }));
+                            }
                         }
                     }
                     updatedEnemy.cargo = 0;
@@ -1445,8 +1466,11 @@ export function GameContainer() {
       }
       
       let damageToPlayerFromProjectiles = 0;
-      for (const proj of [...playerProjectilesRef.current, ...enemyProjectilesRef.current]) {
+      for (const proj of enemyProjectilesRef.current) {
         if (hitProjectileIds.has(proj.id) || proj.ownerId === -1) continue;
+        
+        const projOwner = enemiesRef.current.find(e => e.id === proj.ownerId);
+        if(projOwner && projOwner.isAlly) continue;
 
         const distance = Math.hypot(proj.x - playerPositionRef.current.x, proj.y - playerPositionRef.current.y);
         if (distance < PLAYER_COLLISION_RADIUS) {
@@ -1631,10 +1655,10 @@ export function GameContainer() {
       }}>
         <GameMap width={MAP_WIDTH} height={MAP_HEIGHT} />
         {playerProjectiles.map((p) => (
-          <Projectile key={p.id} x={p.x} y={p.y} rotation={p.rotation} />
+          <Projectile key={`player-proj-${p.id}`} x={p.x} y={p.y} rotation={p.rotation} />
         ))}
         {enemyProjectiles.map((p) => (
-          <Projectile key={p.id} x={p.x} y={p.y} rotation={p.rotation} />
+          <Projectile key={`enemy-proj-${p.id}`} x={p.x} y={p.y} rotation={p.rotation} />
         ))}
         <PlayerShip 
           x={playerPosition.x}
