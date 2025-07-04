@@ -18,7 +18,7 @@ export const INITIAL_PLAYER_DATA: PlayerData = {
     },
   },
   health: 900,
-  energy: 10000,
+  energy: 100000,
   cargo: {
     current: 0,
   },
@@ -56,24 +56,31 @@ export const SHIP_DATA: Record<PlayerShipClass, {
     miningBonus?: number;
     weapons: WeaponConfig;
 }> = {
-    'Chasseur': { name: 'Chasseur', description: 'Vaisseau de base polyvalent, équipé de tourelles manuelles.', cost: 1000, baseHealth: 300, baseCargo: 200, maxEnergy: 10000, baseEnergyRecharge: 0.1, weapons: { manualTurrets: { count: 2, type: 'basic', offsets: [{x: -15, y: 10}, {x: 15, y: 10}] }, autoTurrets: { count: 2, type: 'basic', offsets: [{x: -20, y: 20}, {x: 20, y: 20}] }, beam: { count: 1, type: 'basic', offsets: [{x: 0, y: 0}]} } },
-    'Intercepteur': { name: 'Intercepteur', description: 'Très rapide, faible soute. 2 tourelles manuelles, améliorable pour poser des mines.', cost: 1500, baseHealth: 225, baseCargo: 100, maxEnergy: 12000, baseEnergyRecharge: 0.15, weapons: { manualTurrets: { count: 2, type: 'basic', offsets: [{x: -15, y: -5}, {x: 15, y: -5}] } } },
-    'Frégate': { name: 'Frégate', description: 'Vaisseau de guerre lourd. 1 tourelle lourde manuelle, 2 automatiques, 1 rayon.', cost: 4000, baseHealth: 750, baseCargo: 150, maxEnergy: 25000, baseEnergyRecharge: 0.2, weapons: { manualTurrets: { count: 1, type: 'heavy', offsets: [{x: 0, y: -25}] }, beam: { count: 1, type: 'basic', offsets: [{x: 0, y: 10}] }, autoTurrets: { count: 2, type: 'basic', offsets: [{x: -20, y: 20}, {x: 20, y: 20}] } } },
-    'Destroyer': { name: 'Destroyer', description: 'Plateforme d\'armes ultime. 2 tourelles manuelles lourdes, 2 auto lourdes, 3 rayons.', cost: 10000, baseHealth: 1200, baseCargo: 250, maxEnergy: 50000, baseEnergyRecharge: 0.25, weapons: { manualTurrets: { count: 2, type: 'heavy', offsets: [{x: -15, y: -30}, {x: 15, y: -30}] }, beam: { count: 3, type: 'heavy', offsets: [{x: 0, y: -15}, {x: -25, y: 15}, {x: 25, y: 15}] }, autoTurrets: { count: 2, type: 'heavy', offsets: [{x: -25, y: 30}, {x: 25, y: 30}] } } },
-    'Porteur': { name: 'Porteur', description: 'Transporte des unités de soutien. Peut déployer 2 intercepteurs et 1 chasseur.', cost: 8000, baseHealth: 600, baseCargo: 300, maxEnergy: 30000, baseEnergyRecharge: 0.1, weapons: { manualTurrets: { count: 0, type: 'basic', offsets: [] } } },
-    'Cargo': { name: 'Cargo', description: 'Soute immense, coque résistante. 1 tourelle manuelle de défense.', cost: 3000, baseHealth: 450, baseCargo: 1000, maxEnergy: 15000, baseEnergyRecharge: 0.08, weapons: { manualTurrets: { count: 1, type: 'basic', offsets: [{x: 0, y: 0}] } } },
-    'Mineur': { name: 'Mineur', description: 'Extraction rapide des ressources. 1 tourelle manuelle. Vitesse de minage x1.5.', cost: 2000, baseHealth: 300, baseCargo: 500, maxEnergy: 15000, baseEnergyRecharge: 0.08, miningBonus: 1.5, weapons: { manualTurrets: { count: 1, type: 'basic', offsets: [{x: 0, y: -15}] } } },
+    'Chasseur': { name: 'Chasseur', description: 'Vaisseau de base polyvalent, équipé de tourelles manuelles.', cost: 1000, baseHealth: 300, baseCargo: 200, maxEnergy: 100000, baseEnergyRecharge: 0.1, weapons: { manualTurrets: { count: 2, type: 'basic', offsets: [{x: -15, y: 10}, {x: 15, y: 10}] }, autoTurrets: { count: 2, type: 'basic', offsets: [{x: -20, y: 20}, {x: 20, y: 20}] }, beam: { count: 1, type: 'basic', offsets: [{x: 0, y: 0}]} } },
+    'Intercepteur': { name: 'Intercepteur', description: 'Très rapide, faible soute. 2 tourelles manuelles, améliorable pour poser des mines.', cost: 1500, baseHealth: 225, baseCargo: 100, maxEnergy: 120000, baseEnergyRecharge: 0.15, weapons: { manualTurrets: { count: 2, type: 'basic', offsets: [{x: -15, y: -5}, {x: 15, y: -5}] } } },
+    'Frégate': { name: 'Frégate', description: 'Vaisseau de guerre lourd. 1 tourelle lourde manuelle, 2 automatiques, 1 rayon.', cost: 4000, baseHealth: 750, baseCargo: 150, maxEnergy: 250000, baseEnergyRecharge: 0.2, weapons: { manualTurrets: { count: 1, type: 'heavy', offsets: [{x: 0, y: -25}] }, beam: { count: 1, type: 'basic', offsets: [{x: 0, y: 10}] }, autoTurrets: { count: 2, type: 'basic', offsets: [{x: -20, y: 20}, {x: 20, y: 20}] } } },
+    'Destroyer': { name: 'Destroyer', description: 'Plateforme d\'armes ultime. 2 tourelles manuelles lourdes, 2 auto lourdes, 3 rayons.', cost: 10000, baseHealth: 1200, baseCargo: 250, maxEnergy: 500000, baseEnergyRecharge: 0.25, weapons: { manualTurrets: { count: 2, type: 'heavy', offsets: [{x: -15, y: -30}, {x: 15, y: -30}] }, beam: { count: 3, type: 'heavy', offsets: [{x: 0, y: -15}, {x: -25, y: 15}, {x: 25, y: 15}] }, autoTurrets: { count: 2, type: 'heavy', offsets: [{x: -25, y: 30}, {x: 25, y: 30}] } } },
+    'Porteur': { name: 'Porteur', description: 'Transporte des unités de soutien. Peut déployer 2 intercepteurs et 1 chasseur.', cost: 8000, baseHealth: 600, baseCargo: 300, maxEnergy: 300000, baseEnergyRecharge: 0.1, weapons: { manualTurrets: { count: 0, type: 'basic', offsets: [] } } },
+    'Cargo': { name: 'Cargo', description: 'Soute immense, coque résistante. 1 tourelle manuelle de défense.', cost: 3000, baseHealth: 450, baseCargo: 1000, maxEnergy: 150000, baseEnergyRecharge: 0.08, weapons: { manualTurrets: { count: 1, type: 'basic', offsets: [{x: 0, y: 0}] } } },
+    'Mineur': { name: 'Mineur', description: 'Extraction rapide des ressources. 1 tourelle manuelle. Vitesse de minage x1.5.', cost: 2000, baseHealth: 300, baseCargo: 500, maxEnergy: 150000, baseEnergyRecharge: 0.08, miningBonus: 1.5, weapons: { manualTurrets: { count: 1, type: 'basic', offsets: [{x: 0, y: -15}] } } },
 };
 
 export const BEAM_DAMAGE_PER_FRAME = 0.5;
 export const BEAM_ENERGY_DRAIN_PER_FRAME = 0.3;
 export const BEAM_RANGE = 1000;
-export const STATION_BASE_HEALTH = 45000;
-export const STATION_BASE_SHIELD = 9000;
+export const STATION_BASE_HEALTH = 50000;
+export const STATION_BASE_SHIELD = 15000;
 export const OUTPOST_COST = 5000;
 export const OUTPOST_HEALTH = 2000;
 export const OUTPOST_RANGE = 900;
 export const OUTPOST_FIRE_RATE_MS = 1000;
+
+export const STATION_FIRE_RATE_MS = 2000;
+export const STATION_RANGE = 2000;
+export const STATION_PROJECTILE_DAMAGE = 15;
+export const STATION_DEFENSE_WAVE_COOLDOWN_MS = 60000; // 1 minute
+export const STATION_DEFENSE_WAVE_SIZE = 3;
+
 
 export const ALLY_COST = 2500;
 export const REINFORCEMENT_COST = 3000;

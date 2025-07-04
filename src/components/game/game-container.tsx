@@ -29,8 +29,10 @@ import { ShipModeSelector } from '@/components/game-ui/ship-mode-selector';
 import { CruiseStreaks } from '@/components/game/cruise-streaks';
 import { ElectricCloud } from './electric-cloud';
 import { Vortex } from './vortex';
-import { BEAM_RANGE, INITIAL_PLAYER_DATA, INITIAL_FACTION_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS, AI_HELP_RADIUS, MAP_WIDTH, MAP_HEIGHT, ZONES, BEAM_DAMAGE_PER_FRAME, BEAM_ENERGY_DRAIN_PER_FRAME, REINFORCEMENT_COST, REINFORCEMENT_COOLDOWN_MS } from '@/lib/constants';
-import type { ControlScheme, PlayerData, FactionData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState, AsteroidState, StationState, BotShipType, ContextMenuTargetType, PlayerActionType, Resources, PlayerUpgrades, PlayerShipClass, BeamState, ProjectileState, PlayerAction, EnemyAiState, OutpostState, ChatMessage, Zone, StellarBaseData } from '@/lib/types';
+import { Explosion } from './explosion';
+import { WarpInEffect } from './warp-in-effect';
+import { BEAM_RANGE, INITIAL_PLAYER_DATA, INITIAL_FACTION_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS, AI_HELP_RADIUS, MAP_WIDTH, MAP_HEIGHT, ZONES, BEAM_DAMAGE_PER_FRAME, BEAM_ENERGY_DRAIN_PER_FRAME, REINFORCEMENT_COST, REINFORCEMENT_COOLDOWN_MS, STATION_FIRE_RATE_MS, STATION_RANGE, STATION_PROJECTILE_DAMAGE, STATION_DEFENSE_WAVE_COOLDOWN_MS, STATION_DEFENSE_WAVE_SIZE } from '@/lib/constants';
+import type { ControlScheme, PlayerData, FactionData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState, AsteroidState, StationState, BotShipType, ContextMenuTargetType, PlayerActionType, Resources, PlayerUpgrades, PlayerShipClass, BeamState, ProjectileState, PlayerAction, EnemyAiState, OutpostState, ChatMessage, Zone, Effect } from '@/lib/types';
 import { ClientOnly } from '@/components/client-only';
 import { GameOverOverlay } from './game-over-overlay';
 import { TacticalViewOverlay } from '../game-ui/tactical-view-overlay';
@@ -222,12 +224,10 @@ const generateInitialAsteroids = (zones: Zone[]): AsteroidState[] => {
         if (zone.type === 'asteroid_field') {
             const count = Math.floor(Math.PI * zone.radius * zone.radius / 100000) * (zone.density || 0.5);
             for (let i = 0; i < count; i++) {
-                const angle = Math.random() * 2 * Math.PI;
-                const distance = Math.random() * zone.radius;
                 asteroids.push({
                     id: id++,
-                    x: zone.x + Math.cos(angle) * distance,
-                    y: zone.y + Math.sin(angle) * distance,
+                    x: zone.x + Math.cos(Math.random() * 2 * Math.PI) * Math.random() * zone.radius,
+                    y: zone.y + Math.sin(Math.random() * 2 * Math.PI) * Math.random() * zone.radius,
                     size: Math.random() * 60 + 60,
                     rotation: Math.random() * 360,
                     mineableCharges: MINING_CHARGES,
@@ -240,8 +240,8 @@ const generateInitialAsteroids = (zones: Zone[]): AsteroidState[] => {
 };
 
 const generateInitialStations = (): StationState[] => [
-    { id: 1, owner: 'player', x: 2500, y: MAP_HEIGHT / 2, health: STATION_BASE_HEALTH, maxHealth: STATION_BASE_HEALTH, shield: STATION_BASE_SHIELD, maxShield: STATION_BASE_SHIELD, lastHitTimestamp: 0 },
-    { id: 2, owner: 'enemy', x: MAP_WIDTH - 2500, y: MAP_HEIGHT / 2, health: STATION_BASE_HEALTH, maxHealth: STATION_BASE_HEALTH, shield: STATION_BASE_SHIELD, maxShield: STATION_BASE_SHIELD, lastHitTimestamp: 0 },
+    { id: 1, owner: 'player', x: 2500, y: MAP_HEIGHT / 2, health: STATION_BASE_HEALTH, maxHealth: STATION_BASE_HEALTH, shield: STATION_BASE_SHIELD, maxShield: STATION_BASE_SHIELD, lastHitTimestamp: 0, defenseWaveCooldownUntil: 0 },
+    { id: 2, owner: 'enemy', x: MAP_WIDTH - 2500, y: MAP_HEIGHT / 2, health: STATION_BASE_HEALTH, maxHealth: STATION_BASE_HEALTH, shield: STATION_BASE_SHIELD, maxShield: STATION_BASE_SHIELD, lastHitTimestamp: 0, defenseWaveCooldownUntil: 0 },
 ];
 
 
@@ -260,6 +260,8 @@ export function GameContainer() {
   const [stations, setStations] = useState<StationState[]>([]);
   const [outposts, setOutposts] = useState<OutpostState[]>([]);
   const [debris, setDebris] = useState<DebrisType[]>([]);
+  const [explosions, setExplosions] = useState<Effect[]>([]);
+  const [warpEffects, setWarpEffects] = useState<Effect[]>([]);
   const [targetId, setTargetId] = useState<number | null>(null);
   const [viewSize, setViewSize] = useState({ width: 0, height: 0 });
   const [zones] = useState<Zone[]>(ZONES);
@@ -976,32 +978,38 @@ export function GameContainer() {
         reinforcementAvailableAt.current = Date.now() + REINFORCEMENT_COOLDOWN_MS;
     
         const newReinforcements: EnemyState[] = [];
-        const reinforcementCount = 5;
+        const reinforcementCount = 8;
         const despawnTime = Date.now() + 120000; // 2 minutes
     
         for (let i = 0; i < reinforcementCount; i++) {
             const shipInfo = SHIP_DATA['Chasseur'];
             const spawnOffset = { x: (Math.random() - 0.5) * 200, y: (Math.random() - 0.5) * 200 };
-            const newAlly: EnemyState = {
-                id: getUniqueId(),
-                type: 'Chasseur',
-                x: clickWorldX + spawnOffset.x,
-                y: clickWorldY + spawnOffset.y,
-                vx: 0, vy: 0, rotation: 0,
-                health: shipInfo.baseHealth * 3,
-                maxHealth: shipInfo.baseHealth * 3,
-                lastShotTimestamp: 0, lastAutoShotTimestamp: 0,
-                aiState: 'patrolling_order',
-                orderTarget: { x: clickWorldX, y: clickWorldY },
-                lastKnownPlayerPosition: null, stateChangeTimestamp: 0,
-                energy: shipInfo.maxEnergy, maxEnergy: shipInfo.maxEnergy, cargo: 0, lastEnergyUseTimestamp: 0,
-                isAlly: true, combatTargetId: null, lastAttackerId: null, patrolTarget: null,
-                cruiseState: 'idle', cruiseAvailableAt: 0,
-                despawnTimestamp: despawnTime,
-            };
-            newReinforcements.push(newAlly);
+            
+            const warpId = getUniqueId();
+            setWarpEffects(prev => [...prev, { id: warpId, x: clickWorldX + spawnOffset.x, y: clickWorldY + spawnOffset.y }]);
+
+            setTimeout(() => {
+                const newAlly: EnemyState = {
+                    id: getUniqueId(),
+                    type: 'Chasseur',
+                    x: clickWorldX + spawnOffset.x,
+                    y: clickWorldY + spawnOffset.y,
+                    vx: 0, vy: 0, rotation: 0,
+                    health: shipInfo.baseHealth * 3,
+                    maxHealth: shipInfo.baseHealth * 3,
+                    lastShotTimestamp: 0, lastAutoShotTimestamp: 0,
+                    aiState: 'patrolling_order',
+                    orderTarget: { x: clickWorldX, y: clickWorldY },
+                    lastKnownPlayerPosition: null, stateChangeTimestamp: 0,
+                    energy: shipInfo.maxEnergy, maxEnergy: shipInfo.maxEnergy, cargo: 0, lastEnergyUseTimestamp: 0,
+                    isAlly: true, combatTargetId: null, lastAttackerId: null, patrolTarget: null,
+                    cruiseState: 'idle', cruiseAvailableAt: 0,
+                    despawnTimestamp: despawnTime,
+                };
+                setEnemies(prev => [...prev, newAlly]);
+            }, 500); // Spawn after warp effect starts
         }
-        setEnemies(prev => [...prev, ...newReinforcements]);
+
         addChatMessage('System', `${reinforcementCount} Chasseur reinforcements have arrived. They will depart in 2 minutes.`, 'text-green-400');
         return;
       }
@@ -1281,8 +1289,8 @@ export function GameContainer() {
       let currentStrafe = STRAFE_ACCELERATION;
       
       if (cruiseStateRef.current === 'cruising') {
-          currentMaxSpeed = MAX_SPEED * 5;
-          currentAccel = ACCELERATION * 4.0;
+          currentMaxSpeed = MAX_SPEED * 8; // Increased speed
+          currentAccel = ACCELERATION * 6.0;
           currentStrafe = STRAFE_ACCELERATION * 0.1;
       } else if (shipModeRef.current === 'stealth') {
           currentMaxSpeed = MAX_SPEED * 0.8;
@@ -1721,6 +1729,49 @@ export function GameContainer() {
           })
       );
       
+      let newProjectilesFromStations: ProjectileState[] = [];
+      setStations(prev => prev.map(station => {
+          if (timestamp - station.lastHitTimestamp > STATION_FIRE_RATE_MS) {
+              let closestEnemy: (EnemyState | PlayerData & {id: number}) | null = null;
+              let minDistance = STATION_RANGE;
+              const potentialTargets = [...enemiesRef.current, { ...playerDataRef.current, id: -1 }].filter(
+                  e => (e.isAlly && station.owner === 'enemy') || (!e.isAlly && station.owner === 'player')
+              );
+
+              for (const target of potentialTargets) {
+                  const distance = Math.hypot(station.x - target.x, station.y - target.y);
+                  if (distance < minDistance) {
+                      minDistance = distance;
+                      closestEnemy = target;
+                  }
+              }
+
+              if (closestEnemy) {
+                  const angleToTarget = Math.atan2(closestEnemy.y - station.y, closestEnemy.x - station.x);
+                  newProjectilesFromStations.push({
+                      id: getUniqueId(),
+                      x: station.x, y: station.y,
+                      startX: station.x, startY: station.y,
+                      rotation: angleToTarget * (180 / Math.PI),
+                      ownerId: station.id,
+                      type: 'basic'
+                  });
+                  return { ...station, lastHitTimestamp: timestamp };
+              }
+          }
+          return station;
+      }));
+
+      if (newProjectilesFromStations.length > 0) {
+          // Determine if projectiles are from enemy or player station
+          const fromPlayerStation = stationsRef.current.find(s => s.id === newProjectilesFromStations[0].ownerId)?.owner === 'player';
+          if (fromPlayerStation) {
+            setPlayerProjectiles(proj => [...proj, ...newProjectilesFromStations]);
+          } else {
+            setEnemyProjectiles(proj => [...proj, ...newProjectilesFromStations]);
+          }
+      }
+
       setOutposts(prev => prev.map(outpost => {
           if (timestamp - outpost.lastShotTimestamp > OUTPOST_FIRE_RATE_MS) {
               let closestEnemy: EnemyState | null = null;
@@ -1761,9 +1812,12 @@ export function GameContainer() {
       const newDebrisFromKills: DebrisType[] = [];
 
       let currentActiveBeams = [...activeBeamsRef.current];
+      const newExplosions: Effect[] = [];
 
       let processedEnemies = enemiesRef.current.map(enemy => {
           if (enemy.despawnTimestamp && timestamp > enemy.despawnTimestamp) {
+            const warpId = getUniqueId();
+            setWarpEffects(prev => [...prev, { id: warpId, x: enemy.x, y: enemy.y }]);
             if (enemy.id === targetIdRef.current) setTargetId(null);
             if (selectedAllyIdsRef.current.includes(enemy.id)) {
                 setSelectedAllyIds(prev => prev.filter(id => id !== enemy.id));
@@ -1774,16 +1828,23 @@ export function GameContainer() {
           const enemyShipInfo = SHIP_DATA[updatedEnemy.type];
 
           // Check if it's an ally following the player and the player is cruising
-          if (updatedEnemy.isAlly && updatedEnemy.aiState === 'following' && updatedEnemy.followTargetId === -1) {
-              const playerIsCruising = cruiseStateRef.current === 'cruising';
-              const canCruise = timestamp >= (updatedEnemy.cruiseAvailableAt || 0) && updatedEnemy.energy >= CRUISE_ENERGY_COST;
+          if (updatedEnemy.isAlly && updatedEnemy.aiState === 'following') {
+            const targetToFollow = updatedEnemy.followTargetId === -1 
+                ? playerPositionRef.current
+                : enemiesRef.current.find(e => e.id === updatedEnemy.followTargetId);
+            
+            if (targetToFollow) {
+                const distanceToTarget = Math.hypot(targetToFollow.x - updatedEnemy.x, targetToFollow.y - updatedEnemy.y);
+                const playerIsCruising = cruiseStateRef.current === 'cruising';
+                const canCruise = timestamp >= (updatedEnemy.cruiseAvailableAt || 0) && updatedEnemy.energy >= CRUISE_ENERGY_COST;
 
-              if (playerIsCruising && updatedEnemy.cruiseState === 'idle' && canCruise) {
-                  updatedEnemy.cruiseState = 'charging';
-                  updatedEnemy.energy -= CRUISE_ENERGY_COST;
-              } else if (!playerIsCruising && updatedEnemy.cruiseState !== 'idle') {
-                  updatedEnemy.cruiseState = 'idle';
-              }
+                if ((playerIsCruising || distanceToTarget > 400) && updatedEnemy.cruiseState === 'idle' && canCruise) {
+                    updatedEnemy.cruiseState = 'charging';
+                    updatedEnemy.energy -= CRUISE_ENERGY_COST;
+                } else if (!playerIsCruising && distanceToTarget < 300 && updatedEnemy.cruiseState !== 'idle') {
+                    updatedEnemy.cruiseState = 'idle';
+                }
+            }
           }
 
           // --- AI CRUISE STATE MACHINE ---
@@ -1817,7 +1878,7 @@ export function GameContainer() {
               if (hitProjectileIds.has(proj.id)) continue;
               if (proj.ownerId === updatedEnemy.id) continue;
               
-              const projOwnerIsPlayer = proj.ownerId === -1 || outpostsRef.current.some(o => o.id === proj.ownerId);
+              const projOwnerIsPlayer = proj.ownerId === -1 || outpostsRef.current.some(o => o.id === proj.ownerId) || stationsRef.current.find(s => s.id === proj.ownerId)?.owner === 'player';
               const projOwner = enemiesRef.current.find(e => e.id === proj.ownerId);
 
               // Faction check: can't hit allies
@@ -1828,7 +1889,7 @@ export function GameContainer() {
               const distance = Math.hypot(proj.x - updatedEnemy.x, proj.y - updatedEnemy.y);
               if (distance < collisionRadius) {
                   hitProjectileIds.add(proj.id);
-                  const damage = proj.ownerId === -1 ? (proj.type === 'heavy' ? HEAVY_PLAYER_PROJECTILE_DAMAGE : PLAYER_PROJECTILE_DAMAGE) : ENEMY_PROJECTILE_DAMAGE;
+                  const damage = projOwnerIsPlayer ? (proj.type === 'heavy' ? HEAVY_PLAYER_PROJECTILE_DAMAGE : PLAYER_PROJECTILE_DAMAGE) : ENEMY_PROJECTILE_DAMAGE;
                   updatedEnemy.health -= damage;
                   const attackerId = proj.ownerId === -1 ? -1 : (projOwner?.id || null);
                   updatedEnemy.lastAttackerId = attackerId;
@@ -1848,6 +1909,7 @@ export function GameContainer() {
 
 
           if (updatedEnemy.health <= 0) {
+              newExplosions.push({ id: getUniqueId(), x: updatedEnemy.x, y: updatedEnemy.y, size: 1 });
               if (!updatedEnemy.isAlly) {
                 newDebrisFromKills.push({
                     id: getUniqueId(),
@@ -1895,7 +1957,8 @@ export function GameContainer() {
               
               const potentialTargets = [
                   {id: -1, x: playerPositionRef.current.x, y: playerPositionRef.current.y, isAlly: true, health: playerDataRef.current.health}, 
-                  ...enemiesRef.current
+                  ...enemiesRef.current,
+                  ...stationsRef.current.map(s => ({id: s.id + 10000, x: s.x, y: s.y, isAlly: s.owner === 'player', health: s.health + s.shield})),
               ].filter(e => e.isAlly !== updatedEnemy.isAlly && e.health > 0);
               
               let closestTarget: {id: number, dist: number} | null = null;
@@ -1919,7 +1982,7 @@ export function GameContainer() {
           }
 
           // 2. Execute State Action
-          const speedMultiplier = updatedEnemy.cruiseState === 'cruising' ? 5 : 1;
+          const speedMultiplier = updatedEnemy.cruiseState === 'cruising' ? 8 : 1;
           
           // Flocking / Separation
           let separation = { x: 0, y: 0 };
@@ -2326,6 +2389,7 @@ export function GameContainer() {
           return updatedEnemy;
 
       }).filter(Boolean) as EnemyState[];
+      if (newExplosions.length > 0) setExplosions(prev => [...prev, ...newExplosions]);
 
       if (newEnemyProjectiles.length > 0) setEnemyProjectiles(prev => [...prev, ...newEnemyProjectiles]);
       
@@ -2392,7 +2456,9 @@ export function GameContainer() {
                   const distance = Math.hypot(enemy.x - playerPositionRef.current.x, enemy.y - playerPositionRef.current.y);
                   if (distance < enemyRadius + PLAYER_COLLISION_RADIUS) {
                       collided = true;
-                      collisionDamage = ENEMY_COLLISION_DAMAGE * speedFactor;
+                      if (!enemy.isAlly) {
+                        collisionDamage = ENEMY_COLLISION_DAMAGE * speedFactor;
+                      }
                       repulsionAngle = Math.atan2(playerPositionRef.current.y - enemy.y, playerPositionRef.current.x - enemy.x);
                       const enemyRepulsionForce = repulsionForce * 0.8;
                       enemy.vx -= Math.cos(repulsionAngle) * enemyRepulsionForce;
@@ -2415,7 +2481,7 @@ export function GameContainer() {
 
           if (collided) {
               lastCollisionTimestamp = timestamp;
-              if (speed > COLLISION_SPEED_THRESHOLD) {
+              if (speed > COLLISION_SPEED_THRESHOLD && collisionDamage > 0) {
                 applyDamage(collisionDamage);
               }
               playerVelocityUpdate.x += Math.cos(repulsionAngle) * repulsionForce;
@@ -2434,7 +2500,7 @@ export function GameContainer() {
         const distance = Math.hypot(proj.x - playerPositionRef.current.x, proj.y - playerPositionRef.current.y);
         if (distance < PLAYER_COLLISION_RADIUS) {
           hitProjectileIds.add(proj.id);
-          const damage = ENEMY_PROJECTILE_DAMAGE;
+          const damage = proj.ownerId >= 10000 ? STATION_PROJECTILE_DAMAGE : ENEMY_PROJECTILE_DAMAGE;
           damageToPlayerFromProjectiles += proj.type === 'heavy' ? damage * 1.5 : damage;
         }
       }
@@ -2448,7 +2514,7 @@ export function GameContainer() {
           for (const proj of [...playerProjectilesRef.current, ...enemyProjectilesRef.current]) {
               if (hitProjectileIds.has(proj.id)) continue;
               
-              const projOwnerIsPlayer = proj.ownerId === -1 || outpostsRef.current.some(o => o.id === proj.ownerId);
+              const projOwnerIsPlayer = proj.ownerId === -1 || outpostsRef.current.some(o => o.id === proj.ownerId) || stationsRef.current.find(s => s.id === proj.ownerId)?.owner === 'player';
               const projOwner = enemiesRef.current.find(e => e.id === proj.ownerId);
 
               if ((station.owner === 'player' && (projOwnerIsPlayer || (projOwner && projOwner.isAlly))) || 
@@ -2459,7 +2525,7 @@ export function GameContainer() {
               const distance = Math.hypot(proj.x - newStation.x, proj.y - newStation.y);
               if (distance < STATION_COLLISION_RADIUS) {
                   hitProjectileIds.add(proj.id);
-                  const damage = proj.ownerId === -1 ? (proj.type === 'heavy' ? HEAVY_PLAYER_PROJECTILE_DAMAGE : PLAYER_PROJECTILE_DAMAGE) : ENEMY_PROJECTILE_DAMAGE;
+                  const damage = projOwnerIsPlayer ? (proj.type === 'heavy' ? HEAVY_PLAYER_PROJECTILE_DAMAGE : PLAYER_PROJECTILE_DAMAGE) : ENEMY_PROJECTILE_DAMAGE;
                   let shieldDamage = Math.min(newStation.shield, damage);
                   let healthDamage = damage - shieldDamage;
 
@@ -2590,6 +2656,29 @@ export function GameContainer() {
         nextAttackWaveTimestamp.current = timestamp + 120000 + Math.random() * 120000; // 2-4 mins for next wave
       }
 
+      setStations(prev => prev.map(station => {
+        if(timestamp > station.defenseWaveCooldownUntil && timestamp - station.lastHitTimestamp < 5000) { // If attacked in last 5s
+            
+            const spawnBehindAngle = Math.atan2(station.y - MAP_HEIGHT/2, station.x - MAP_WIDTH/2) + Math.PI;
+
+            for (let i = 0; i < STATION_DEFENSE_WAVE_SIZE; i++) {
+                const spawnOffset = { x: (Math.random() - 0.5) * 200, y: (Math.random() - 0.5) * 200 };
+                const spawnX = station.x + Math.cos(spawnBehindAngle) * 200 + spawnOffset.x;
+                const spawnY = station.y + Math.sin(spawnBehindAngle) * 200 + spawnOffset.y;
+                
+                setWarpEffects(prevWarp => [...prevWarp, {id: getUniqueId(), x: spawnX, y: spawnY }]);
+                
+                setTimeout(() => {
+                    const newShip = createNewShip('Chasseur', station.owner === 'player', {x: spawnX, y: spawnY}, 'guarding');
+                    setEnemies(prevEnemies => [...prevEnemies, newShip]);
+                }, 500);
+            }
+            addChatMessage('System', `Base ${station.owner} launches defense fleet!`, station.owner === 'player' ? 'text-cyan-400' : 'text-red-400');
+            return { ...station, defenseWaveCooldownUntil: timestamp + STATION_DEFENSE_WAVE_COOLDOWN_MS };
+        }
+        return station;
+      }));
+
 
       if (timestamp - lastAiFactionUpdate.current > 5000) { // Every 5 seconds
         lastAiFactionUpdate.current = timestamp;
@@ -2616,19 +2705,18 @@ export function GameContainer() {
                     moneyToSpend += shipInfo.cost;
                     currentMoney -= shipInfo.cost;
                     updatedShipCounts[item.type]++;
-                    // Only build one ship per tick to avoid huge bursts
-                    break; 
                 }
             }
             
             if (shipsToBuild.length > 0) {
-                const newShips = shipsToBuild.map(type => createNewShip(type, false, enemyStation));
+                const newShips = shipsToBuild.map(type => createNewShip(type, false, {x: enemyStation.x, y: enemyStation.y}, 'patrolling'));
                 setEnemies(e => [...e, ...newShips]);
                 setEnemyFactionData(d => ({
                     ...d,
                     money: d.money - moneyToSpend,
                     shipCounts: updatedShipCounts
                 }));
+                addChatMessage('Enemy C&C', `Construction of new units is complete.`, 'text-red-400');
             }
         }
       }
@@ -2638,9 +2726,11 @@ export function GameContainer() {
       const enemyBase = stationsRef.current.find(s => s.owner === 'enemy');
       
       if (playerBase && playerBase.health <= 0) {
+          if (!isGameOver) setExplosions(prev => [...prev, {id: getUniqueId(), x: playerBase.x, y: playerBase.y, size: 3}]);
           setGameOverResult('defeat');
           setIsGameOver(true);
       } else if (enemyBase && enemyBase.health <= 0) {
+          if (!isGameOver) setExplosions(prev => [...prev, {id: getUniqueId(), x: enemyBase.x, y: enemyBase.y, size: 3}]);
           setGameOverResult('victory');
           setIsGameOver(true);
       }
@@ -2657,22 +2747,22 @@ export function GameContainer() {
       }
     };
 
-    const createNewShip = (type: BotShipType, isAlly: boolean, station: StationState) => {
+    const createNewShip = (type: BotShipType, isAlly: boolean, position: {x: number, y: number}, state: EnemyAiState = 'patrolling') => {
         const shipInfo = SHIP_DATA[type];
         return {
             id: getUniqueId(),
             type,
-            x: station.x + (Math.random() - 0.5) * 150,
-            y: station.y + (Math.random() - 0.5) * 150,
+            x: position.x + (Math.random() - 0.5) * 150,
+            y: position.y + (Math.random() - 0.5) * 150,
             vx: 0, vy: 0, rotation: 0,
             health: shipInfo.baseHealth * 3,
             maxHealth: shipInfo.baseHealth * 3,
             lastShotTimestamp: 0, lastAutoShotTimestamp: 0,
-            aiState: 'patrolling' as EnemyAiState,
+            aiState: state,
             lastKnownPlayerPosition: null, stateChangeTimestamp: 0,
             energy: shipInfo.maxEnergy, maxEnergy: shipInfo.maxEnergy, cargo: 0, lastEnergyUseTimestamp: 0,
-            isAlly, combatTargetId: null, lastAttackerId: null, patrolTarget: null, patrolCenter: {x: station.x, y: station.y},
-            role: type === 'Mineur' ? 'miner' : undefined,
+            isAlly, combatTargetId: null, lastAttackerId: null, patrolTarget: null, patrolCenter: {x: position.x, y: position.y},
+            role: type === 'Mineur' ? 'miner' : 'attack',
             cruiseState: 'idle' as 'idle' | 'charging' | 'cruising', cruiseAvailableAt: 0,
         };
     };
@@ -2901,6 +2991,12 @@ export function GameContainer() {
         ))}
         {visibleDebris.map((d) => (
             <Debris key={d.id} x={d.x} y={d.y} />
+        ))}
+        {explosions.map(effect => (
+            <Explosion key={effect.id} {...effect} onComplete={(id) => setExplosions(prev => prev.filter(e => e.id !== id))} />
+        ))}
+        {warpEffects.map(effect => (
+            <WarpInEffect key={effect.id} {...effect} onComplete={(id) => setWarpEffects(prev => prev.filter(e => e.id !== id))} />
         ))}
       </div>
       
