@@ -51,7 +51,7 @@ const FIRE_RATE_MS = 250;
 const AUTO_TURRET_FIRE_RATE_MS = 800;
 const ENEMY_CLICK_RADIUS = 30;
 const STATION_CLICK_RADIUS = 75;
-const ASTEROID_CLICK_RADIUS = 2.0; 
+const ASTEROID_CLICK_RADIUS = 1.0; 
 
 const BASE_RADAR_RANGE = 1200;
 const MIN_ZOOM = 0.5;
@@ -386,6 +386,7 @@ export function GameContainer() {
   useEffect(() => { activeBeamsRef.current = activeBeams; }, [activeBeams]);
   
   const isPlayerActionInProgress = playerAction !== null;
+  const radarRange = BASE_RADAR_RANGE;
 
   useEffect(() => {
     setIsTacticalView(zoom === MIN_ZOOM);
@@ -2708,6 +2709,7 @@ export function GameContainer() {
         />
         {visibleEnemies.map(enemy => {
           const props = {
+            key: enemy.id,
             x: enemy.x,
             y: enemy.y,
             rotation: enemy.rotation,
@@ -2719,13 +2721,13 @@ export function GameContainer() {
           };
           switch (enemy.type) {
             case 'Chasseur':
-              return <EnemyShip key={enemy.id} {...props} />;
+              return <EnemyShip {...props} />;
             case 'Frégate':
-              return <FrigateShip key={enemy.id} {...props} />;
+              return <FrigateShip {...props} />;
             case 'Mineur':
-              return <StaffShip key={enemy.id} {...props} />;
+              return <StaffShip {...props} />;
             case 'Intercepteur':
-              return <InterceptorShip key={enemy.id} {...props} />;
+              return <InterceptorShip {...props} />;
             default:
               return null;
           }
