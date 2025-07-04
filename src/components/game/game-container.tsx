@@ -160,21 +160,21 @@ const generateInitialEnemies = (): EnemyState[] => {
     
     return [
     // Pirates
-    { id: 1, type: 'chasseur', x: MAP_WIDTH / 2 + 1500, y: MAP_HEIGHT / 2 + 1500, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
-    { id: 2, type: 'chasseur', x: MAP_WIDTH / 2 - 1600, y: MAP_HEIGHT / 2 - 1200, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
-    { id: 3, type: 'frigate', x: MAP_WIDTH / 2 + 800, y: MAP_HEIGHT / 2 + 1800, vx: 0, vy: 0, health: 300, maxHealth: 300, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 10, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
-    { id: 4, type: 'staff', x: 850, y: 850, vx: 0.5, vy: -0.5, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 20, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
-    { id: 5, type: 'staff', x: 2800, y: 3000, vx: -0.5, vy: 0.5, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 20, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
+    { id: 1, type: 'chasseur', x: MAP_WIDTH / 2 + 1500, y: MAP_HEIGHT / 2 + 1500, vx: 0, vy: 0, rotation: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
+    { id: 2, type: 'chasseur', x: MAP_WIDTH / 2 - 1600, y: MAP_HEIGHT / 2 - 1200, vx: 0, vy: 0, rotation: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
+    { id: 3, type: 'frigate', x: MAP_WIDTH / 2 + 800, y: MAP_HEIGHT / 2 + 1800, vx: 0, vy: 0, rotation: 0, health: 300, maxHealth: 300, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 10, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
+    { id: 4, type: 'staff', x: 850, y: 850, vx: 0.5, vy: -0.5, rotation: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 20, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
+    { id: 5, type: 'staff', x: 2800, y: 3000, vx: -0.5, vy: 0.5, rotation: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 20, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
 
     // Allied Escort
-    { id: 6, type: 'frigate', x: stationX - 150, y: stationY, vx: 0, vy: 0, health: 300, maxHealth: 300, lastShotTimestamp: 0, aiState: 'guarding', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'escort', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
-    { id: 7, type: 'interceptor', x: stationX + 150, y: stationY - 100, vx: 0, vy: 0, health: 120, maxHealth: 120, lastShotTimestamp: 0, aiState: 'following', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'escort', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null, followTargetId: 6 },
-    { id: 8, type: 'interceptor', x: stationX + 150, y: stationY + 100, vx: 0, vy: 0, health: 120, maxHealth: 120, lastShotTimestamp: 0, aiState: 'following', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'escort', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null, followTargetId: 6 },
+    { id: 6, type: 'frigate', x: stationX - 150, y: stationY, vx: 0, vy: 0, rotation: 0, health: 300, maxHealth: 300, lastShotTimestamp: 0, aiState: 'guarding', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'escort', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
+    { id: 7, type: 'interceptor', x: stationX + 150, y: stationY - 100, vx: 0, vy: 0, rotation: 0, health: 120, maxHealth: 120, lastShotTimestamp: 0, aiState: 'following', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'escort', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null, followTargetId: 6 },
+    { id: 8, type: 'interceptor', x: stationX + 150, y: stationY + 100, vx: 0, vy: 0, rotation: 0, health: 120, maxHealth: 120, lastShotTimestamp: 0, aiState: 'following', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'escort', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null, followTargetId: 6 },
 
     // Allied Miners
-    { id: 9, type: 'staff', x: stationX, y: stationY - 150, vx: 0, vy: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'miner', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
-    { id: 10, type: 'staff', x: stationX - 130, y: stationY - 75, vx: 0, vy: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'miner', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
-    { id: 11, type: 'staff', x: stationX + 130, y: stationY + 75, vx: 0, vy: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'miner', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
+    { id: 9, type: 'staff', x: stationX, y: stationY - 150, vx: 0, vy: 0, rotation: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'miner', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
+    { id: 10, type: 'staff', x: stationX - 130, y: stationY - 75, vx: 0, vy: 0, rotation: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'miner', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
+    { id: 11, type: 'staff', x: stationX + 130, y: stationY + 75, vx: 0, vy: 0, rotation: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'miner', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
 ]};
 
 
@@ -360,7 +360,9 @@ export function GameContainer() {
             setMiningIntent(targetId);
             return;
         }
-        setPlayerAction({ type: 'mining', targetId, startTime: Date.now(), duration: MINING_DURATION_MS });
+        const shipInfo = SHIP_DATA[playerDataRef.current.ship.class];
+        const miningDuration = shipInfo.miningBonus ? MINING_DURATION_MS / shipInfo.miningBonus : MINING_DURATION_MS;
+        setPlayerAction({ type: 'mining', targetId, startTime: Date.now(), duration: miningDuration });
         return;
     }
 
@@ -542,6 +544,7 @@ export function GameContainer() {
         y: playerPositionRef.current.y + (Math.random() - 0.5) * 100,
         vx: 0,
         vy: 0,
+        rotation: 0,
         health: 100,
         maxHealth: 100,
         lastShotTimestamp: 0,
@@ -795,7 +798,9 @@ export function GameContainer() {
               if (miningTargetId) {
                   const targetAsteroid = asteroidsRef.current.find(a => a.id === miningTargetId);
                   if (targetAsteroid && targetAsteroid.cooldownUntil <= Date.now() && targetAsteroid.mineableCharges > 0) {
-                    setPlayerAction({ type: 'mining', targetId: miningTargetId, startTime: Date.now(), duration: MINING_DURATION_MS });
+                    const shipInfo = SHIP_DATA[playerDataRef.current.ship.class];
+                    const miningDuration = shipInfo.miningBonus ? MINING_DURATION_MS / shipInfo.miningBonus : MINING_DURATION_MS;
+                    setPlayerAction({ type: 'mining', targetId: miningTargetId, startTime: Date.now(), duration: miningDuration });
                   }
                   setMiningIntent(null);
               }
@@ -1381,6 +1386,10 @@ export function GameContainer() {
             }
           }
           
+          if (updatedEnemy.vx !== 0 || updatedEnemy.vy !== 0) {
+            updatedEnemy.rotation = Math.atan2(updatedEnemy.vy, updatedEnemy.vx) * (180 / Math.PI);
+          }
+
           updatedEnemy.x += updatedEnemy.vx;
           updatedEnemy.y += updatedEnemy.vy;
 
@@ -1513,7 +1522,7 @@ export function GameContainer() {
                     gas: prev.resources.gas + gasToAdd,
                 },
                 cargo: {
-                    current: Math.min(maxCargo, prev.cargo.current + oreToAdd + gasToAdd),
+                    current: Math.min(maxCargo, Math.max(0, prev.cargo.current + oreToAdd + gasToAdd)),
                 }
               }));
 
@@ -1596,8 +1605,10 @@ export function GameContainer() {
 
   const renderEnemy = (enemy: EnemyState) => {
     const props = {
+      key: enemy.id,
       x: enemy.x,
       y: enemy.y,
+      rotation: enemy.rotation,
       health: enemy.health,
       maxHealth: enemy.maxHealth,
       isTargeted: enemy.id === targetId,
@@ -1605,13 +1616,13 @@ export function GameContainer() {
     };
     switch (enemy.type) {
       case 'chasseur':
-        return <EnemyShip key={enemy.id} {...props} />;
+        return <EnemyShip {...props} />;
       case 'frigate':
-        return <FrigateShip key={enemy.id} {...props} />;
+        return <FrigateShip {...props} />;
       case 'staff':
-        return <StaffShip key={enemy.id} {...props} />;
+        return <StaffShip {...props} />;
       case 'interceptor':
-        return <InterceptorShip key={enemy.id} {...props} />;
+        return <InterceptorShip {...props} />;
       default:
         return null;
     }
@@ -1646,7 +1657,8 @@ export function GameContainer() {
           x={playerPosition.x}
           y={playerPosition.y}
           rotation={playerRotation} 
-          aimRotation={aimRotation} 
+          aimRotation={aimRotation}
+          shipClass={playerData.ship.class}
           isShieldActive={shipMode === 'shield'} 
         />
         {visibleEnemies.map(renderEnemy)}

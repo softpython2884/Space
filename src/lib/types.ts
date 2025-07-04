@@ -69,6 +69,7 @@ export type EnemyState = {
   y: number;
   vx: number;
   vy: number;
+  rotation: number;
   health: number;
   maxHealth: number;
   lastShotTimestamp: number;
