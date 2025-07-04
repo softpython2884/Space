@@ -68,6 +68,7 @@ const PLAYER_COLLISION_RADIUS = 20;
 const ENEMY_COLLISION_RADIUS = 20;
 const FRIGATE_COLLISION_RADIUS = 30;
 const STAFF_COLLISION_RADIUS = 25;
+const CARGO_COLLISION_RADIUS = 35;
 const DEBRIS_COLLISION_RADIUS = 20;
 const STATION_COLLISION_RADIUS = 75;
 const ASTEROID_COLLISION_RADIUS = 1.0; // Adjusted for circle visuals
@@ -118,8 +119,8 @@ const GUARD_PATROL_RADIUS = 800;
 const MINER_SIMULATED_MINE_TIME_MS = 8000;
 const MINER_CARGO_PER_TRIP = 20;
 const MINER_AVOIDANCE_RADIUS = 300;
-const AI_SCAVENGE_RADIUS = 500;
-const AI_SEPARATION_DISTANCE = 80;
+const AI_SCAVENGE_RADIUS = 1000;
+const AI_SEPARATION_DISTANCE = 100;
 const AI_PREFERRED_COMBAT_DISTANCE_FACTOR = 0.7;
 const NEBULA_DAMAGE_PER_FRAME = 0.05;
 
@@ -205,6 +206,11 @@ const generateInitialEnemies = (playerStation: StationState, enemyStation: Stati
         
         // 1 Destroyer
         fleet.push(createShip('Destroyer', stationX, stationY - 500, isAlly, 'guarding', attackForceCommon));
+
+        // 2 Cargo ships
+        for (let i = 0; i < 2; i++) {
+            fleet.push(createShip('Cargo', stationX + (Math.random() - 0.5) * 500, stationY + 200 + (Math.random() - 0.5) * 400, isAlly, 'patrolling', { role: 'scavenger', patrolCenter: { x: stationX, y: stationY } }));
+        }
     };
 
     // Player Fleet
@@ -258,6 +264,24 @@ const generateInitialStations = (): StationState[] => [
     { id: 1, owner: 'player', x: 2500, y: MAP_HEIGHT / 2, health: STATION_BASE_HEALTH, maxHealth: STATION_BASE_HEALTH, shield: STATION_BASE_SHIELD, maxShield: STATION_BASE_SHIELD, lastHitTimestamp: 0, lastAttackerId: null, defenseWaveCooldownUntil: 0 },
     { id: 2, owner: 'enemy', x: MAP_WIDTH - 2500, y: MAP_HEIGHT / 2, health: STATION_BASE_HEALTH, maxHealth: STATION_BASE_HEALTH, shield: STATION_BASE_SHIELD, maxShield: STATION_BASE_SHIELD, lastHitTimestamp: 0, lastAttackerId: null, defenseWaveCooldownUntil: 0 },
 ];
+
+const generateInitialDebris = (): DebrisType[] => {
+    const debrisList: DebrisType[] = [];
+    const count = 30; // Number of wrecks on the map
+    for (let i = 0; i < count; i++) {
+        debrisList.push({
+            id: getUniqueId(),
+            x: Math.random() * MAP_WIDTH,
+            y: Math.random() * MAP_HEIGHT,
+            resources: {
+                money: Math.floor(Math.random() * 200) + 50,
+                ore: 0,
+                gas: 0,
+            }
+        });
+    }
+    return debrisList;
+};
 
 
 export function GameContainer() {
@@ -497,7 +521,7 @@ export function GameContainer() {
     setEnemies(generateInitialEnemies(playerStation, enemyStation));
     setAsteroids(generateInitialAsteroids(zones));
     setOutposts([]);
-    setDebris([]);
+    setDebris(generateInitialDebris());
     setTargetId(null);
     setPlayerData(JSON.parse(JSON.stringify(INITIAL_PLAYER_DATA)));
     setEnemyFactionData(JSON.parse(JSON.stringify(INITIAL_FACTION_DATA)));
@@ -1974,6 +1998,7 @@ export function GameContainer() {
           let collisionRadius = ENEMY_COLLISION_RADIUS;
           if (enemy.type === 'Frégate') collisionRadius = FRIGATE_COLLISION_RADIUS;
           else if (enemy.type === 'Mineur') collisionRadius = STAFF_COLLISION_RADIUS;
+          else if (enemy.type === 'Cargo') collisionRadius = CARGO_COLLISION_RADIUS;
 
           // Projectile hits on this enemy
           for (const proj of [...playerProjectilesRef.current, ...enemyProjectilesRef.current]) {
@@ -2054,6 +2079,24 @@ export function GameContainer() {
           
           // 1. Target Acquisition
           if (['patrolling', 'guarding', 'holding_position', 'deep_patrolling'].includes(updatedEnemy.aiState)) {
+              if (updatedEnemy.role === 'scavenger' && updatedEnemy.aiState !== 'scavenging') {
+                    let closestDebris: DebrisType | null = null;
+                    let minDistance = AI_SCAVENGE_RADIUS;
+                    for (const debrisItem of debrisRef.current) {
+                        const distance = Math.hypot(debrisItem.x - updatedEnemy.x, debrisItem.y - updatedEnemy.y);
+                        if (distance < minDistance) {
+                            minDistance = distance;
+                            closestDebris = debrisItem;
+                        }
+                    }
+                    if (closestDebris) {
+                        updatedEnemy.targetObjectId = closestDebris.id;
+                        updatedEnemy.aiState = 'scavenging';
+                        updatedEnemy.stateChangeTimestamp = timestamp;
+                    }
+                }
+
+
               const visionSources = updatedEnemy.isAlly 
                 ? [playerPositionRef.current, ...enemiesRef.current.filter(e => e.isAlly)] 
                 : [...enemiesRef.current.filter(e => !e.isAlly)];
@@ -2176,6 +2219,7 @@ export function GameContainer() {
                     if (closestAsteroid) {
                         updatedEnemy.targetObjectId = closestAsteroid.id;
                         updatedEnemy.aiState = 'mining';
+                        updatedEnemy.stateChangeTimestamp = timestamp;
                         break;
                     }
                 }
@@ -2224,9 +2268,6 @@ export function GameContainer() {
                     finalAccel.x += Math.cos(angleToAsteroid) * ACCELERATION * 0.8;
                     finalAccel.y += Math.sin(angleToAsteroid) * ACCELERATION * 0.8;
                 } else {
-                    if (updatedEnemy.stateChangeTimestamp === 0) {
-                        updatedEnemy.stateChangeTimestamp = timestamp;
-                    }
                     if (timestamp - updatedEnemy.stateChangeTimestamp > MINER_SIMULATED_MINE_TIME_MS) {
                         updatedEnemy.cargo = (updatedEnemy.cargo || 0) + MINER_CARGO_PER_TRIP;
 
@@ -2256,9 +2297,26 @@ export function GameContainer() {
                      updatedEnemy.targetObjectId = null;
                      break;
                  }
-                 const angleToDebris = Math.atan2(targetDebris.y - updatedEnemy.y, targetDebris.x - updatedEnemy.x);
-                 finalAccel.x += Math.cos(angleToDebris) * ACCELERATION * 0.5;
-                 finalAccel.y += Math.sin(angleToDebris) * ACCELERATION * 0.5;
+                 const distanceToDebris = Math.hypot(targetDebris.x - updatedEnemy.x, targetDebris.y - updatedEnemy.y);
+                 
+                 if (distanceToDebris > DEBRIS_COLLISION_RADIUS) {
+                     const angleToDebris = Math.atan2(targetDebris.y - updatedEnemy.y, targetDebris.x - updatedEnemy.x);
+                     finalAccel.x += Math.cos(angleToDebris) * ACCELERATION * 0.5;
+                     finalAccel.y += Math.sin(angleToDebris) * ACCELERATION * 0.5;
+                 } else {
+                    if (updatedEnemy.isAlly) {
+                        const moneyEarned = targetDebris.resources.money || 0;
+                        setPlayerData(d => ({ ...d, resources: {...d.resources, money: d.resources.money + moneyEarned} }));
+                        if(moneyEarned > 0) addChatMessage('System', `Cargo ship #${updatedEnemy.id} collected ${moneyEarned} credits.`, 'text-green-400')
+                    } else {
+                        const moneyEarned = targetDebris.resources.money || 0;
+                        setEnemyFactionData(d => ({...d, money: d.money + moneyEarned}));
+                    }
+                    
+                    setDebris(prev => prev.filter(d => d.id !== targetDebris.id));
+                    updatedEnemy.aiState = 'patrolling';
+                    updatedEnemy.targetObjectId = null;
+                 }
                  break;
             }
             case 'returning_to_base': {
@@ -2577,6 +2635,8 @@ export function GameContainer() {
                   let enemyRadius = ENEMY_COLLISION_RADIUS;
                   if (enemy.type === 'Frégate') enemyRadius = FRIGATE_COLLISION_RADIUS;
                   else if (enemy.type === 'Mineur') enemyRadius = STAFF_COLLISION_RADIUS;
+                  else if (enemy.type === 'Cargo') enemyRadius = CARGO_COLLISION_RADIUS;
+
                   const distance = Math.hypot(enemy.x - playerPositionRef.current.x, enemy.y - playerPositionRef.current.y);
                   if (distance < enemyRadius + PLAYER_COLLISION_RADIUS) {
                       collided = true;
@@ -2750,6 +2810,7 @@ export function GameContainer() {
               let enemyRadius = ENEMY_COLLISION_RADIUS;
               if (processedEnemies[i].type === 'Frégate') enemyRadius = FRIGATE_COLLISION_RADIUS;
               else if (processedEnemies[i].type === 'Mineur') enemyRadius = STAFF_COLLISION_RADIUS;
+              else if (processedEnemies[i].type === 'Cargo') enemyRadius = CARGO_COLLISION_RADIUS;
               const enemyDist = Math.hypot(d.x - processedEnemies[i].x, d.y - processedEnemies[i].y);
               if (enemyDist < DEBRIS_COLLISION_RADIUS + enemyRadius) {
                   const cargoToAdd = (d.resources.ore || 0) + (d.resources.gas || 0);
@@ -2856,6 +2917,7 @@ export function GameContainer() {
 
             const buildQueue: { type: BotShipType, maxCount: number }[] = [
                 { type: 'Mineur', maxCount: 3 },
+                { type: 'Cargo', maxCount: 2 },
                 { type: 'Chasseur', maxCount: 7 },
                 { type: 'Intercepteur', maxCount: 4 },
                 { type: 'Destroyer', maxCount: 1 },
@@ -2975,6 +3037,10 @@ export function GameContainer() {
 
     const createNewShip = (type: BotShipType, isAlly: boolean, position: {x: number, y: number}, state: EnemyAiState = 'patrolling', options: Partial<EnemyState> = {}) => {
         const shipInfo = SHIP_DATA[type];
+        let role: EnemyState['role'] = 'attack';
+        if (type === 'Mineur') role = 'miner';
+        if (type === 'Cargo') role = 'scavenger';
+
         return {
             id: getUniqueId(),
             type,
@@ -2988,7 +3054,7 @@ export function GameContainer() {
             lastKnownPlayerPosition: null, stateChangeTimestamp: 0,
             energy: shipInfo.maxEnergy, maxEnergy: shipInfo.maxEnergy, cargo: 0, lastEnergyUseTimestamp: 0,
             isAlly, combatTargetId: null, lastAttackerId: null, patrolTarget: null, patrolCenter: {x: position.x, y: position.y},
-            role: type === 'Mineur' ? 'miner' : 'attack',
+            role: role,
             cruiseState: 'idle' as 'idle' | 'charging' | 'cruising', cruiseAvailableAt: 0,
             ...options
         };
@@ -3167,7 +3233,7 @@ export function GameContainer() {
           isShieldActive={shipMode === 'shield'} 
         />
         {visibleEnemies.map(enemy => {
-          const props = {
+          const { key, ...props } = {
             key: enemy.id,
             x: enemy.x,
             y: enemy.y,
@@ -3180,19 +3246,19 @@ export function GameContainer() {
           };
           switch (enemy.type) {
             case 'Chasseur':
-              return <EnemyShip {...props} />;
+              return <EnemyShip key={key} {...props} />;
             case 'Frégate':
-              return <FrigateShip {...props} />;
+              return <FrigateShip key={key} {...props} />;
             case 'Mineur':
-              return <StaffShip {...props} />;
+              return <StaffShip key={key} {...props} />;
             case 'Intercepteur':
-              return <InterceptorShip {...props} />;
+              return <InterceptorShip key={key} {...props} />;
             case 'Destroyer':
-              return <DestroyerShip {...props} />;
+              return <DestroyerShip key={key} {...props} />;
             case 'Porteur':
-              return <CarrierShip {...props} />;
+              return <CarrierShip key={key} {...props} />;
             case 'Cargo':
-              return <CargoShip {...props} />;
+              return <CargoShip key={key} {...props} />;
             default:
               return null;
           }
@@ -3327,7 +3393,7 @@ export function GameContainer() {
         playerData={playerData}
         stationData={mainStation || null}
         onSellResource={handleSellResource}
-        onBuyUpgrade={handleBuyUpgrade}
+        onBuyUpgrade={onBuyUpgrade}
         onRepairHull={handleRepairHull}
         onBuyShip={handleBuyShip}
         onBuyAlly={handleBuyAlly}

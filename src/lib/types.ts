@@ -101,7 +101,7 @@ export type EnemyState = {
   cargo: number;
   lastEnergyUseTimestamp: number;
   isAlly?: boolean;
-  role?: 'escort' | 'miner' | 'attack';
+  role?: 'escort' | 'miner' | 'attack' | 'scavenger';
   targetObjectId?: number | null;
   combatTargetId?: number | null;
   patrolCenter?: { x: number, y: number };
