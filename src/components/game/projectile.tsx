@@ -4,12 +4,11 @@ interface ProjectileProps {
   x: number;
   y: number;
   rotation: number;
-  isEnemy?: boolean;
 }
 
-export function Projectile({ x, y, rotation, isEnemy = false }: ProjectileProps) {
-  const colorClass = isEnemy ? "bg-red-500" : "bg-yellow-300";
-  const shadowStyle = isEnemy ? '0 0 6px hsl(0 100% 50%)' : '0 0 6px hsl(var(--primary))';
+export function Projectile({ x, y, rotation }: ProjectileProps) {
+  const colorClass = "bg-orange-400";
+  const shadowStyle = '0 0 6px hsl(30 100% 50%)';
 
   return (
     <div
