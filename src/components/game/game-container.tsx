@@ -2643,6 +2643,7 @@ export function GameContainer() {
         />
         {visibleEnemies.map(enemy => {
           const props = {
+            key: enemy.id,
             x: enemy.x,
             y: enemy.y,
             rotation: enemy.rotation,
@@ -2654,13 +2655,13 @@ export function GameContainer() {
           };
           switch (enemy.type) {
             case 'Chasseur':
-              return <EnemyShip key={enemy.id} {...props} />;
+              return <EnemyShip {...props} />;
             case 'Frégate':
-              return <FrigateShip key={enemy.id} {...props} />;
+              return <FrigateShip {...props} />;
             case 'Mineur':
-              return <StaffShip key={enemy.id} {...props} />;
+              return <StaffShip {...props} />;
             case 'Intercepteur':
-              return <InterceptorShip key={enemy.id} {...props} />;
+              return <InterceptorShip {...props} />;
             default:
               return null;
           }
@@ -2785,7 +2786,7 @@ export function GameContainer() {
         onSellResource={handleSellResource}
         onBuyUpgrade={handleBuyUpgrade}
         onRepairHull={handleRepairHull}
-        onBuyShip={onBuyShip}
+        onBuyShip={handleBuyShip}
         onBuyAlly={handleBuyAlly}
       />
 
