@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -24,6 +24,8 @@ export function BoardingMenu({ isOpen, onOpenChange, targetEnemy, onComplete, pl
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<{ success: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const startTimeRef = useRef(0);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!isOpen) {
@@ -31,23 +33,34 @@ export function BoardingMenu({ isOpen, onOpenChange, targetEnemy, onComplete, pl
       setProgress(0);
       setResult(null);
       setError(null);
+      if (intervalRef.current) clearInterval(intervalRef.current);
     }
   }, [isOpen]);
 
   useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (isBoarding && progress < 100) {
-      timer = setInterval(() => {
-        setProgress(prev => Math.min(prev + (100 / (BOARDING_DURATION_MS / 100)), 100));
-      }, 100);
-    } else if (progress >= 100) {
-      const success = Math.random() < BOARDING_SUCCESS_CHANCE;
-      setResult({ success });
-      onComplete({ success });
-      setIsBoarding(false);
+    if (isBoarding) {
+        startTimeRef.current = Date.now();
+        intervalRef.current = setInterval(() => {
+            const elapsed = Date.now() - startTimeRef.current;
+            const newProgress = Math.min((elapsed / BOARDING_DURATION_MS) * 100, 100);
+            setProgress(newProgress);
+
+            if (newProgress >= 100) {
+                if (intervalRef.current) clearInterval(intervalRef.current);
+                const success = Math.random() < BOARDING_SUCCESS_CHANCE;
+                setResult({ success });
+                onComplete({ success });
+                setIsBoarding(false);
+            }
+        }, 50);
+    } else {
+        if (intervalRef.current) clearInterval(intervalRef.current);
     }
-    return () => clearInterval(timer);
-  }, [isBoarding, progress, onComplete]);
+    
+    return () => {
+        if (intervalRef.current) clearInterval(intervalRef.current);
+    }
+  }, [isBoarding, onComplete]);
 
   const handleStartBoarding = () => {
     if (playerEnergy < BOARDING_ENERGY_COST) {
@@ -60,7 +73,8 @@ export function BoardingMenu({ isOpen, onOpenChange, targetEnemy, onComplete, pl
     }
     setError(null);
     setIsBoarding(true);
-    setProgress(1);
+    setProgress(0);
+    setResult(null);
   };
 
   if (!targetEnemy) return null;

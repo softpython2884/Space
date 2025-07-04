@@ -279,17 +279,28 @@ export function GameContainer() {
     const targetEnemy = enemiesRef.current.find(e => e.id === targetId);
     const targetAsteroid = asteroidsRef.current.find(a => a.id === targetId);
     
-    const target = targetEnemy || targetAsteroid;
-    if (!target) return;
+    if (!targetEnemy && !targetAsteroid) return;
 
-    let distance = Math.hypot(target.x - playerPositionRef.current.x, target.y - playerPositionRef.current.y);
+    const targetPosition = targetEnemy || targetAsteroid;
+    const distance = Math.hypot(targetPosition.x - playerPositionRef.current.x, targetPosition.y - playerPositionRef.current.y);
+    
+    let isOutOfRange = false;
 
-    // For large objects like asteroids, check distance to edge, not center
     if (targetAsteroid) {
-        distance -= targetAsteroid.size / 2;
+        // For asteroids, you need to be very close. Check distance from player edge to asteroid edge.
+        const miningRange = 50; 
+        const distanceToEdge = distance - (targetAsteroid.size / 2) - PLAYER_COLLISION_RADIUS;
+        if (distanceToEdge > miningRange) {
+            isOutOfRange = true;
+        }
+    } else if (targetEnemy) {
+        // For enemies, check center-to-center distance to the generic action range.
+        if (distance > ACTION_MAX_RANGE) {
+            isOutOfRange = true;
+        }
     }
 
-    if (distance > ACTION_MAX_RANGE) {
+    if (isOutOfRange) {
         toast({ title: "Target out of range", description: "Get closer to perform this action.", variant: 'destructive' });
         return;
     }

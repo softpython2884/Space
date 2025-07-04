@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -23,6 +23,8 @@ export function PillageMenu({ isOpen, onOpenChange, targetEnemy, onComplete, pla
   const [progress, setProgress] = useState(0);
   const [isFinished, setIsFinished] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const startTimeRef = useRef(0);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!isOpen) {
@@ -30,22 +32,33 @@ export function PillageMenu({ isOpen, onOpenChange, targetEnemy, onComplete, pla
         setProgress(0);
         setIsFinished(false);
         setError(null);
+        if (intervalRef.current) clearInterval(intervalRef.current);
     }
   }, [isOpen]);
 
   useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (isPillaging && progress < 100) {
-      timer = setInterval(() => {
-        setProgress(prev => Math.min(prev + (100 / (PILLAGE_DURATION_MS / 100)), 100));
-      }, 100);
-    } else if (progress >= 100 && isPillaging) {
-        onComplete();
-        setIsPillaging(false);
-        setIsFinished(true);
+    if (isPillaging) {
+        startTimeRef.current = Date.now();
+        intervalRef.current = setInterval(() => {
+            const elapsed = Date.now() - startTimeRef.current;
+            const newProgress = Math.min((elapsed / PILLAGE_DURATION_MS) * 100, 100);
+            setProgress(newProgress);
+
+            if (newProgress >= 100) {
+                if (intervalRef.current) clearInterval(intervalRef.current);
+                onComplete();
+                setIsPillaging(false);
+                setIsFinished(true);
+            }
+        }, 50);
+    } else {
+        if (intervalRef.current) clearInterval(intervalRef.current);
     }
-    return () => clearInterval(timer);
-  }, [isPillaging, progress, onComplete]);
+
+    return () => {
+        if (intervalRef.current) clearInterval(intervalRef.current);
+    }
+  }, [isPillaging, onComplete]);
 
   const handleStartPillaging = () => {
     if (playerEnergy < PILLAGE_ENERGY_COST) {
@@ -54,7 +67,8 @@ export function PillageMenu({ isOpen, onOpenChange, targetEnemy, onComplete, pla
     }
     setError(null);
     setIsPillaging(true);
-    setProgress(1);
+    setProgress(0);
+    setIsFinished(false);
   };
 
   if (!targetEnemy) return null;
