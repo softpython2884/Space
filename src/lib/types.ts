@@ -1,3 +1,4 @@
+
 'use server';
 
 export type ShipType = "Combat" | "Mining" | "Support" | "Galleon";
@@ -137,6 +138,7 @@ export type StationState = {
   shield: number;
   maxShield: number;
   lastHitTimestamp: number;
+  lastAttackerId: number | null;
   defenseWaveCooldownUntil: number;
 }
 
@@ -218,3 +220,4 @@ export interface Effect {
   y: number;
   size?: number;
 }
+
