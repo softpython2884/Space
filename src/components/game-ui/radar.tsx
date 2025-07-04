@@ -1,9 +1,9 @@
 'use client';
 
-import type { EnemyState, StationState, AsteroidState, Debris } from "@/lib/types";
+import type { EnemyState, StationState, AsteroidState, Debris, OutpostState } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import React from 'react';
-import { Package } from "lucide-react";
+import { Package, TowerControl } from "lucide-react";
 
 interface RadarProps {
     playerPosition: { x: number; y: number };
@@ -11,6 +11,7 @@ interface RadarProps {
     stations: StationState[];
     asteroids: AsteroidState[];
     debris: Debris[];
+    outposts: OutpostState[];
     radarRange: number;
 }
 
@@ -20,11 +21,11 @@ const RadarDot = ({ color, size = 'w-2 h-2', pulse = false, type = 'dot', childr
     const icon = () => {
         switch(type) {
             case 'triangle':
-                return <div style={{width: 0, height: 0, borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderBottom: '10px solid hsl(var(--primary))'}}/>
+                return <div style={{width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderBottom: '8px solid hsl(var(--primary))'}}/>
             case 'square':
                  return <div className={cn(size, color)} />;
             case 'circle':
-                return <div className={cn("rounded-full", size, color, 'border-2')} />;
+                return <div className={cn("rounded-full", size, color, 'border')} />;
             case 'icon':
                 return children;
             default:
@@ -40,7 +41,7 @@ const RadarDot = ({ color, size = 'w-2 h-2', pulse = false, type = 'dot', childr
     )
 };
 
-export function Radar({ playerPosition, enemies, stations, asteroids, debris, radarRange }: RadarProps) {
+export function Radar({ playerPosition, enemies, stations, asteroids, debris, outposts, radarRange }: RadarProps) {
 
     const scale = RADAR_SIZE / (radarRange * 2);
 
@@ -73,10 +74,12 @@ export function Radar({ playerPosition, enemies, stations, asteroids, debris, ra
         if (enemy.isAlly) return <RadarDot color="bg-green-500" type="triangle" />;
 
         switch(enemy.type) {
-            case 'chasseur':
-            case 'frigate':
-                return <RadarDot color="bg-red-500" pulse />;
-            case 'staff':
+            case 'Chasseur':
+            case 'Frégate':
+                 return <RadarDot color="bg-red-500" pulse />;
+            case 'Intercepteur':
+                 return <RadarDot color="bg-red-400" pulse />;
+            case 'Mineur':
                 return <RadarDot color="bg-gray-400" type="square" size="w-1.5 h-1.5" />;
             default:
                 return <RadarDot color="bg-red-500" pulse />;
@@ -122,8 +125,9 @@ export function Radar({ playerPosition, enemies, stations, asteroids, debris, ra
                 </div>
                 
                 {enemies.map(e => renderObjectOnRadar(e, `enemy-${e.id}`, getEnemyIcon(e)))}
-                {stations.map(s => renderObjectOnRadar(s, `station-${s.id}`, <RadarDot color="border-blue-400" type="circle" pulse />))}
-                {asteroids.map(a => renderObjectOnRadar(a, `asteroid-${a.id}`, <RadarDot color="bg-gray-500" />))}
+                {stations.map(s => renderObjectOnRadar(s, `station-${s.id}`, <RadarDot color="border-blue-400" type="circle" pulse size="w-3 h-3" />))}
+                {outposts.map(o => renderObjectOnRadar(o, `outpost-${o.id}`, <RadarDot color="" type="icon"><TowerControl className="h-3 w-3 text-blue-300" /></RadarDot>))}
+                {asteroids.map(a => renderObjectOnRadar(a, `asteroid-${a.id}`, <RadarDot color="bg-gray-500" size="w-1.5 h-1.5"/>))}
                 {debris.map(d => renderObjectOnRadar(d, `debris-${d.id}`, <RadarDot color="" type="icon"><Package className="h-2.5 w-2.5 text-yellow-500" /></RadarDot>))}
             </div>
 

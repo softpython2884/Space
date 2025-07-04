@@ -9,9 +9,10 @@ interface StaffShipProps {
   maxHealth: number;
   isTargeted: boolean;
   isAlly?: boolean;
+  isSelected?: boolean;
 }
 
-export function StaffShip({ x, y, rotation, health, maxHealth, isTargeted, isAlly }: StaffShipProps) {
+export function StaffShip({ x, y, rotation, health, maxHealth, isTargeted, isAlly, isSelected }: StaffShipProps) {
     const healthPercentage = (health / maxHealth) * 100;
 
   return (
@@ -46,6 +47,10 @@ export function StaffShip({ x, y, rotation, health, maxHealth, isTargeted, isAll
           {/* Targeting indicator */}
           {isTargeted && (
               <div className={`absolute -inset-2 border-2 ${isAlly ? 'border-blue-500' : 'border-gray-400'} rounded-full animate-pulse`} />
+          )}
+           {/* Selection indicator */}
+          {isSelected && (
+              <div className="absolute -inset-3 border-2 border-green-500 rounded-full" />
           )}
         </div>
       </div>

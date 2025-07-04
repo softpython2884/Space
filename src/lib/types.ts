@@ -77,7 +77,7 @@ export interface StellarBaseData {
   maxHull: number;
 }
 
-export type EnemyAiState = 'patrolling' | 'chasing' | 'searching' | 'fleeing' | 'following' | 'mining' | 'returning_to_base' | 'guarding' | 'scavenging';
+export type EnemyAiState = 'patrolling' | 'chasing' | 'searching' | 'fleeing' | 'following' | 'mining' | 'returning_to_base' | 'guarding' | 'scavenging' | 'moving_to_order';
 export type BotShipType = 'Chasseur' | 'Frégate' | 'Mineur' | 'Intercepteur';
 
 export type EnemyState = {
@@ -106,6 +106,7 @@ export type EnemyState = {
   patrolCenter?: { x: number, y: number };
   lastAttackerId?: number | null;
   patrolTarget?: { x: number, y: number } | null;
+  orderTarget?: { x: number, y: number } | null;
   followTargetId?: number | null;
   shipMode?: ShipMode;
   cruiseState?: 'idle' | 'charging' | 'cruising';
@@ -134,6 +135,16 @@ export type StationState = {
   maxShield: number;
   lastHitTimestamp: number;
 }
+
+export type OutpostState = {
+  id: number;
+  x: number;
+  y: number;
+  health: number;
+  maxHealth: number;
+  ownerId: number; // To know if it's player's or AI's
+}
+
 
 export type Debris = {
   id: number;
