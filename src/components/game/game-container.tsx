@@ -139,6 +139,7 @@ type ProjectileState = {
   y: number;
   rotation: number;
   ownerId: number;
+  isAlly: boolean;
 };
 
 export type EnemyState = EnemyStateType;
@@ -727,9 +728,6 @@ export function GameContainer() {
     let lastCollisionTimestamp = 0;
 
     const gameLoop = (timestamp: number) => {
-      if (isGameOver) {
-        return;
-      }
       
       if (cruiseStateRef.current === 'charging') {
         if (cruiseChargeStartTimestampRef.current === 0) cruiseChargeStartTimestampRef.current = timestamp;
@@ -771,7 +769,7 @@ export function GameContainer() {
       }
 
       const accelVec = { x: 0, y: 0 };
-      const isMovementDisabled = isPlayerActionInProgress || shipModeRef.current === 'scan' || cruiseStateRef.current === 'charging' || isModalOpen;
+      const isMovementDisabled = isPlayerActionInProgress || shipModeRef.current === 'scan' || cruiseStateRef.current === 'charging';
 
       if (!isMovementDisabled) {
         const rotRad = playerRotationRef.current * (Math.PI / 180);
@@ -856,7 +854,7 @@ export function GameContainer() {
         let fireRotation = aimAngle;
         if (isTargeting) fireRotation = Math.atan2(currentTarget.y - playerPositionRef.current.y, currentTarget.x - playerPositionRef.current.x) * (180 / Math.PI);
 
-        setPlayerProjectiles(prev => [...prev, { id: getUniqueId(), x: playerPositionRef.current.x, y: playerPositionRef.current.y, rotation: fireRotation, ownerId: -1 }]);
+        setPlayerProjectiles(prev => [...prev, { id: getUniqueId(), x: playerPositionRef.current.x, y: playerPositionRef.current.y, rotation: fireRotation, ownerId: -1, isAlly: true }]);
         setPlayerData(d => ({ ...d, energy: d.energy - ENERGY_PER_SHOT }));
       }
       
@@ -1064,26 +1062,25 @@ export function GameContainer() {
               const currentTargetEntity = enemiesRef.current.find(e => e.id === updatedEnemy.combatTargetId);
               if (!currentTargetEntity || currentTargetEntity.health <= 0) {
                   updatedEnemy.combatTargetId = null;
-                  let closestTarget: { id: number } | null = null;
+                  let closestTarget: { id: number; isAlly: boolean | undefined } | null = null;
                   let minDistance = aggroRadius;
 
-                  const potentialTargets = enemiesRef.current.filter(e => e.health > 0 && e.id !== updatedEnemy.id && e.isAlly !== updatedEnemy.isAlly);
+                  const potentialTargets = [...enemiesRef.current.filter(e => e.health > 0 && e.id !== updatedEnemy.id && e.isAlly !== updatedEnemy.isAlly), {id: -1, isAlly: true}];
                   for (const target of potentialTargets) {
-                      const dist = Math.hypot(target.x - updatedEnemy.x, target.y - updatedEnemy.y);
+                      const targetPos = target.id === -1 ? playerPositionRef.current : target;
+                      const dist = Math.hypot(targetPos.x - updatedEnemy.x, targetPos.y - updatedEnemy.y);
                       if (dist < minDistance) {
                           minDistance = dist;
                           closestTarget = target;
                       }
                   }
 
-                  if (!updatedEnemy.isAlly && canSeePlayer) {
-                      if (!closestTarget || distanceToPlayer < minDistance) {
-                          updatedEnemy.combatTargetId = null; // Target player
+                  if (closestTarget) {
+                      if (closestTarget.id === -1) {
+                         if (!updatedEnemy.isAlly) updatedEnemy.combatTargetId = null; // target player
                       } else {
-                          updatedEnemy.combatTargetId = closestTarget.id;
+                         updatedEnemy.combatTargetId = closestTarget.id;
                       }
-                  } else if (closestTarget) {
-                      updatedEnemy.combatTargetId = closestTarget.id;
                   }
               }
           }
@@ -1248,7 +1245,7 @@ export function GameContainer() {
                     }
 
                     if (timestamp - updatedEnemy.lastShotTimestamp > ENEMY_FIRE_RATE_MS && updatedEnemy.energy >= ENEMY_ENERGY_PER_SHOT) {
-                        newEnemyProjectiles.push({ id: getUniqueId(), x: updatedEnemy.x, y: updatedEnemy.y, rotation: angleToTarget * (180 / Math.PI), ownerId: updatedEnemy.id });
+                        newEnemyProjectiles.push({ id: getUniqueId(), x: updatedEnemy.x, y: updatedEnemy.y, rotation: angleToTarget * (180 / Math.PI), ownerId: updatedEnemy.id, isAlly: updatedEnemy.isAlly || false });
                         updatedEnemy.lastShotTimestamp = timestamp;
                         updatedEnemy.energy -= ENEMY_ENERGY_PER_SHOT;
                         updatedEnemy.lastEnergyUseTimestamp = timestamp;
@@ -1376,8 +1373,7 @@ export function GameContainer() {
       for (const proj of enemyProjectilesRef.current) {
         if (hitEnemyProjectileIds.has(proj.id)) continue;
 
-        const owner = enemiesRef.current.find(e => e.id === proj.ownerId);
-        if (owner && owner.isAlly) continue;
+        if (proj.isAlly) continue;
 
         const distance = Math.hypot(proj.x - playerPositionRef.current.x, proj.y - playerPositionRef.current.y);
         if (distance < PLAYER_COLLISION_RADIUS) {
@@ -1463,7 +1459,7 @@ export function GameContainer() {
     }
     
     return () => cancelAnimationFrame(animationFrameId);
-  }, [viewSize, isModalOpen, controlScheme, isDocked, applyDamage, handleActionSelect, handleBuyAlly, handleBuyShip, handleBuyUpgrade, handleRepairHull, handleSellResource, resetGame, toast]);
+  }, [viewSize, isGameOver, controlScheme, isDocked, applyDamage, handleActionSelect, handleBuyAlly, handleBuyShip, handleBuyUpgrade, handleRepairHull, handleSellResource, resetGame, toast]);
 
   let radarRange = BASE_RADAR_RANGE;
   if (shipMode === 'scan') radarRange = BASE_RADAR_RANGE * 2;
@@ -1546,10 +1542,10 @@ export function GameContainer() {
       }}>
         <GameMap width={MAP_WIDTH} height={MAP_HEIGHT} />
         {playerProjectiles.map((p) => (
-          <Projectile key={p.id} x={p.x} y={p.y} rotation={p.rotation} />
+          <Projectile key={p.id} x={p.x} y={p.y} rotation={p.rotation} isAlly={p.isAlly} />
         ))}
         {enemyProjectiles.map((p) => (
-          <Projectile key={p.id} x={p.x} y={p.y} rotation={p.rotation} />
+          <Projectile key={p.id} x={p.x} y={p.y} rotation={p.rotation} isAlly={p.isAlly} />
         ))}
         <PlayerShip 
           x={playerPosition.x}
@@ -1650,7 +1646,7 @@ export function GameContainer() {
         onSellResource={handleSellResource}
         onBuyUpgrade={handleBuyUpgrade}
         onRepairHull={handleRepairHull}
-        onBuyShip={onBuyShip}
+        onBuyShip={handleBuyShip}
         onBuyAlly={handleBuyAlly}
       />
 
