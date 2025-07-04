@@ -24,8 +24,10 @@ import { StellarBaseStatus } from '@/components/game-ui/stellar-base-status';
 import { VesselSystems } from '@/components/game-ui/vessel-systems';
 import { ShipModeSelector } from '@/components/game-ui/ship-mode-selector';
 import { CruiseStreaks } from '@/components/game/cruise-streaks';
-import { INITIAL_PLAYER_DATA, INITIAL_FACTION_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS, BEAM_INITIAL_ENERGY_COST } from '@/lib/constants';
-import type { ControlScheme, PlayerData, FactionData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState, AsteroidState, StationState, BotShipType, ContextMenuTargetType, PlayerActionType, Resources, PlayerUpgrades, PlayerShipClass, BeamState, ProjectileState, PlayerAction, EnemyAiState, OutpostState, ChatMessage } from '@/lib/types';
+import { ElectricCloud } from './electric-cloud';
+import { Vortex } from './vortex';
+import { INITIAL_PLAYER_DATA, INITIAL_FACTION_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS, BEAM_INITIAL_ENERGY_COST, BEAM_DAMAGE_PER_FRAME, MAP_WIDTH, MAP_HEIGHT, ZONES } from '@/lib/constants';
+import type { ControlScheme, PlayerData, FactionData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState, AsteroidState, StationState, BotShipType, ContextMenuTargetType, PlayerActionType, Resources, PlayerUpgrades, PlayerShipClass, BeamState, ProjectileState, PlayerAction, EnemyAiState, OutpostState, ChatMessage, Zone } from '@/lib/types';
 import { ClientOnly } from '@/components/client-only';
 import { GameOverOverlay } from './game-over-overlay';
 import { TacticalViewOverlay } from './tactical-view-overlay';
@@ -33,7 +35,6 @@ import { ContextMenu } from '../game-ui/context-menu';
 import { StationMenu } from '../game-ui/station-menu';
 import { PlayerUpgradesDisplay } from '../game-ui/player-upgrades';
 import { cn } from '@/lib/utils';
-import { useToast } from '@/hooks/use-toast';
 import { ActionProgress } from '../game-ui/action-progress';
 
 
@@ -44,8 +45,6 @@ let MAX_SPEED = 6;
 const FRICTION = 0.98;
 
 const PROJECTILE_SPEED = 8;
-const MAP_WIDTH = 6000;
-const MAP_HEIGHT = 6000;
 const FIRE_RATE_MS = 250; 
 const AUTO_TURRET_FIRE_RATE_MS = 800;
 const ENEMY_CLICK_RADIUS = 30;
@@ -64,14 +63,11 @@ const FRIGATE_COLLISION_RADIUS = 30;
 const STAFF_COLLISION_RADIUS = 25;
 const DEBRIS_COLLISION_RADIUS = 20;
 const STATION_COLLISION_RADIUS = 75;
-const ASTEROID_COLLISION_RADIUS = 0.75;
+const ASTEROID_COLLISION_RADIUS = 1.0; // Adjusted for circle visuals
 
 const PLAYER_PROJECTILE_DAMAGE = 10;
 const HEAVY_PLAYER_PROJECTILE_DAMAGE = 20;
 const ENEMY_PROJECTILE_DAMAGE = 5;
-
-const BEAM_DAMAGE_PER_FRAME = 0.2;
-
 
 const ASTEROID_COLLISION_DAMAGE = 5;
 const ENEMY_COLLISION_DAMAGE = 10;
@@ -176,14 +172,29 @@ const generateInitialEnemies = (playerStation: StationState, enemyStation: Stati
 };
 
 
-const generateInitialAsteroids = (): AsteroidState[] => [
-    { id: 1, x: MAP_WIDTH/2, y: 1200, size: 80, rotation: 30, mineableCharges: MINING_CHARGES, cooldownUntil: 0 },
-    { id: 2, x: MAP_WIDTH - 1000, y: MAP_HEIGHT/2, size: 120, rotation: 90, mineableCharges: MINING_CHARGES, cooldownUntil: 0 },
-    { id: 3, x: 1000, y: MAP_HEIGHT/2, size: 100, rotation: 180, mineableCharges: MINING_CHARGES, cooldownUntil: 0 },
-    { id: 4, x: MAP_WIDTH/2, y: MAP_HEIGHT - 1200, size: 90, rotation: 270, mineableCharges: MINING_CHARGES, cooldownUntil: 0 },
-    { id: 5, x: 2000, y: 2000, size: 90, rotation: 45, mineableCharges: MINING_CHARGES, cooldownUntil: 0 },
-    { id: 6, x: 4000, y: 4000, size: 110, rotation: 135, mineableCharges: MINING_CHARGES, cooldownUntil: 0 },
-];
+const generateInitialAsteroids = (zones: Zone[]): AsteroidState[] => {
+    const asteroids: AsteroidState[] = [];
+    let id = 1;
+    zones.forEach(zone => {
+        if (zone.type === 'asteroid_field') {
+            const count = Math.floor(Math.PI * zone.radius * zone.radius / 100000) * (zone.density || 0.5);
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * 2 * Math.PI;
+                const distance = Math.random() * zone.radius;
+                asteroids.push({
+                    id: id++,
+                    x: zone.x + Math.cos(angle) * distance,
+                    y: zone.y + Math.sin(angle) * distance,
+                    size: Math.random() * 60 + 60,
+                    rotation: Math.random() * 360,
+                    mineableCharges: MINING_CHARGES,
+                    cooldownUntil: 0
+                });
+            }
+        }
+    });
+    return asteroids;
+};
 
 const generateInitialStations = (): StationState[] => [
     { id: 1, owner: 'player', x: 1000, y: MAP_HEIGHT / 2, health: STATION_BASE_HEALTH, maxHealth: STATION_BASE_HEALTH, shield: STATION_BASE_SHIELD, maxShield: STATION_BASE_SHIELD, lastHitTimestamp: 0 },
@@ -208,6 +219,7 @@ export function GameContainer() {
   const [debris, setDebris] = useState<DebrisType[]>([]);
   const [targetId, setTargetId] = useState<number | null>(null);
   const [viewSize, setViewSize] = useState({ width: 0, height: 0 });
+  const [zones] = useState<Zone[]>(ZONES);
   
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isGameOver, setIsGameOver] = useState(false);
@@ -391,7 +403,7 @@ export function GameContainer() {
     setEnemyProjectiles([]);
     setActiveBeams([]);
     setEnemies(generateInitialEnemies(playerStation, enemyStation));
-    setAsteroids(generateInitialAsteroids());
+    setAsteroids(generateInitialAsteroids(zones));
     setOutposts([]);
     setDebris([]);
     setTargetId(null);
@@ -407,7 +419,7 @@ export function GameContainer() {
     modeChangeAvailableAtRef.current = 0;
     cruiseAvailableAtRef.current = 0;
     setCooldowns({ modeChange: 1, cruise: 1 });
-  }, []);
+  }, [zones]);
 
   useEffect(() => {
     resetGame();
@@ -432,6 +444,21 @@ export function GameContainer() {
     }
     
     if (targetId === null) return;
+    
+    if (action === 'follow_target') {
+        const target = enemiesRef.current.find(e => e.id === targetId) || (targetId === -1 ? {id: -1} : null);
+        if (target && selectedAllyIdsRef.current.length > 0) {
+            addChatMessage('Commander', `Units ${selectedAllyIdsRef.current.join(', ')} ordered to follow target ${target.id}.`, 'text-cyan-400');
+            setEnemies(prev => prev.map(e => selectedAllyIdsRef.current.includes(e.id) ? { 
+                ...e, 
+                aiState: 'following', 
+                followTargetId: target.id, 
+                combatTargetId: null,
+                orderTarget: null
+            } : e));
+        }
+        return;
+    }
 
     if (action === 'open_station_menu') {
         const station = stationsRef.current.find(s => s.id === targetId);
@@ -454,6 +481,7 @@ export function GameContainer() {
     const targetAsteroid = asteroidsRef.current.find(a => a.id === targetId);
     
     if (action === 'mining' && targetAsteroid) {
+        addChatMessage('Player', `Initiating mining sequence on asteroid #${targetId}.`, 'text-cyan-300');
         if (targetAsteroid.cooldownUntil > Date.now()) {
             addChatMessage('System', "Asteroid is depleted. Try again later.", 'text-yellow-400');
             return;
@@ -474,19 +502,22 @@ export function GameContainer() {
             
             const targetX = targetAsteroid.x + Math.cos(angleFromCenter) * distanceToDock;
             const targetY = targetAsteroid.y + Math.sin(angleFromCenter) * distanceToDock;
-
+            
+            addChatMessage('Navigation', `Moving into optimal mining range.`, 'text-gray-400');
             setAutoMoveTarget({ x: targetX, y: targetY });
             setMiningIntent(targetId);
             return;
         }
         const shipInfo = SHIP_DATA[playerDataRef.current.ship.class];
         const miningDuration = shipInfo.miningBonus ? MINING_DURATION_MS / shipInfo.miningBonus : MINING_DURATION_MS;
+        addChatMessage('System', `Mining laser engaged.`, 'text-green-400');
         setPlayerAction({ type: 'mining', targetId, startTime: Date.now(), duration: miningDuration });
         return;
     }
 
     if (targetEnemy) {
       if (targetEnemy.isAlly) {
+        addChatMessage('System', "Cannot perform hostile actions on an allied ship.", 'text-yellow-400');
         return;
       }
       const distance = Math.hypot(targetEnemy.x - playerPositionRef.current.x, targetEnemy.y - playerPositionRef.current.y);
@@ -506,6 +537,7 @@ export function GameContainer() {
         }
         setPlayerData(d => ({ ...d, energy: d.energy - PILLAGE_ENERGY_COST }));
         lastEnergyUseTimestamp.current = Date.now();
+        addChatMessage('Player', `Initiating pillage on enemy ${targetId}.`, 'text-orange-400');
         setPlayerAction({ type: 'pillaging', targetId, startTime: Date.now(), duration: PILLAGE_DURATION_MS });
         break;
       case 'boarding':
@@ -515,6 +547,7 @@ export function GameContainer() {
         }
         setPlayerData(d => ({ ...d, energy: d.energy - BOARDING_ENERGY_COST }));
         lastEnergyUseTimestamp.current = Date.now();
+        addChatMessage('Player', `Attempting to board enemy ${targetId}.`, 'text-orange-400');
         setPlayerAction({ type: 'boarding', targetId, startTime: Date.now(), duration: BOARDING_DURATION_MS });
         break;
     }
@@ -535,21 +568,28 @@ export function GameContainer() {
   const handleModeChange = (newMode: ShipMode) => {
     const now = Date.now();
     if (now < modeChangeAvailableAtRef.current) {
+        addChatMessage('System', 'System mode change on cooldown.', 'text-yellow-400');
         return;
     }
-    if (cruiseStateRef.current !== 'idle') return;
+    if (cruiseStateRef.current !== 'idle') {
+        addChatMessage('System', 'Cannot change mode while cruising.', 'text-yellow-400');
+        return;
+    }
 
     if (newMode === 'cruise') {
         if (now < cruiseAvailableAtRef.current) {
+            addChatMessage('System', 'Cruise drive is recharging.', 'text-yellow-400');
             return;
         }
         if (playerDataRef.current.energy < CRUISE_ENERGY_COST) {
+            addChatMessage('System', 'Insufficient energy for cruise.', 'text-red-400');
             return;
         }
         setPlayerData(d => ({ ...d, energy: Math.max(0, d.energy - CRUISE_ENERGY_COST) }));
     }
 
     if (newMode === 'shield' && playerDataRef.current.energy <= 0) {
+        addChatMessage('System', 'Insufficient energy for shields.', 'text-red-400');
         return;
     }
     
@@ -561,7 +601,7 @@ export function GameContainer() {
     } else {
         setShipMode(newMode);
     }
-
+    addChatMessage('System', `Engaging ${newMode} mode.`, 'text-cyan-400');
     modeChangeAvailableAtRef.current = now + MODE_CHANGE_COOLDOWN_MS;
   };
 
@@ -592,11 +632,13 @@ export function GameContainer() {
     const currentLevel = currentData.upgrades[upgrade];
 
     if (currentLevel >= UPGRADE_COSTS[upgrade].length) {
+        addChatMessage('System', 'Upgrade already at max level.', 'text-yellow-400');
         return;
     }
 
     const cost = UPGRADE_COSTS[upgrade][currentLevel];
     if (currentData.resources.money < cost) {
+        addChatMessage('System', 'Insufficient funds for upgrade.', 'text-red-400');
         return;
     }
 
@@ -608,10 +650,14 @@ export function GameContainer() {
         upgrades: newUpgrades, 
         resources: newResources 
     }));
-  }, []);
+    addChatMessage('System', `Upgraded ${upgrade} to level ${currentLevel + 1}.`, 'text-green-400');
+  }, [addChatMessage]);
 
   const handleRepairHull = useCallback((amount: number, cost: number) => {
-    if (playerDataRef.current.resources.money < cost) return;
+    if (playerDataRef.current.resources.money < cost) {
+        addChatMessage('System', 'Insufficient funds for repair.', 'text-red-400');
+        return;
+    }
 
     setPlayerData(prev => ({
       ...prev,
@@ -624,7 +670,8 @@ export function GameContainer() {
     setStations(prev => prev.map(s => 
       s.id === 1 ? { ...s, health: Math.min(s.maxHealth, s.health + amount) } : s
     ));
-  }, []);
+    addChatMessage('System', `Repaired station hull for ${amount} HP.`, 'text-green-400');
+  }, [addChatMessage]);
   
   const handleBuyShip = useCallback((shipClass: PlayerShipClass) => {
       const shipInfo = SHIP_DATA[shipClass];
@@ -804,6 +851,7 @@ export function GameContainer() {
       const clickWorldY = cameraPositionRef.current.y + (mousePosition.current.y - viewSize.height / 2) / zoomRef.current;
       
       if (event.button === 0) { // Left Click
+        setContextMenu(null);
         if (isTacticalViewRef.current) {
             let clickedOnAlly = false;
             for (const enemy of enemiesRef.current) {
@@ -828,7 +876,6 @@ export function GameContainer() {
         }
 
         isLeftMouseDown.current = true;
-        setContextMenu(null);
         setSelectedAllyIds([]);
 
         let clickedOnShip = false;
@@ -860,11 +907,14 @@ export function GameContainer() {
         if (isTacticalViewRef.current && selectedAllyIdsRef.current.length > 0) {
             // Check for target enemy
             for (const enemy of enemiesRef.current) {
-                if (enemy.isAlly) continue;
                 const distance = Math.hypot(clickWorldX - enemy.x, clickWorldY - enemy.y);
                 if (distance < ENEMY_CLICK_RADIUS * 2) {
-                    addChatMessage('Commander', `Units ${selectedAllyIdsRef.current.join(', ')} ordered to attack target ${enemy.id}.`, 'text-cyan-400');
-                    setEnemies(prev => prev.map(e => selectedAllyIdsRef.current.includes(e.id) ? { ...e, aiState: 'chasing', combatTargetId: enemy.id, orderTarget: null } : e));
+                    if (enemy.isAlly) {
+                         handleActionSelect('follow_target', enemy.id);
+                    } else {
+                        addChatMessage('Commander', `Units ${selectedAllyIdsRef.current.join(', ')} ordered to attack target ${enemy.id}.`, 'text-cyan-400');
+                        setEnemies(prev => prev.map(e => selectedAllyIdsRef.current.includes(e.id) ? { ...e, aiState: 'chasing', combatTargetId: enemy.id, orderTarget: null } : e));
+                    }
                     return;
                 }
             }
@@ -886,9 +936,7 @@ export function GameContainer() {
         for (const enemy of enemiesRef.current) {
           const distance = Math.hypot(clickWorldX - enemy.x, clickWorldY - enemy.y);
           if (distance < ENEMY_CLICK_RADIUS * 2) {
-            if (!enemy.isAlly) {
-                setContextMenu({ x: event.clientX, y: event.clientY, worldX: clickWorldX, worldY: clickWorldY, targetId: enemy.id, targetType: 'enemy' });
-            }
+            setContextMenu({ x: event.clientX, y: event.clientY, worldX: clickWorldX, worldY: clickWorldY, targetId: enemy.id, targetType: enemy.isAlly ? 'ally' : 'enemy' });
             return;
           }
         }
@@ -1079,6 +1127,7 @@ export function GameContainer() {
                   if (targetAsteroid && targetAsteroid.cooldownUntil <= Date.now() && targetAsteroid.mineableCharges > 0) {
                     const shipInfo = SHIP_DATA[playerDataRef.current.ship.class];
                     const miningDuration = shipInfo.miningBonus ? MINING_DURATION_MS / shipInfo.miningBonus : MINING_DURATION_MS;
+                    addChatMessage('System', `Mining laser engaged on asteroid #${miningTargetId}.`, 'text-green-400');
                     setPlayerAction({ type: 'mining', targetId: miningTargetId, startTime: Date.now(), duration: miningDuration });
                   }
                   setMiningIntent(null);
@@ -1136,8 +1185,8 @@ export function GameContainer() {
       const isShootingManually = keysPressed.current.has(' ');
       const playerShipConfig = SHIP_DATA[playerDataRef.current.ship.class];
 
-      if (activeWeapons.manualTurrets && (currentTarget || isShootingManually) && canShoot && timestamp - lastFiredTimestamp.current > FIRE_RATE_MS) {
-        const { manualTurrets } = playerShipConfig.weapons;
+      if (activeWeapons.manualTurrets && playerShipConfig.manualTurrets && (currentTarget || isShootingManually) && canShoot && timestamp - lastFiredTimestamp.current > FIRE_RATE_MS) {
+        const { manualTurrets } = playerShipConfig;
 
         if (manualTurrets.count > 0 && playerDataRef.current.energy >= ENERGY_PER_SHOT * manualTurrets.count) {
             lastFiredTimestamp.current = timestamp;
@@ -1180,7 +1229,7 @@ export function GameContainer() {
       }
 
       // Player auto-turret logic
-      const { autoTurrets } = playerShipConfig.weapons;
+      const { autoTurrets } = playerShipConfig;
       if (activeWeapons.autoTurrets && autoTurrets && autoTurrets.count > 0 && timestamp - lastPlayerAutoShotTimestamp.current > AUTO_TURRET_FIRE_RATE_MS) {
         if (playerDataRef.current.energy >= AUTO_TURRET_ENERGY_COST * autoTurrets.count) {
             let autoTarget: EnemyState | null = null;
@@ -1201,13 +1250,15 @@ export function GameContainer() {
                 
                 const newAutoProjectiles: ProjectileState[] = [];
                 for (const offset of autoTurrets.offsets) {
-                      const rotatedOffsetX = offset.x * Math.cos(shipRotRad) - offset.y * Math.sin(shipRotRad);
+                    const rotatedOffsetX = offset.x * Math.cos(shipRotRad) - offset.y * Math.sin(shipRotRad);
                     const rotatedOffsetY = offset.x * Math.sin(shipRotRad) + offset.y * Math.cos(shipRotRad);
-                    const fireRotation = Math.atan2(autoTarget.y - (playerPositionRef.current.y + rotatedOffsetY), autoTarget.x - (playerPositionRef.current.x + rotatedOffsetX)) * (180 / Math.PI);
+                    const turretX = playerPositionRef.current.x + rotatedOffsetX;
+                    const turretY = playerPositionRef.current.y + rotatedOffsetY;
+                    const fireRotation = Math.atan2(autoTarget.y - turretY, autoTarget.x - turretX) * (180 / Math.PI);
                     newAutoProjectiles.push({ 
                         id: getUniqueId(), 
-                        x: playerPositionRef.current.x + rotatedOffsetX, 
-                        y: playerPositionRef.current.y + rotatedOffsetY, 
+                        x: turretX,
+                        y: turretY,
                         rotation: fireRotation, 
                         ownerId: -1, 
                         type: autoTurrets.type 
@@ -1221,7 +1272,7 @@ export function GameContainer() {
       }
         
       // Beam weapon logic for player
-      const { beam } = playerShipConfig.weapons;
+      const { beam } = playerShipConfig;
       const isTryingToShootBeam = activeWeapons.beam && beam && beam.count > 0 && currentTarget && !currentTarget.isAlly && (isLeftMouseDown.current || isShootingManually);
       const existingPlayerBeams = activeBeamsRef.current.filter(b => b.sourceId === -1);
       
@@ -1240,10 +1291,10 @@ export function GameContainer() {
                         id: getUniqueId(),
                         sourceId: -1,
                         targetId: currentTarget.id,
-                        startTime: timestamp,
                         type: beam.type,
                         sourceOffsetX: rotatedOffsetX,
                         sourceOffsetY: rotatedOffsetY,
+                        isAlly: true
                     });
                 }
                 setActiveBeams(prev => [...prev, ...newBeams]);
@@ -1263,6 +1314,7 @@ export function GameContainer() {
           if (progress >= 100) {
               switch(action.type) {
                   case 'mining': {
+                      addChatMessage('System', `Mining on asteroid #${action.targetId} complete.`, 'text-cyan-400');
                       const asteroid = asteroidsRef.current.find(a => a.id === action.targetId);
                       if (asteroid && asteroid.mineableCharges > 0) {
                           const oreGained = Math.floor(Math.random() * 26) + 25;
@@ -1535,9 +1587,9 @@ export function GameContainer() {
 
           // --- AI LOGIC ---
           const isLowHealth = (updatedEnemy.health / updatedEnemy.maxHealth) < ENEMY_FLEE_HEALTH_THRESHOLD;
-          const isLowEnergy = (updatedEnemy.energy / updatedEnemy.maxEnergy) < LOW_ENERGY_FLEE_THRESHOLD;
+          const hasEnoughEnergyForWeapons = updatedEnemy.energy > (ENEMY_ENERGY_PER_SHOT * 2);
 
-          if (updatedEnemy.aiState !== 'fleeing' && updatedEnemy.aiState !== 'returning_to_base' && (isLowHealth || isLowEnergy)) {
+          if (updatedEnemy.aiState !== 'fleeing' && updatedEnemy.aiState !== 'returning_to_base' && (isLowHealth || !hasEnoughEnergyForWeapons)) {
               updatedEnemy.aiState = 'fleeing';
               updatedEnemy.combatTargetId = null; // Drop target when fleeing
               const canCruise = updatedEnemy.cruiseState === 'idle' && timestamp > (updatedEnemy.cruiseAvailableAt || 0) && updatedEnemy.energy >= CRUISE_ENERGY_COST;
@@ -1556,16 +1608,13 @@ export function GameContainer() {
           const isMiner = updatedEnemy.role === 'miner' || updatedEnemy.type === 'Mineur';
           
           if (updatedEnemy.aiState === 'fleeing') {
-              // If safe, switch to returning to base
-              const attacker = updatedEnemy.lastAttackerId === -1 
-                  ? playerPositionRef.current 
-                  : enemiesRef.current.find(e => e.id === updatedEnemy.lastAttackerId);
-              const attackerIsNear = attacker && Math.hypot(updatedEnemy.x - attacker.x, updatedEnemy.y - attacker.y) < aggroRadius * 1.5;
-
-              if (!attackerIsNear) {
-                updatedEnemy.aiState = 'returning_to_base';
-                updatedEnemy.shipMode = 'normal';
-                updatedEnemy.cruiseState = 'idle'; // Stop cruising
+              const faction = updatedEnemy.isAlly ? 'player' : 'enemy';
+              const homeBase = stationsRef.current.find(s => s.owner === faction);
+              if(homeBase) {
+                const distToBase = Math.hypot(updatedEnemy.x - homeBase.x, updatedEnemy.y - homeBase.y);
+                if (distToBase < STATION_INTERACTION_RADIUS * 1.5) {
+                    updatedEnemy.aiState = 'patrolling';
+                }
               }
           } else if (isMiner) {
               if (updatedEnemy.cargo >= MINER_CARGO_PER_TRIP && updatedEnemy.aiState !== 'returning_to_base') {
@@ -1592,7 +1641,6 @@ export function GameContainer() {
               if (updatedEnemy.combatTargetId === null) {
                   let closestTarget: {id: number, dist: number} | null = null;
                   
-                  // Target player and allies
                   const allPlayerTargets = [ {id: -1, x: playerPositionRef.current.x, y: playerPositionRef.current.y, isAlly: true}, ...enemiesRef.current.filter(e => e.isAlly)];
                   
                   for (const pTarget of allPlayerTargets) {
@@ -1868,10 +1916,10 @@ export function GameContainer() {
                                     id: getUniqueId(),
                                     sourceId: updatedEnemy.id,
                                     targetId: targetShip.id,
-                                    startTime: timestamp,
                                     type: enemyShipInfo.weapons.beam.type,
                                     sourceOffsetX: rotatedOffsetX,
                                     sourceOffsetY: rotatedOffsetY,
+                                    isAlly: updatedEnemy.isAlly
                                 });
                             }
                            currentActiveBeams = [...currentActiveBeams, ...newBeams];
@@ -1910,21 +1958,24 @@ export function GameContainer() {
                 currentActiveBeams = currentActiveBeams.filter(b => b.sourceId !== updatedEnemy.id);
                 const fleeSpeedMultiplier = updatedEnemy.cruiseState === 'cruising' ? 5 : 1.2;
                 
-                // Head towards home base instead of just away from attacker
                 const faction = updatedEnemy.isAlly ? 'player' : 'enemy';
                 const homeBase = stationsRef.current.find(s => s.owner === faction);
+                let fleeTarget = homeBase;
 
-                if (homeBase) {
-                     const angleToBase = Math.atan2(homeBase.y - updatedEnemy.y, homeBase.x - updatedEnemy.x);
+                // Flee from attacker if no base
+                if (!fleeTarget) {
+                    const attacker = updatedEnemy.lastAttackerId === -1 
+                        ? playerPositionRef.current 
+                        : enemiesRef.current.find(e => e.id === updatedEnemy.lastAttackerId);
+                    if (attacker) {
+                         const angleAway = Math.atan2(updatedEnemy.y - attacker.y, updatedEnemy.x - attacker.x);
+                         updatedEnemy.vx = Math.cos(angleAway) * ENEMY_SPEED * fleeSpeedMultiplier;
+                         updatedEnemy.vy = Math.sin(angleAway) * ENEMY_SPEED * fleeSpeedMultiplier;
+                    }
+                } else {
+                     const angleToBase = Math.atan2(fleeTarget.y - updatedEnemy.y, fleeTarget.x - updatedEnemy.x);
                      updatedEnemy.vx = Math.cos(angleToBase) * ENEMY_SPEED * fleeSpeedMultiplier;
                      updatedEnemy.vy = Math.sin(angleToBase) * ENEMY_SPEED * fleeSpeedMultiplier;
-                } else {
-                    // Failsafe if base is destroyed
-                    if (updatedEnemy.vx === 0 && updatedEnemy.vy === 0) { // If not already moving, move randomly
-                       const randomAngle = Math.random() * 2 * Math.PI;
-                       updatedEnemy.vx = Math.cos(randomAngle) * ENEMY_SPEED * fleeSpeedMultiplier;
-                       updatedEnemy.vy = Math.sin(randomAngle) * ENEMY_SPEED * fleeSpeedMultiplier;
-                    }
                 }
                 break;
             }
@@ -2043,7 +2094,7 @@ export function GameContainer() {
 
           for (const asteroid of asteroidsRef.current) {
               const distance = Math.hypot(asteroid.x - playerPositionRef.current.x, asteroid.y - playerPositionRef.current.y);
-              if (distance < (asteroid.size * ASTEROID_COLLISION_RADIUS) + PLAYER_COLLISION_RADIUS) {
+              if (distance < (asteroid.size/2 * ASTEROID_COLLISION_RADIUS) + PLAYER_COLLISION_RADIUS) {
                   collided = true;
                   collisionDamage = ASTEROID_COLLISION_DAMAGE * speedFactor;
                   repulsionAngle = Math.atan2(playerPositionRef.current.y - asteroid.y, playerPositionRef.current.x - asteroid.x);
@@ -2172,8 +2223,8 @@ export function GameContainer() {
                   if (overflowOre > 0 || overflowGas > 0) {
                       newDebrisFromOverflow.push({
                           id: getUniqueId(),
-                          x: playerPositionRef.current.x + (Math.random() - 0.5) * 80 + 40,
-                          y: playerPositionRef.current.y + (Math.random() - 0.5) * 80,
+                          x: d.x + (Math.random() - 0.5) * 80,
+                          y: d.y + (Math.random() - 0.5) * 80,
                           resources: { ore: overflowOre, gas: overflowGas, money: 0 }
                       });
                   }
@@ -2382,6 +2433,11 @@ export function GameContainer() {
           transformOrigin: 'top left'
       }}>
         <GameMap width={MAP_WIDTH} height={MAP_HEIGHT} />
+        {zones.map(zone => {
+            if (zone.type === 'nebula') return <ElectricCloud key={zone.id} {...zone} />;
+            if (zone.type === 'vortex') return <Vortex key={zone.id} {...zone} />;
+            return null;
+        })}
         {playerProjectiles.map((p) => (
           <Projectile key={`player-proj-${p.id}`} x={p.x} y={p.y} rotation={p.rotation} type={p.type} />
         ))}
@@ -2427,6 +2483,7 @@ export function GameContainer() {
                     x2={targetEntity.x}
                     y2={targetEntity.y}
                     type={beam.type}
+                    isAlly={beam.isAlly}
                 />
             )
         })}
@@ -2440,6 +2497,7 @@ export function GameContainer() {
         />
         {visibleEnemies.map(enemy => {
           const props = {
+            key: enemy.id,
             x: enemy.x,
             y: enemy.y,
             rotation: enemy.rotation,
@@ -2451,13 +2509,13 @@ export function GameContainer() {
           };
           switch (enemy.type) {
             case 'Chasseur':
-              return <EnemyShip key={enemy.id} {...props} />;
+              return <EnemyShip {...props} />;
             case 'Frégate':
-              return <FrigateShip key={enemy.id} {...props} />;
+              return <FrigateShip {...props} />;
             case 'Mineur':
-              return <StaffShip key={enemy.id} {...props} />;
+              return <StaffShip {...props} />;
             case 'Intercepteur':
-              return <InterceptorShip key={enemy.id} {...props} />;
+              return <InterceptorShip {...props} />;
             default:
               return null;
           }
