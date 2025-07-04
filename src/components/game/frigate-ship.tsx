@@ -1,6 +1,7 @@
 'use client';
 
 import { ShipModel } from './ship-models';
+import type { ShipMode } from '@/lib/types';
 
 interface FrigateShipProps {
   x: number;
@@ -11,9 +12,10 @@ interface FrigateShipProps {
   isTargeted: boolean;
   isAlly?: boolean;
   isSelected?: boolean;
+  shipMode?: ShipMode;
 }
 
-export function FrigateShip({ x, y, rotation, health, maxHealth, isTargeted, isAlly, isSelected }: FrigateShipProps) {
+export function FrigateShip({ x, y, rotation, health, maxHealth, isTargeted, isAlly, isSelected, shipMode }: FrigateShipProps) {
     const healthPercentage = (health / maxHealth) * 100;
 
   return (

@@ -21,17 +21,11 @@ export function ChatBox({ messages }: ChatBoxProps) {
         // A slight delay ensures the DOM has updated before scrolling
         setTimeout(() => {
             if (scrollAreaRef.current) {
-                 scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior: 'smooth' });
+                 scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior: 'auto' });
             }
         }, 100);
     }
   }, [messages]);
-
-  const Viewport = ({ children }: { children: React.ReactNode }) => (
-    <div ref={scrollAreaRef} className="h-full w-full rounded-[inherit]">
-      {children}
-    </div>
-  );
 
   return (
     <Card className="w-96 h-64 bg-black/60 border-primary/50 text-foreground backdrop-blur-sm flex flex-col">
