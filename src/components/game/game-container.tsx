@@ -11,6 +11,7 @@ import { InterceptorShip } from './interceptor-ship';
 import { Asteroid } from './asteroid';
 import { SpaceStation } from './space-station';
 import { Debris } from './debris';
+import { Beam } from './beam';
 import { Radar } from '../game-ui/radar';
 import { SpeedIndicator } from '../game-ui/speed-indicator';
 import { SettingsMenu } from '../game-ui/settings-menu';
@@ -22,7 +23,7 @@ import { VesselSystems } from '@/components/game-ui/vessel-systems';
 import { ShipModeSelector } from '@/components/game-ui/ship-mode-selector';
 import { CruiseStreaks } from '@/components/game/cruise-streaks';
 import { INITIAL_PLAYER_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST } from '@/lib/constants';
-import type { ControlScheme, PlayerData, StellarBaseData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState as EnemyStateType, AsteroidState, StationState, BotShipType, ContextMenuTargetType, PlayerActionType, Resources, PlayerUpgrades, PlayerShipClass } from '@/lib/types';
+import type { ControlScheme, PlayerData, StellarBaseData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState as EnemyStateType, AsteroidState, StationState, BotShipType, ContextMenuTargetType, PlayerActionType, Resources, PlayerUpgrades, PlayerShipClass, BeamState } from '@/lib/types';
 import { ClientOnly } from '@/components/client-only';
 import { GameOverOverlay } from './game-over-overlay';
 import { MilitaryViewOverlay } from './military-view-overlay';
@@ -64,6 +65,8 @@ const ASTEROID_COLLISION_RADIUS = 0.75;
 
 const PLAYER_PROJECTILE_DAMAGE = 10;
 const ENEMY_PROJECTILE_DAMAGE = 5;
+const BEAM_DAMAGE = 1.5;
+const HEAVY_BEAM_DAMAGE = 3;
 
 const ASTEROID_COLLISION_DAMAGE = 5;
 const ENEMY_COLLISION_DAMAGE = 10;
@@ -106,6 +109,7 @@ const MINER_SIMULATED_MINE_TIME_MS = 8000;
 const MINER_CARGO_PER_TRIP = 20;
 const MINER_AVOIDANCE_RADIUS = 300;
 const AI_SCAVENGE_RADIUS = 500;
+const AI_SEPARATION_DISTANCE = 50;
 
 
 // Action constants
@@ -199,6 +203,7 @@ export function GameContainer() {
   const [aimRotation, setAimRotation] = useState(0);
   const [playerProjectiles, setPlayerProjectiles] = useState<ProjectileState[]>([]);
   const [enemyProjectiles, setEnemyProjectiles] = useState<ProjectileState[]>([]);
+  const [activeBeams, setActiveBeams] = useState<BeamState[]>([]);
   const [enemies, setEnemies] = useState<EnemyState[]>([]);
   const [asteroids, setAsteroids] = useState<AsteroidState[]>([]);
   const [stations, setStations] = useState<StationState[]>([]);
@@ -294,6 +299,7 @@ export function GameContainer() {
     setPlayerRotation(0);
     setPlayerProjectiles([]);
     setEnemyProjectiles([]);
+    setActiveBeams([]);
     setEnemies(generateInitialEnemies());
     setAsteroids(generateInitialAsteroids());
     setStations(generateInitialStations());
@@ -854,25 +860,66 @@ export function GameContainer() {
       
       const currentTarget = enemiesRef.current.find(e => e.id === targetIdRef.current);
       const canShoot = playerDataRef.current.energy >= ENERGY_PER_SHOT && (shipMode === 'normal' || shipMode === 'stealth' || shipMode === 'shield') && cruiseStateRef.current === 'idle' && !isPlayerActionInProgress;
-      const isTargeting = currentTarget && !currentTarget.isAlly;
       const isShootingManually = keysPressed.current.has(' ');
+      const playerShipConfig = SHIP_DATA[playerDataRef.current.ship.class];
 
-      if ((isTargeting || isShootingManually) && canShoot && timestamp - lastFiredTimestamp.current > FIRE_RATE_MS) {
+      if ((currentTarget || isShootingManually) && canShoot && timestamp - lastFiredTimestamp.current > FIRE_RATE_MS) {
         lastFiredTimestamp.current = timestamp;
         lastEnergyUseTimestamp.current = timestamp;
         
         let fireRotation = aimAngle;
-        if (isTargeting) fireRotation = Math.atan2(currentTarget.y - playerPositionRef.current.y, currentTarget.x - playerPositionRef.current.x) * (180 / Math.PI);
+        if (currentTarget) fireRotation = Math.atan2(currentTarget.y - playerPositionRef.current.y, currentTarget.x - playerPositionRef.current.x) * (180 / Math.PI);
         
-        const playerShipClass = playerDataRef.current.ship.class;
-        let projectileType: 'basic' | 'heavy' = 'basic';
-        if (playerShipClass === 'Frégate' || playerShipClass === 'Destroyer') {
-            projectileType = 'heavy';
-        }
+        const newProjectiles: ProjectileState[] = [];
+        const { manualTurrets, beam } = playerShipConfig.weapons;
 
-        setPlayerProjectiles(prev => [...prev, { id: getUniqueId(), x: playerPositionRef.current.x, y: playerPositionRef.current.y, rotation: fireRotation, ownerId: -1, type: projectileType }]);
-        setPlayerData(d => ({ ...d, energy: d.energy - ENERGY_PER_SHOT }));
+        if (manualTurrets.count > 0) {
+            const energyCost = ENERGY_PER_SHOT * manualTurrets.count;
+            if (playerDataRef.current.energy >= energyCost) {
+                setPlayerData(d => ({ ...d, energy: d.energy - energyCost }));
+                const shipRotRad = playerRotationRef.current * (Math.PI / 180);
+                
+                for (const offset of manualTurrets.offsets) {
+                    const rotatedOffsetX = offset.x * Math.cos(shipRotRad) - offset.y * Math.sin(shipRotRad);
+                    const rotatedOffsetY = offset.x * Math.sin(shipRotRad) + offset.y * Math.cos(shipRotRad);
+                    
+                    newProjectiles.push({ 
+                        id: getUniqueId(), 
+                        x: playerPositionRef.current.x + rotatedOffsetX, 
+                        y: playerPositionRef.current.y + rotatedOffsetY, 
+                        rotation: fireRotation, 
+                        ownerId: -1, 
+                        type: manualTurrets.type 
+                    });
+                }
+            }
+        }
+        if (newProjectiles.length > 0) {
+            setPlayerProjectiles(prev => [...prev, ...newProjectiles]);
+        }
+        
+        if (beam && beam.count > 0 && currentTarget && !currentTarget.isAlly) {
+          const energyCost = ENERGY_PER_SHOT * beam.count * 2; // Beams are costly
+          if (playerDataRef.current.energy >= energyCost) {
+            setPlayerData(d => ({ ...d, energy: d.energy - energyCost }));
+            const newBeams: BeamState[] = [];
+            for (let i = 0; i < beam.count; i++) {
+              newBeams.push({
+                id: getUniqueId(),
+                sourceId: -1,
+                targetId: currentTarget.id,
+                endTime: timestamp + 200, // Beam lasts 200ms
+                type: beam.type,
+              });
+
+              // Apply damage instantly for simplicity
+              setEnemies(prev => prev.map(e => e.id === currentTarget.id ? { ...e, health: Math.max(0, e.health - (beam.type === 'heavy' ? HEAVY_BEAM_DAMAGE : BEAM_DAMAGE)) } : e));
+            }
+            setActiveBeams(prev => [...prev, ...newBeams]);
+          }
+        }
       }
+      setActiveBeams(prev => prev.filter(b => b.endTime > timestamp));
       
       if (playerActionRef.current) {
           const action = playerActionRef.current;
@@ -1420,6 +1467,23 @@ export function GameContainer() {
                         updatedEnemy.vx = Math.cos(angleToPatrolPoint) * ENEMY_SPEED * 0.5;
                         updatedEnemy.vy = Math.sin(angleToPatrolPoint) * ENEMY_SPEED * 0.5;
                     }
+                    
+                    // Separation logic
+                    let separationVec = { x: 0, y: 0 };
+                    for (const otherShip of enemiesRef.current) {
+                        if (otherShip.id !== updatedEnemy.id && otherShip.followTargetId === updatedEnemy.followTargetId) {
+                            const dist = Math.hypot(updatedEnemy.x - otherShip.x, updatedEnemy.y - otherShip.y);
+                            if (dist > 0 && dist < AI_SEPARATION_DISTANCE) {
+                                const angleAway = Math.atan2(updatedEnemy.y - otherShip.y, updatedEnemy.x - otherShip.x);
+                                separationVec.x += Math.cos(angleAway) / dist;
+                                separationVec.y += Math.sin(angleAway) / dist;
+                            }
+                        }
+                    }
+                    updatedEnemy.vx += separationVec.x * 0.5;
+                    updatedEnemy.vy += separationVec.y * 0.5;
+
+
                 } else {
                     // Target to follow is gone, revert to patrolling
                     updatedEnemy.aiState = 'patrolling';
@@ -1655,7 +1719,6 @@ export function GameContainer() {
 
   const renderEnemy = (enemy: EnemyState) => {
     const props = {
-      key: enemy.id,
       x: enemy.x,
       y: enemy.y,
       rotation: enemy.rotation,
@@ -1666,13 +1729,13 @@ export function GameContainer() {
     };
     switch (enemy.type) {
       case 'chasseur':
-        return <EnemyShip {...props} />;
+        return <EnemyShip key={enemy.id} {...props} />;
       case 'frigate':
-        return <FrigateShip {...props} />;
+        return <FrigateShip key={enemy.id} {...props} />;
       case 'staff':
-        return <StaffShip {...props} />;
+        return <StaffShip key={enemy.id} {...props} />;
       case 'interceptor':
-        return <InterceptorShip {...props} />;
+        return <InterceptorShip key={enemy.id} {...props} />;
       default:
         return null;
     }
@@ -1703,6 +1766,34 @@ export function GameContainer() {
         {enemyProjectiles.map((p) => (
           <Projectile key={`enemy-proj-${p.id}`} x={p.x} y={p.y} rotation={p.rotation} type={p.type} />
         ))}
+        {activeBeams.map(beam => {
+            let sourceEntity, targetEntity;
+
+            if (beam.sourceId === -1) {
+                sourceEntity = playerPositionRef.current;
+            } else {
+                sourceEntity = enemiesRef.current.find(e => e.id === beam.sourceId);
+            }
+
+            if (beam.targetId === -1) {
+                targetEntity = playerPositionRef.current;
+            } else {
+                targetEntity = enemiesRef.current.find(e => e.id === beam.targetId);
+            }
+
+            if (!sourceEntity || !targetEntity) return null;
+
+            return (
+                <Beam 
+                    key={beam.id}
+                    x1={sourceEntity.x}
+                    y1={sourceEntity.y}
+                    x2={targetEntity.x}
+                    y2={targetEntity.y}
+                    type={beam.type}
+                />
+            )
+        })}
         <PlayerShip 
           x={playerPosition.x}
           y={playerPosition.y}
@@ -1762,6 +1853,7 @@ export function GameContainer() {
             enemies={visibleEnemies}
             stations={visibleStations}
             asteroids={visibleAsteroids}
+            debris={visibleDebris}
             radarRange={radarRange}
         />
       </div>

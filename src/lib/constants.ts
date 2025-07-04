@@ -1,4 +1,4 @@
-import type { PlayerData, PlayerUpgrades, PlayerShipClass } from "@/lib/types";
+import type { PlayerData, PlayerUpgrades, PlayerShipClass, WeaponConfig } from "@/lib/types";
 
 export const INITIAL_PLAYER_UPGRADES: PlayerUpgrades = {
   maxHealth: 0,
@@ -38,14 +38,15 @@ export const SHIP_DATA: Record<PlayerShipClass, {
     baseHealth: number;
     baseCargo: number;
     miningBonus?: number;
+    weapons: WeaponConfig;
 }> = {
-    'Chasseur': { name: 'Chasseur', description: 'Vaisseau de base polyvalent. Futur : 1 tourelle manuelle, améliorable avec 1 tourelle auto.', cost: 5, baseHealth: 100, baseCargo: 200 },
-    'Intercepteur': { name: 'Intercepteur', description: 'Très rapide, faible soute. Futur : 2 tourelles manuelles, améliorable pour poser des mines.', cost: 5, baseHealth: 75, baseCargo: 100 },
-    'Frégate': { name: 'Frégate', description: 'Vaisseau de guerre lourd. Futur : 2 tourelles auto, 1 tourelle lourde manuelle, 1 rayon.', cost: 5, baseHealth: 250, baseCargo: 150 },
-    'Destroyer': { name: 'Destroyer', description: 'Plateforme d\'armes ultime. Futur : 3 rayons, 2 tourelles auto lourdes, 2 manuelles lourdes.', cost: 5, baseHealth: 400, baseCargo: 250 },
-    'Porteur': { name: 'Porteur', description: 'Transporte des unités de soutien. Futur : peut déployer 2 intercepteurs et 1 chasseur.', cost: 5, baseHealth: 200, baseCargo: 300 },
-    'Cargo': { name: 'Cargo', description: 'Soute immense, coque résistante. Futur : 1 tourelle manuelle de défense.', cost: 5, baseHealth: 150, baseCargo: 1000 },
-    'Mineur': { name: 'Mineur', description: 'Extraction rapide des ressources. Futur : 1 tourelle manuelle. Vitesse de minage x1.5.', cost: 5, baseHealth: 100, baseCargo: 500, miningBonus: 1.5 },
+    'Chasseur': { name: 'Chasseur', description: 'Vaisseau de base polyvalent. 1 tourelle manuelle, améliorable avec 1 tourelle auto.', cost: 5, baseHealth: 100, baseCargo: 200, weapons: { manualTurrets: { count: 1, type: 'basic', offsets: [{x: 0, y: 0}] } } },
+    'Intercepteur': { name: 'Intercepteur', description: 'Très rapide, faible soute. 2 tourelles manuelles, améliorable pour poser des mines.', cost: 5, baseHealth: 75, baseCargo: 100, weapons: { manualTurrets: { count: 2, type: 'basic', offsets: [{x: -10, y: 0}, {x: 10, y: 0}] } } },
+    'Frégate': { name: 'Frégate', description: 'Vaisseau de guerre lourd. 1 tourelle lourde manuelle, 1 rayon.', cost: 5, baseHealth: 250, baseCargo: 150, weapons: { manualTurrets: { count: 1, type: 'heavy', offsets: [{x: 0, y: 0}] }, beam: { count: 1, type: 'basic' } } },
+    'Destroyer': { name: 'Destroyer', description: 'Plateforme d\'armes ultime. 2 tourelles manuelles lourdes, 3 rayons.', cost: 5, baseHealth: 400, baseCargo: 250, weapons: { manualTurrets: { count: 2, type: 'heavy', offsets: [{x: -15, y: 0}, {x: 15, y: 0}] }, beam: { count: 3, type: 'heavy' } } },
+    'Porteur': { name: 'Porteur', description: 'Transporte des unités de soutien. Peut déployer 2 intercepteurs et 1 chasseur.', cost: 5, baseHealth: 200, baseCargo: 300, weapons: { manualTurrets: { count: 0, type: 'basic', offsets: [] } } },
+    'Cargo': { name: 'Cargo', description: 'Soute immense, coque résistante. 1 tourelle manuelle de défense.', cost: 5, baseHealth: 150, baseCargo: 1000, weapons: { manualTurrets: { count: 1, type: 'basic', offsets: [{x: 0, y: 0}] } } },
+    'Mineur': { name: 'Mineur', description: 'Extraction rapide des ressources. 1 tourelle manuelle. Vitesse de minage x1.5.', cost: 5, baseHealth: 100, baseCargo: 500, miningBonus: 1.5, weapons: { manualTurrets: { count: 1, type: 'basic', offsets: [{x: 0, y: 0}] } } },
 };
 
 export const ALLY_COST = 2500;
