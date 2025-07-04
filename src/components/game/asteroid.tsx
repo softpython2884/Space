@@ -14,34 +14,7 @@ const seededRandom = (seed: number) => {
     return x - Math.floor(x);
 };
 
-const generateAsteroidPath = (id: number, size: number): string => {
-    const numVertices = 12;
-    const points: { x: number; y: number }[] = [];
-    const angleStep = (Math.PI * 2) / numVertices;
-    const radius = size / 2.2;
-
-    for (let i = 0; i < numVertices; i++) {
-        // Use a combination of ID and index for a unique seed per vertex
-        const seed = id * (i + 1) * 3.14159;
-        const randomValue = seededRandom(seed);
-        
-        // Vary radius for irregularity
-        const r = radius * (0.8 + randomValue * 0.4);
-        const angle = angleStep * i;
-
-        points.push({
-            x: Math.cos(angle) * r,
-            y: Math.sin(angle) * r,
-        });
-    }
-
-    // Create an SVG path data string
-    return "M" + points.map(p => `${p.x} ${p.y}`).join(" L ") + " Z";
-}
-
 export function Asteroid({ x, y, size, rotation, id }: AsteroidProps) {
-    const pathData = generateAsteroidPath(id, size);
-
     return (
         <div
             className="absolute top-0 left-0"
@@ -58,7 +31,11 @@ export function Asteroid({ x, y, size, rotation, id }: AsteroidProps) {
                     className="fill-gray-500/80 stroke-gray-400"
                     style={{ filter: 'drop-shadow(0 0 4px #222)' }}
                 >
-                    <path d={pathData} strokeWidth="2" />
+                    <g>
+                        <circle cx="0" cy="0" r={size / 2.2} strokeWidth="2" />
+                        <circle cx={seededRandom(id * 1) * (size/6)} cy={seededRandom(id * 2) * (size/6)} r={size/4} className="fill-gray-500/50 stroke-gray-400/50" strokeWidth="1"/>
+                        <circle cx={seededRandom(id * 3) * (size/5) - (size/10)} cy={seededRandom(id * 4) * (size/5) - (size/10)} r={size/5} className="fill-gray-600/50" />
+                    </g>
                 </svg>
             </div>
         </div>
