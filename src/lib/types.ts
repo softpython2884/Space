@@ -88,6 +88,8 @@ export type AsteroidState = {
   y: number;
   size: number;
   rotation: number;
+  mineableCharges: number;
+  cooldownUntil: number;
 }
 
 export type StationState = {
