@@ -59,8 +59,8 @@ export interface StellarBaseData {
   maxHull: number;
 }
 
-export type EnemyAiState = 'patrolling' | 'chasing' | 'searching' | 'fleeing' | 'following';
-export type BotShipType = 'chasseur' | 'frigate' | 'staff';
+export type EnemyAiState = 'patrolling' | 'chasing' | 'searching' | 'fleeing' | 'following' | 'mining' | 'returning_to_base' | 'guarding';
+export type BotShipType = 'chasseur' | 'frigate' | 'staff' | 'interceptor';
 
 export type EnemyState = {
   id: number;
@@ -80,6 +80,9 @@ export type EnemyState = {
   cargo: number;
   lastEnergyUseTimestamp: number;
   isAlly?: boolean;
+  role?: 'escort' | 'miner';
+  targetObjectId?: number | null;
+  patrolCenter?: { x: number, y: number };
 };
 
 export type AsteroidState = {
