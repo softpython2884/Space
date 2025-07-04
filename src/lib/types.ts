@@ -137,6 +137,7 @@ export type StationState = {
   shield: number;
   maxShield: number;
   lastHitTimestamp: number;
+  defenseWaveCooldownUntil: number;
 }
 
 export type FactionData = {
@@ -208,4 +209,11 @@ export interface Zone {
   radius: number;
   density?: number;
   color?: string;
+}
+
+export interface Effect {
+  id: number;
+  x: number;
+  y: number;
+  size?: number;
 }
