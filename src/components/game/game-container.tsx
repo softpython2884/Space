@@ -30,9 +30,7 @@ import { StationMenu } from '../game-ui/station-menu';
 import { PlayerUpgradesDisplay } from '../game-ui/player-upgrades';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
-import { MiningMenu } from '../game-ui/mining-menu';
-import { PillageMenu } from '../game-ui/pillage-menu';
-import { BoardingMenu } from '../game-ui/boarding-menu';
+import { ActionProgress } from '../game-ui/action-progress';
 
 
 let ACCELERATION = 0.1;
@@ -109,6 +107,15 @@ const BOARDING_FAIL_DAMAGE = 20;
 const ACTION_MAX_RANGE = 200;
 const ASTEROID_ACTION_MAX_RANGE = 75;
 
+const MINING_CHARGES = 3;
+const MINING_DURATION_MS = 2000;
+const MINING_LONG_COOLDOWN_MS = 60000;
+const PILLAGE_DURATION_MS = 2000;
+const PILLAGE_ENERGY_COST = 40;
+const BOARDING_DURATION_MS = 7000;
+const BOARDING_ENERGY_COST = 60;
+const BOARDING_SUCCESS_CHANCE = 0.4;
+
 // Station Constants
 const STATION_INTERACTION_RADIUS = 300;
 const STATION_PLAYER_REGEN_RATE = 0.1;
@@ -124,6 +131,13 @@ type ProjectileState = {
 };
 
 export type EnemyState = EnemyStateType;
+export type PlayerAction = {
+  type: PlayerActionType;
+  targetId: number;
+  startTime: number;
+  duration: number;
+};
+
 
 const generateInitialEnemies = (): EnemyState[] => [
     { id: 1, type: 'chasseur', x: MAP_WIDTH / 2 + 1500, y: MAP_HEIGHT / 2 + 1500, vx: 0, vy: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: false },
@@ -134,10 +148,10 @@ const generateInitialEnemies = (): EnemyState[] => [
 ];
 
 const generateInitialAsteroids = (): AsteroidState[] => [
-    { id: 1, x: 1000, y: 1200, size: 80, rotation: 30 },
-    { id: 2, x: 2800, y: 900, size: 120, rotation: 90 },
-    { id: 3, x: 3200, y: 3000, size: 100, rotation: 180 },
-    { id: 4, x: 500, y: 3500, size: 90, rotation: 270 },
+    { id: 1, x: 1000, y: 1200, size: 80, rotation: 30, mineableCharges: MINING_CHARGES, cooldownUntil: 0 },
+    { id: 2, x: 2800, y: 900, size: 120, rotation: 90, mineableCharges: MINING_CHARGES, cooldownUntil: 0 },
+    { id: 3, x: 3200, y: 3000, size: 100, rotation: 180, mineableCharges: MINING_CHARGES, cooldownUntil: 0 },
+    { id: 4, x: 500, y: 3500, size: 90, rotation: 270, mineableCharges: MINING_CHARGES, cooldownUntil: 0 },
 ];
 
 const generateInitialStations = (): StationState[] => [
@@ -172,11 +186,8 @@ export function GameContainer() {
   const [cooldowns, setCooldowns] = useState({ modeChange: 1, cruise: 1 });
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; targetId: number; targetType: ContextMenuTargetType; } | null>(null);
   const [miningIntent, setMiningIntent] = useState<number | null>(null);
+  const [playerAction, setPlayerAction] = useState<PlayerAction | null>(null);
   
-  const [miningMenuState, setMiningMenuState] = useState<{ isOpen: boolean, targetId: number | null }>({ isOpen: false, targetId: null });
-  const [pillageMenuState, setPillageMenuState] = useState<{ isOpen: boolean, targetId: number | null }>({ isOpen: false, targetId: null });
-  const [boardingMenuState, setBoardingMenuState] = useState<{ isOpen: boolean, targetId: number | null }>({ isOpen: false, targetId: null });
-
   const [playerData, setPlayerData] = useState<PlayerData>(JSON.parse(JSON.stringify(INITIAL_PLAYER_DATA)));
   const [vesselSystems, setVesselSystems] = useState<VesselSystemsData>({ shields: 'Online', weapons: 'Ready', power: 'Optimal' });
   const [isDocked, setIsDocked] = useState(false);
@@ -241,9 +252,12 @@ export function GameContainer() {
   const miningIntentRef = useRef(miningIntent);
   useEffect(() => { miningIntentRef.current = miningIntent; }, [miningIntent]);
   
-  const isPlayerActionInProgress = miningMenuState.isOpen || pillageMenuState.isOpen || boardingMenuState.isOpen;
+  const playerActionRef = useRef(playerAction);
+  useEffect(() => { playerActionRef.current = playerAction; }, [playerAction]);
+  
+  const isPlayerActionInProgress = playerAction !== null;
 
-  const resetGame = () => {
+  const resetGame = useCallback(() => {
     setPlayerPosition({ x: MAP_WIDTH / 2 + 200, y: MAP_HEIGHT / 2 + 200 });
     setVelocity({ x: 0, y: 0 });
     setPlayerRotation(0);
@@ -259,17 +273,19 @@ export function GameContainer() {
     setShipMode('normal');
     setCruiseState('idle');
     setContextMenu(null);
+    setPlayerAction(null);
     modeChangeAvailableAtRef.current = 0;
     cruiseAvailableAtRef.current = 0;
     setCooldowns({ modeChange: 1, cruise: 1 });
-  };
+  }, []);
 
   useEffect(() => {
     resetGame();
-  }, []);
+  }, [resetGame]);
 
-  const handleActionSelect = (action: PlayerActionType | 'open_station_menu', targetId: number) => {
+  const handleActionSelect = useCallback((action: PlayerActionType | 'open_station_menu', targetId: number) => {
     setContextMenu(null);
+    if (playerActionRef.current) return;
 
     if (action === 'open_station_menu') {
         const station = stationsRef.current.find(s => s.id === targetId);
@@ -288,13 +304,23 @@ export function GameContainer() {
     const targetAsteroid = asteroidsRef.current.find(a => a.id === targetId);
     
     if (action === 'mining' && targetAsteroid) {
+        if (targetAsteroid.cooldownUntil > Date.now()) {
+            toast({ title: "Mining Cooldown", description: "Asteroid is depleted. Try again later.", variant: "destructive" });
+            return;
+        }
+        if (targetAsteroid.mineableCharges <= 0) {
+            toast({ title: "No More Charges", description: "This asteroid is temporarily depleted.", variant: "destructive" });
+            return;
+        }
+
         const distanceToAsteroidEdge = Math.hypot(targetAsteroid.x - playerPositionRef.current.x, targetAsteroid.y - playerPositionRef.current.y) - (targetAsteroid.size * ASTEROID_COLLISION_RADIUS) - PLAYER_COLLISION_RADIUS;
+        
         if (distanceToAsteroidEdge > ASTEROID_ACTION_MAX_RANGE) {
             const angleFromCenter = Math.atan2(
                 playerPositionRef.current.y - targetAsteroid.y,
                 playerPositionRef.current.x - targetAsteroid.x
             );
-            const distanceToDock = (targetAsteroid.size * ASTEROID_COLLISION_RADIUS) + PLAYER_COLLISION_RADIUS + 50;
+            const distanceToDock = (targetAsteroid.size * ASTEROID_COLLISION_RADIUS) + PLAYER_COLLISION_RADIUS + (ASTEROID_ACTION_MAX_RANGE / 2);
             
             const targetX = targetAsteroid.x + Math.cos(angleFromCenter) * distanceToDock;
             const targetY = targetAsteroid.y + Math.sin(angleFromCenter) * distanceToDock;
@@ -303,11 +329,15 @@ export function GameContainer() {
             setMiningIntent(targetId);
             return;
         }
-        setMiningMenuState({ isOpen: true, targetId });
+        setPlayerAction({ type: 'mining', targetId, startTime: Date.now(), duration: MINING_DURATION_MS });
         return;
     }
 
     if (targetEnemy) {
+      if (targetEnemy.isAlly) {
+        toast({ title: "Invalid Target", description: "Cannot perform hostile actions on an allied ship." });
+        return;
+      }
       const distance = Math.hypot(targetEnemy.x - playerPositionRef.current.x, targetEnemy.y - playerPositionRef.current.y);
       if (distance > ACTION_MAX_RANGE) {
           toast({ title: "Target out of range", description: "Get closer to perform this action.", variant: 'destructive' });
@@ -319,17 +349,25 @@ export function GameContainer() {
 
     switch(action) {
       case 'pillaging':
-        if (targetEnemy) {
-            setPillageMenuState({ isOpen: true, targetId });
+        if (playerDataRef.current.energy < PILLAGE_ENERGY_COST) {
+            toast({ title: "Insufficient Energy", description: `Pillaging requires ${PILLAGE_ENERGY_COST} energy.`, variant: 'destructive' });
+            return;
         }
+        setPlayerData(d => ({ ...d, energy: d.energy - PILLAGE_ENERGY_COST }));
+        lastEnergyUseTimestamp.current = Date.now();
+        setPlayerAction({ type: 'pillaging', targetId, startTime: Date.now(), duration: PILLAGE_DURATION_MS });
         break;
       case 'boarding':
-        if (targetEnemy) {
-            setBoardingMenuState({ isOpen: true, targetId });
+        if (playerDataRef.current.energy < BOARDING_ENERGY_COST) {
+            toast({ title: "Insufficient Energy", description: `Boarding requires ${BOARDING_ENERGY_COST} energy.`, variant: 'destructive' });
+            return;
         }
+        setPlayerData(d => ({ ...d, energy: d.energy - BOARDING_ENERGY_COST }));
+        lastEnergyUseTimestamp.current = Date.now();
+        setPlayerAction({ type: 'boarding', targetId, startTime: Date.now(), duration: BOARDING_DURATION_MS });
         break;
     }
-  };
+  }, [toast]);
 
   const applyDamage = useCallback((damage: number) => {
     setPlayerData(d => {
@@ -342,65 +380,6 @@ export function GameContainer() {
         return { ...d, health: Math.max(0, d.health - damage) };
     });
   }, []);
-
-  const handleMiningComplete = useCallback((resourcesGained: { ore: number }) => {
-    setPlayerData(d => {
-        const { ship, upgrades } = d;
-        const maxCargo = SHIP_DATA[ship.class].baseCargo + UPGRADE_VALUES.cargoCapacity[upgrades.cargoCapacity];
-        const availableSpace = maxCargo - d.cargo.current;
-        const oreToAdd = Math.min(resourcesGained.ore, availableSpace);
-        return {
-            ...d,
-            resources: { ...d.resources, ore: d.resources.ore + oreToAdd },
-            cargo: { current: d.cargo.current + oreToAdd }
-        };
-    });
-    setAsteroids(prev => prev.filter(a => a.id !== miningMenuState.targetId));
-    setMiningMenuState({ isOpen: false, targetId: null });
-  }, [miningMenuState.targetId]);
-
-  const handlePillagingComplete = useCallback(() => {
-    const targetEnemy = enemiesRef.current.find(e => e.id === pillageMenuState.targetId);
-    if (!targetEnemy) {
-        setPillageMenuState({ isOpen: false, targetId: null });
-        return;
-    }
-
-    setPlayerData(d => ({ ...d, energy: d.energy - CRUISE_ENERGY_COST }));
-    lastEnergyUseTimestamp.current = Date.now();
-
-    setEnemies(prev => prev.map(e => e.id === pillageMenuState.targetId ? { ...e, health: Math.max(0, e.health - PILLAGE_DAMAGE) } : e));
-    const newDebris: DebrisType = {
-        id: Date.now(),
-        x: targetEnemy.x,
-        y: targetEnemy.y,
-        resources: {
-            money: Math.floor(Math.random() * 51),
-            ore: Math.floor(Math.random() * 11),
-            gas: Math.floor(Math.random() * 6),
-        }
-    };
-    setDebris(prev => [...prev, newDebris]);
-    setPillageMenuState({ isOpen: false, targetId: null });
-  }, [pillageMenuState.targetId]);
-
-  const handleBoardingComplete = useCallback((result: { success: boolean }) => {
-    const targetEnemy = enemiesRef.current.find(e => e.id === boardingMenuState.targetId);
-    if (!targetEnemy) {
-        setBoardingMenuState({ isOpen: false, targetId: null });
-        return;
-    }
-    
-    setPlayerData(d => ({ ...d, energy: d.energy - CRUISE_ENERGY_COST }));
-    lastEnergyUseTimestamp.current = Date.now();
-
-    if (result.success) {
-        setEnemies(prev => prev.map(e => e.id === boardingMenuState.targetId ? { ...e, isAlly: true, aiState: 'following' } : e));
-    } else {
-        applyDamage(BOARDING_FAIL_DAMAGE);
-    }
-    setBoardingMenuState({ isOpen: false, targetId: null });
-  }, [boardingMenuState.targetId, applyDamage]);
 
   const handleModeChange = (newMode: ShipMode) => {
     const now = Date.now();
@@ -435,7 +414,7 @@ export function GameContainer() {
     modeChangeAvailableAtRef.current = now + MODE_CHANGE_COOLDOWN_MS;
   };
 
-  const handleSellResource = (resource: 'ore' | 'gas', amount: number) => {
+  const handleSellResource = useCallback((resource: 'ore' | 'gas', amount: number) => {
     setPlayerData(prev => {
         const newResources = { ...prev.resources };
         const price = RESOURCE_PRICES[resource];
@@ -455,9 +434,9 @@ export function GameContainer() {
             }
         };
     });
-  };
+  }, []);
 
-  const handleBuyUpgrade = (upgrade: keyof PlayerUpgrades) => {
+  const handleBuyUpgrade = useCallback((upgrade: keyof PlayerUpgrades) => {
     const currentData = playerDataRef.current;
     const currentLevel = currentData.upgrades[upgrade];
 
@@ -478,9 +457,9 @@ export function GameContainer() {
         upgrades: newUpgrades, 
         resources: newResources 
     }));
-  };
+  }, []);
 
-  const handleRepairHull = (amount: number, cost: number) => {
+  const handleRepairHull = useCallback((amount: number, cost: number) => {
     if (playerDataRef.current.resources.money < cost) return;
 
     setPlayerData(prev => ({
@@ -494,9 +473,9 @@ export function GameContainer() {
     setStations(prev => prev.map(s => 
       s.id === 1 ? { ...s, health: Math.min(s.maxHealth, s.health + amount) } : s
     ));
-  };
+  }, []);
   
-  const handleBuyShip = (shipClass: PlayerShipClass) => {
+  const handleBuyShip = useCallback((shipClass: PlayerShipClass) => {
       const shipInfo = SHIP_DATA[shipClass];
       if (playerDataRef.current.resources.money < shipInfo.cost) {
           toast({ title: "Insufficient Funds", description: `You need ${shipInfo.cost} credits to buy a ${shipClass}.`, variant: "destructive" });
@@ -512,9 +491,9 @@ export function GameContainer() {
           };
       });
       toast({ title: "Ship Purchased!", description: `You are now the captain of a new ${shipClass}.` });
-  };
+  }, [toast]);
   
-  const handleBuyAlly = () => {
+  const handleBuyAlly = useCallback(() => {
     if (playerDataRef.current.resources.money < ALLY_COST) {
         toast({ title: "Insufficient Funds", description: `You need ${ALLY_COST} credits to hire an escort.`, variant: "destructive" });
         return;
@@ -547,9 +526,9 @@ export function GameContainer() {
 
     setEnemies(prev => [...prev, newAlly]);
     toast({ title: "Escort Hired!", description: `A Chasseur escort has joined your fleet.` });
-  };
+  }, [toast]);
 
-  const isModalOpen = isSettingsOpen || isGameOver || isStationMenuOpen || miningMenuState.isOpen || pillageMenuState.isOpen || boardingMenuState.isOpen;
+  const isModalOpen = isSettingsOpen || isGameOver || isStationMenuOpen;
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -655,7 +634,7 @@ export function GameContainer() {
       window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, [viewSize, isModalOpen]);
+  }, [viewSize, isModalOpen, handleActionSelect]);
 
   useEffect(() => {
       const container = containerRef.current;
@@ -782,8 +761,12 @@ export function GameContainer() {
               setPlayerRotation(angleToTarget * (180 / Math.PI));
           } else {
               setAutoMoveTarget(null);
-              if (miningIntentRef.current) {
-                  setMiningMenuState({ isOpen: true, targetId: miningIntentRef.current });
+              const miningTargetId = miningIntentRef.current;
+              if (miningTargetId) {
+                  const targetAsteroid = asteroidsRef.current.find(a => a.id === miningTargetId);
+                  if (targetAsteroid && targetAsteroid.cooldownUntil <= Date.now() && targetAsteroid.mineableCharges > 0) {
+                    setPlayerAction({ type: 'mining', targetId: miningTargetId, startTime: Date.now(), duration: MINING_DURATION_MS });
+                  }
                   setMiningIntent(null);
               }
           }
@@ -848,6 +831,80 @@ export function GameContainer() {
 
         setPlayerProjectiles(prev => [...prev, { id: timestamp, x: playerPositionRef.current.x, y: playerPositionRef.current.y, rotation: fireRotation }]);
         setPlayerData(d => ({ ...d, energy: d.energy - ENERGY_PER_SHOT }));
+      }
+      
+      if (playerActionRef.current) {
+          const action = playerActionRef.current;
+          const elapsed = Date.now() - action.startTime;
+          const progress = Math.min((elapsed / action.duration) * 100, 100);
+
+          if (progress >= 100) {
+              switch(action.type) {
+                  case 'mining': {
+                      const asteroid = asteroidsRef.current.find(a => a.id === action.targetId);
+                      if (asteroid && asteroid.mineableCharges > 0) {
+                          const oreGained = Math.floor(Math.random() * 26) + 25;
+                          setPlayerData(d => {
+                              const { ship, upgrades } = d;
+                              const maxCargo = SHIP_DATA[ship.class].baseCargo + UPGRADE_VALUES.cargoCapacity[upgrades.cargoCapacity];
+                              const availableSpace = maxCargo - d.cargo.current;
+                              const oreToAdd = Math.min(oreGained, availableSpace);
+                              toast({ title: "Mining Successful", description: `Extracted ${oreToAdd} units of ore.` });
+                              return {
+                                  ...d,
+                                  resources: { ...d.resources, ore: d.resources.ore + oreToAdd },
+                                  cargo: { current: d.cargo.current + oreToAdd }
+                              };
+                          });
+                          
+                          setAsteroids(prev => prev.map(a => {
+                              if (a.id === action.targetId) {
+                                  const newCharges = a.mineableCharges - 1;
+                                  if (newCharges <= 0) {
+                                      toast({ title: "Asteroid Depleted", description: `This asteroid needs time to recover.` });
+                                      return { ...a, mineableCharges: MINING_CHARGES, cooldownUntil: Date.now() + MINING_LONG_COOLDOWN_MS };
+                                  }
+                                  return { ...a, mineableCharges: newCharges };
+                              }
+                              return a;
+                          }));
+                      }
+                      break;
+                  }
+                  case 'pillaging': {
+                      const targetEnemy = enemiesRef.current.find(e => e.id === action.targetId);
+                      if (targetEnemy) {
+                          setEnemies(prev => prev.map(e => e.id === action.targetId ? { ...e, health: Math.max(0, e.health - PILLAGE_DAMAGE) } : e));
+                          const newDebris: DebrisType = {
+                              id: Date.now(), x: targetEnemy.x, y: targetEnemy.y,
+                              resources: {
+                                  money: Math.floor(Math.random() * 51),
+                                  ore: Math.floor(Math.random() * 11),
+                                  gas: Math.floor(Math.random() * 6),
+                              }
+                          };
+                          setDebris(prev => [...prev, newDebris]);
+                          toast({ title: "Pillage Successful", description: "Enemy ship damaged, cargo dropped." });
+                      }
+                      break;
+                  }
+                  case 'boarding': {
+                      const targetEnemy = enemiesRef.current.find(e => e.id === action.targetId);
+                      if (targetEnemy) {
+                          const success = Math.random() < BOARDING_SUCCESS_CHANCE;
+                          if (success) {
+                              setEnemies(prev => prev.map(e => e.id === action.targetId ? { ...e, isAlly: true, aiState: 'following' } : e));
+                              toast({ title: "Boarding Successful!", description: "The enemy ship is now under your control." });
+                          } else {
+                              applyDamage(BOARDING_FAIL_DAMAGE);
+                              toast({ title: "Boarding Failed", description: "Your crew was repelled and sustained damage.", variant: 'destructive' });
+                          }
+                      }
+                      break;
+                  }
+              }
+              setPlayerAction(null);
+          }
       }
 
       // Player stats and station regen
@@ -1200,7 +1257,7 @@ export function GameContainer() {
     }
     
     return () => cancelAnimationFrame(animationFrameId);
-  }, [viewSize, isModalOpen, controlScheme, isDocked, applyDamage]);
+  }, [viewSize, isModalOpen, controlScheme, isDocked, applyDamage, handleActionSelect, handleBuyAlly, handleBuyShip, handleBuyUpgrade, handleRepairHull, handleSellResource, resetGame, toast]);
 
   let radarRange = BASE_RADAR_RANGE;
   if (shipMode === 'scan') radarRange = BASE_RADAR_RANGE * 2;
@@ -1269,11 +1326,6 @@ export function GameContainer() {
       maxHull: mainStation.maxHealth,
   } : null;
 
-  const targetAsteroidForMenu = asteroids.find(a => a.id === miningMenuState.targetId) || null;
-  const targetEnemyForPillageMenu = enemies.find(e => e.id === pillageMenuState.targetId) || null;
-  const targetEnemyForBoardingMenu = enemies.find(e => e.id === boardingMenuState.targetId) || null;
-
-
   return (
     <div
       ref={containerRef}
@@ -1310,6 +1362,13 @@ export function GameContainer() {
         ))}
       </div>
       
+      {playerAction && (
+        <ActionProgress
+          actionType={playerAction.type}
+          progress={((Date.now() - playerAction.startTime) / playerAction.duration) * 100}
+        />
+       )}
+
       <MilitaryViewOverlay isOpen={zoom === MIN_ZOOM} />
       {cruiseState === 'cruising' && <CruiseStreaks />}
        {playerData.health < LOW_HEALTH_THRESHOLD && (
@@ -1385,41 +1444,6 @@ export function GameContainer() {
         onRepairHull={handleRepairHull}
         onBuyShip={handleBuyShip}
         onBuyAlly={handleBuyAlly}
-      />
-
-      <MiningMenu 
-        isOpen={miningMenuState.isOpen}
-        onOpenChange={(isOpen) => {
-            if (!isOpen) {
-                setMiningMenuState({ isOpen: false, targetId: null });
-            }
-        }}
-        targetAsteroid={targetAsteroidForMenu}
-        onComplete={handleMiningComplete}
-      />
-      
-      <PillageMenu
-        isOpen={pillageMenuState.isOpen}
-        onOpenChange={(isOpen) => {
-            if (!isOpen) {
-                setPillageMenuState({ isOpen: false, targetId: null });
-            }
-        }}
-        targetEnemy={targetEnemyForPillageMenu}
-        onComplete={handlePillagingComplete}
-        playerEnergy={playerData.energy}
-      />
-
-      <BoardingMenu
-        isOpen={boardingMenuState.isOpen}
-        onOpenChange={(isOpen) => {
-            if (!isOpen) {
-                setBoardingMenuState({ isOpen: false, targetId: null });
-            }
-        }}
-        targetEnemy={targetEnemyForBoardingMenu}
-        onComplete={handleBoardingComplete}
-        playerEnergy={playerData.energy}
       />
 
       <GameOverOverlay isOpen={isGameOver} onRestart={resetGame} />
