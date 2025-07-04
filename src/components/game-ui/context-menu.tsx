@@ -3,18 +3,18 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { ContextMenuTargetType, PlayerActionType } from "@/lib/types";
-import { Mountain, Skull, Anchor, LogIn } from "lucide-react";
+import { Mountain, Skull, Anchor, LogIn, Move, Shield } from "lucide-react";
 
 interface ContextMenuProps {
   x: number;
   y: number;
   targetType: ContextMenuTargetType;
-  onAction: (action: PlayerActionType | 'open_station_menu') => void;
+  onAction: (action: PlayerActionType) => void;
   onClose: () => void;
 }
 
 export function ContextMenu({ x, y, targetType, onAction, onClose }: ContextMenuProps) {
-    const handleActionClick = (action: PlayerActionType | 'open_station_menu') => {
+    const handleActionClick = (action: PlayerActionType) => {
         onAction(action);
         onClose();
     };
@@ -50,6 +50,18 @@ export function ContextMenu({ x, y, targetType, onAction, onClose }: ContextMenu
                             <LogIn className="mr-2 h-4 w-4" />
                             Open Station Menu
                         </Button>
+                  )}
+                  {targetType === 'tactical_space' && (
+                       <>
+                          <Button variant="ghost" className="justify-start" onClick={() => handleActionClick('tactical_move')}>
+                              <Move className="mr-2 h-4 w-4" />
+                              Move Here
+                          </Button>
+                          <Button variant="ghost" className="justify-start" onClick={() => handleActionClick('patrolling_order')}>
+                              <Shield className="mr-2 h-4 w-4" />
+                              Patrol Area
+                          </Button>
+                      </>
                   )}
               </CardContent>
           </Card>

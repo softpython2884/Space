@@ -3,8 +3,8 @@
 export type ShipType = "Combat" | "Mining" | "Support" | "Galleon";
 export type ControlScheme = 'relative' | 'absolute' | 'hybrid';
 export type ShipMode = 'normal' | 'cruise' | 'stealth' | 'scan' | 'shield';
-export type ContextMenuTargetType = 'enemy' | 'asteroid' | 'station';
-export type PlayerActionType = 'mining' | 'boarding' | 'pillaging';
+export type ContextMenuTargetType = 'enemy' | 'asteroid' | 'station' | 'tactical_space';
+export type PlayerActionType = 'mining' | 'boarding' | 'pillaging' | 'open_station_menu' | 'tactical_move' | 'patrolling_order';
 
 export type ShipSize = 'S' | 'M' | 'L' | 'XL';
 export type ShipRole = 'Combat' | 'Commerce' | 'Mining' | 'Construction' | 'Support';
@@ -78,8 +78,8 @@ export interface StellarBaseData {
   maxHull: number;
 }
 
-export type EnemyAiState = 'patrolling' | 'chasing' | 'searching' | 'fleeing' | 'following' | 'mining' | 'returning_to_base' | 'guarding' | 'scavenging' | 'moving_to_order';
-export type BotShipType = 'Chasseur' | 'Frégate' | 'Mineur' | 'Intercepteur';
+export type EnemyAiState = 'patrolling' | 'chasing' | 'searching' | 'fleeing' | 'following' | 'mining' | 'returning_to_base' | 'guarding' | 'scavenging' | 'moving_to_order' | 'patrolling_order';
+export type BotShipType = 'Chasseur' | 'Frégate' | 'Mineur' | 'Intercepteur' | 'Destroyer' | 'Porteur' | 'Cargo';
 
 export type EnemyState = {
   id: number;
@@ -144,6 +144,7 @@ export type OutpostState = {
   health: number;
   maxHealth: number;
   ownerId: number; // To know if it's player's or AI's
+  lastShotTimestamp: number;
 }
 
 
@@ -175,7 +176,7 @@ export type ProjectileState = {
 
 export type PlayerAction = {
   type: PlayerActionType;
-  targetId: number;
+  targetId: number | null;
   startTime: number;
   duration: number;
 };
