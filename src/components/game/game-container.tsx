@@ -895,6 +895,15 @@ export function GameContainer() {
     ));
   }, [addChatMessage]);
 
+  const handleAllHold = useCallback(() => {
+    addChatMessage('Commander', 'All units, hold position!', 'text-cyan-400');
+    setEnemies(prev => prev.map(e => 
+        (e.isAlly && e.type !== 'Mineur' && e.type !== 'Cargo') 
+        ? { ...e, aiState: 'holding_position', combatTargetId: null, orderTarget: null } 
+        : e
+    ));
+  }, [addChatMessage]);
+
   const handleCallReinforcements = useCallback(() => {
     const now = Date.now();
     if (now < reinforcementAvailableAt.current) {
@@ -977,7 +986,6 @@ export function GameContainer() {
         }));
         reinforcementAvailableAt.current = Date.now() + REINFORCEMENT_COOLDOWN_MS;
     
-        const newReinforcements: EnemyState[] = [];
         const reinforcementCount = 8;
         const despawnTime = Date.now() + 120000; // 2 minutes
     
@@ -1289,8 +1297,8 @@ export function GameContainer() {
       let currentStrafe = STRAFE_ACCELERATION;
       
       if (cruiseStateRef.current === 'cruising') {
-          currentMaxSpeed = MAX_SPEED * 8; // Increased speed
-          currentAccel = ACCELERATION * 6.0;
+          currentMaxSpeed = MAX_SPEED * 40; // Increased speed
+          currentAccel = ACCELERATION * 20.0;
           currentStrafe = STRAFE_ACCELERATION * 0.1;
       } else if (shipModeRef.current === 'stealth') {
           currentMaxSpeed = MAX_SPEED * 0.8;
@@ -1950,7 +1958,7 @@ export function GameContainer() {
           
           
           // 1. Target Acquisition
-          if (['patrolling', 'guarding', 'holding_position'].includes(updatedEnemy.aiState)) {
+          if (['patrolling', 'guarding', 'holding_position', 'deep_patrolling'].includes(updatedEnemy.aiState)) {
               const visionSources = updatedEnemy.isAlly 
                 ? [playerPositionRef.current, ...enemiesRef.current.filter(e => e.isAlly)] 
                 : [...enemiesRef.current.filter(e => !e.isAlly)];
@@ -1982,7 +1990,7 @@ export function GameContainer() {
           }
 
           // 2. Execute State Action
-          const speedMultiplier = updatedEnemy.cruiseState === 'cruising' ? 8 : 1;
+          const speedMultiplier = updatedEnemy.cruiseState === 'cruising' ? 40 : 1;
           
           // Flocking / Separation
           let separation = { x: 0, y: 0 };
@@ -2057,6 +2065,7 @@ export function GameContainer() {
                 }
                 break;
             }
+             case 'deep_patrolling':
             case 'patrolling': {
                  if (updatedEnemy.role === 'miner' && (updatedEnemy.cargo || 0) < MINER_CARGO_PER_TRIP) {
                     let closestAsteroid: AsteroidState | null = null;
@@ -2078,7 +2087,7 @@ export function GameContainer() {
 
                 const base = updatedEnemy.isAlly ? stationsRef.current.find(s => s.owner === 'player') : stationsRef.current.find(s => s.owner === 'enemy');
                 const center = updatedEnemy.patrolCenter ?? (base ? {x: base.x, y: base.y} : {x: MAP_WIDTH/2, y: MAP_HEIGHT/2});
-                const patrolRadius = updatedEnemy.patrolCenter ? GUARD_PATROL_RADIUS : MAP_WIDTH / 2;
+                const patrolRadius = updatedEnemy.aiState === 'deep_patrolling' ? MAP_WIDTH : GUARD_PATROL_RADIUS;
 
                 if (!updatedEnemy.patrolTarget || Math.hypot(updatedEnemy.x - updatedEnemy.patrolTarget.x, updatedEnemy.y - updatedEnemy.patrolTarget.y) < 50) {
                      if (timestamp - updatedEnemy.stateChangeTimestamp > 5000) {
@@ -2223,15 +2232,17 @@ export function GameContainer() {
                     }
 
                     if (enemyShipInfo.weapons.beam && enemyShipInfo.weapons.beam.count > 0 && updatedEnemy.energy > BEAM_ENERGY_DRAIN_PER_FRAME) {
+                        const isTargetAlreadyBeamed = currentActiveBeams.some(b => b.targetId === targetShip!.id && b.isAlly === updatedEnemy.isAlly);
                         const isAlreadyBeaming = currentActiveBeams.some(b => b.sourceId === updatedEnemy.id);
-                        if (!isAlreadyBeaming) {
+
+                        if (!isAlreadyBeaming && !isTargetAlreadyBeamed) {
                             updatedEnemy.energy -= BEAM_ENERGY_DRAIN_PER_FRAME;
                             const newBeams: BeamState[] = [];
                             for (const offset of enemyShipInfo.weapons.beam.offsets) {
                                 newBeams.push({
                                     id: getUniqueId(),
                                     sourceId: updatedEnemy.id,
-                                    targetId: targetShip.id,
+                                    targetId: targetShip!.id,
                                     type: enemyShipInfo.weapons.beam.type,
                                     sourceOffsetX: offset.x,
                                     sourceOffsetY: offset.y,
@@ -2458,6 +2469,8 @@ export function GameContainer() {
                       collided = true;
                       if (!enemy.isAlly) {
                         collisionDamage = ENEMY_COLLISION_DAMAGE * speedFactor;
+                      } else {
+                        collisionDamage = 0; // No damage between allies
                       }
                       repulsionAngle = Math.atan2(playerPositionRef.current.y - enemy.y, playerPositionRef.current.x - enemy.x);
                       const enemyRepulsionForce = repulsionForce * 0.8;
@@ -2718,6 +2731,27 @@ export function GameContainer() {
                 }));
                 addChatMessage('Enemy C&C', `Construction of new units is complete.`, 'text-red-400');
             }
+
+            // AI reinforcement logic
+            if (enemyFactionDataRef.current.money >= REINFORCEMENT_COST && timestamp >= enemyFactionDataRef.current.reinforcementAvailableAt) {
+                const isBaseUnderAttack = enemiesRef.current.some(e => e.isAlly && e.combatTargetId === enemyStation.id + 10000);
+                if (isBaseUnderAttack) {
+                    const combatShips = enemiesRef.current.filter(e => !e.isAlly && e.role === 'attack');
+                    if (combatShips.length > 0) {
+                        const anchorShip = combatShips[Math.floor(Math.random() * combatShips.length)];
+                        callAiReinforcements({ x: anchorShip.x, y: anchorShip.y });
+                        setEnemyFactionData(d => ({ ...d, money: d.money - REINFORCEMENT_COST, reinforcementAvailableAt: timestamp + REINFORCEMENT_COOLDOWN_MS }));
+                    }
+                }
+            }
+
+            // Deep patrol logic
+            if (Math.random() < 0.1) { // 10% chance every 5 seconds
+                const patrolShip = enemiesRef.current.find(e => !e.isAlly && e.role === 'attack' && e.aiState === 'guarding');
+                if (patrolShip) {
+                    setEnemies(prev => prev.map(e => e.id === patrolShip.id ? { ...e, aiState: 'deep_patrolling' } : e));
+                }
+            }
         }
       }
 
@@ -2747,7 +2781,23 @@ export function GameContainer() {
       }
     };
 
-    const createNewShip = (type: BotShipType, isAlly: boolean, position: {x: number, y: number}, state: EnemyAiState = 'patrolling') => {
+    const callAiReinforcements = (position: { x: number, y: number }) => {
+        addChatMessage('System', `Enemy reinforcements detected!`, 'text-red-400');
+        const reinforcementCount = 5; // AI gets fewer reinforcements
+        const despawnTime = Date.now() + 90000; // 1.5 minutes
+        for (let i = 0; i < reinforcementCount; i++) {
+            const spawnOffset = { x: (Math.random() - 0.5) * 200, y: (Math.random() - 0.5) * 200 };
+            const spawnX = position.x + spawnOffset.x;
+            const spawnY = position.y + spawnOffset.y;
+            setWarpEffects(prev => [...prev, { id: getUniqueId(), x: spawnX, y: spawnY }]);
+            setTimeout(() => {
+                const newShip = createNewShip('Chasseur', false, {x: spawnX, y: spawnY}, 'patrolling_order', { orderTarget: {x: spawnX, y: spawnY }, despawnTimestamp: despawnTime });
+                setEnemies(prev => [...prev, newShip]);
+            }, 500);
+        }
+    }
+
+    const createNewShip = (type: BotShipType, isAlly: boolean, position: {x: number, y: number}, state: EnemyAiState = 'patrolling', options: Partial<EnemyState> = {}) => {
         const shipInfo = SHIP_DATA[type];
         return {
             id: getUniqueId(),
@@ -2764,6 +2814,7 @@ export function GameContainer() {
             isAlly, combatTargetId: null, lastAttackerId: null, patrolTarget: null, patrolCenter: {x: position.x, y: position.y},
             role: type === 'Mineur' ? 'miner' : 'attack',
             cruiseState: 'idle' as 'idle' | 'charging' | 'cruising', cruiseAvailableAt: 0,
+            ...options
         };
     };
     
@@ -2772,7 +2823,7 @@ export function GameContainer() {
     }
     
     return () => cancelAnimationFrame(animationFrameId);
-  }, [viewSize, isGameOver, controlScheme, isDocked, applyDamage, handleActionSelect, handleBuyAlly, handleBuyShip, handleBuyUpgrade, handleRepairHull, handleSellResource, resetGame, addChatMessage, handleBuildShipFromTactical, handleBuildOutpost, handleRespawn, zones, cheats, handleCallReinforcements]);
+  }, [viewSize, isGameOver, controlScheme, isDocked, applyDamage, handleActionSelect, handleBuyAlly, handleBuyShip, handleBuyUpgrade, handleRepairHull, handleSellResource, resetGame, addChatMessage, handleBuildShipFromTactical, handleBuildOutpost, handleRespawn, zones, cheats, handleCallReinforcements, handleAllAttack, handleAllFollow, handleAllHold]);
 
   const allies = React.useMemo(() => enemies.filter(e => e.isAlly), [enemies]);
 
@@ -3014,6 +3065,7 @@ export function GameContainer() {
         onBuildOutpost={handleBuildOutpost}
         onAllFollow={handleAllFollow}
         onAllAttack={handleAllAttack}
+        onAllHold={handleAllHold}
         onCallReinforcements={handleCallReinforcements}
         canCallReinforcements={playerData.resources.money >= REINFORCEMENT_COST && Date.now() >= reinforcementAvailableAt.current}
         isPlacingReinforcements={isPlacingReinforcements}

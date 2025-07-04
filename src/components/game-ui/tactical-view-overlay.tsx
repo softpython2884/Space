@@ -3,7 +3,7 @@
 import { cn } from '@/lib/utils';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Ship, CircleDollarSign, TowerControl, Shield, Skull, UserPlus } from 'lucide-react';
+import { PlusCircle, Ship, CircleDollarSign, TowerControl, Shield, Skull, UserPlus, CircleStop } from 'lucide-react';
 import type { Resources, BotShipType, PlayerShipClass } from '@/lib/types';
 import { SHIP_DATA, OUTPOST_COST, REINFORCEMENT_COST } from '@/lib/constants';
 import { ScrollArea } from '../ui/scroll-area';
@@ -16,6 +16,7 @@ interface TacticalViewOverlayProps {
     onBuildOutpost: () => void;
     onAllFollow: () => void;
     onAllAttack: () => void;
+    onAllHold: () => void;
     onCallReinforcements: () => void;
     canCallReinforcements: boolean;
     isPlacingReinforcements: boolean;
@@ -44,6 +45,7 @@ export function TacticalViewOverlay({
     onBuildOutpost, 
     onAllFollow, 
     onAllAttack,
+    onAllHold,
     onCallReinforcements,
     canCallReinforcements,
     isPlacingReinforcements
@@ -94,12 +96,15 @@ export function TacticalViewOverlay({
 
                         <div>
                             <h4 className="text-lg font-semibold mb-2">Global Orders</h4>
-                             <div className="grid grid-cols-2 gap-2">
+                             <div className="grid grid-cols-3 gap-2">
                                 <Button onClick={onAllFollow}>
-                                    <Shield className="mr-2 h-4 w-4"/>All Follow
+                                    <Shield className="mr-2 h-4 w-4"/>Follow
+                                </Button>
+                                <Button onClick={onAllHold}>
+                                    <CircleStop className="mr-2 h-4 w-4"/>Hold
                                 </Button>
                                 <Button variant="destructive" onClick={onAllAttack}>
-                                    <Skull className="mr-2 h-4 w-4"/>All Attack
+                                    <Skull className="mr-2 h-4 w-4"/>Attack
                                 </Button>
                              </div>
                         </div>

@@ -77,7 +77,7 @@ export interface StellarBaseData {
   maxHull: number;
 }
 
-export type EnemyAiState = 'patrolling' | 'chasing' | 'searching' | 'fleeing' | 'following' | 'mining' | 'returning_to_base' | 'guarding' | 'scavenging' | 'moving_to_order' | 'patrolling_order' | 'recharging' | 'holding_position';
+export type EnemyAiState = 'patrolling' | 'chasing' | 'searching' | 'fleeing' | 'following' | 'mining' | 'returning_to_base' | 'guarding' | 'scavenging' | 'moving_to_order' | 'patrolling_order' | 'recharging' | 'holding_position' | 'deep_patrolling';
 export type BotShipType = 'Chasseur' | 'Frégate' | 'Mineur' | 'Intercepteur' | 'Destroyer' | 'Porteur' | 'Cargo';
 
 export type EnemyState = {
@@ -144,6 +144,7 @@ export type FactionData = {
     money: number;
     ships: number[];
     shipCounts: Record<BotShipType, number>;
+    reinforcementAvailableAt: number;
 }
 
 
