@@ -126,6 +126,7 @@ export type AsteroidState = {
   rotation: number;
   mineableCharges: number;
   cooldownUntil: number;
+  type?: 'ore' | 'gas';
 }
 
 export type StationState = {
@@ -156,7 +157,7 @@ export type OutpostState = {
   y: number;
   health: number;
   maxHealth: number;
-  ownerId: number; // To know if it's player's or AI's
+  ownerId: number; // -1 for player, otherwise enemy faction id
   lastShotTimestamp: number;
 }
 
@@ -207,6 +208,7 @@ export type ZoneType = 'nebula' | 'asteroid_field' | 'empty' | 'vortex';
 export interface Zone {
   id: string;
   type: ZoneType;
+  subtype?: 'ore' | 'gas';
   x: number;
   y: number;
   radius: number;
@@ -220,4 +222,3 @@ export interface Effect {
   y: number;
   size?: number;
 }
-
