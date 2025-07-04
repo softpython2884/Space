@@ -8,7 +8,7 @@ interface AsteroidProps {
   size: number;
   rotation: number;
   id: number;
-  type?: 'ore' | 'gas';
+  type?: 'ore' | 'gas' | 'electric';
 }
 
 // Memoize the generated path to avoid recalculating on every render for the same size
@@ -44,8 +44,18 @@ const generateAsteroidPath = (size: number): string => {
 
 export function Asteroid({ x, y, size, rotation, id, type = 'ore' }: AsteroidProps) {
     const asteroidPath = React.useMemo(() => generateAsteroidPath(size), [size]);
-    const fillColor = type === 'gas' ? 'fill-green-600/80' : 'fill-gray-600/80';
-    const strokeColor = type === 'gas' ? 'stroke-green-500' : 'stroke-gray-500';
+    
+    const fillColor = type === 'electric' 
+        ? 'fill-cyan-600/80' 
+        : type === 'gas' 
+        ? 'fill-green-600/80' 
+        : 'fill-gray-600/80';
+    
+    const strokeColor = type === 'electric' 
+        ? 'stroke-cyan-400' 
+        : type === 'gas' 
+        ? 'stroke-green-500' 
+        : 'stroke-gray-500';
 
     return (
         <div
@@ -61,7 +71,7 @@ export function Asteroid({ x, y, size, rotation, id, type = 'ore' }: AsteroidPro
                     height={size}
                     viewBox={`${-size/2} ${-size/2} ${size} ${size}`}
                     className={`${fillColor} ${strokeColor}`}
-                    style={{ filter: 'drop-shadow(0 0 4px #222)' }}
+                    style={{ filter: `drop-shadow(0 0 4px ${type === 'electric' ? '#0ff' : type === 'gas' ? '#0f0' : '#222'})` }}
                 >
                     <path d={asteroidPath} strokeWidth="2" />
                 </svg>

@@ -18,7 +18,7 @@ export const INITIAL_PLAYER_DATA: PlayerData = {
     },
   },
   health: 900,
-  energy: 10000,
+  energy: 1000,
   cargo: {
     current: 0,
   },
@@ -68,7 +68,8 @@ export const SHIP_DATA: Record<PlayerShipClass, {
 
 export const GAS_ASTEROID_EXPLOSION_RADIUS = 250;
 export const GAS_ASTEROID_EXPLOSION_DAMAGE = 50;
-export const MINING_DEPLETION_CHARGES = 2;
+export const MINING_DEPLETION_CHARGES = 4;
+export const ELECTRIC_ASTEROID_ENERGY_YIELD = 2500;
 
 export const BEAM_DAMAGE_PER_FRAME = 0.5;
 export const BEAM_ENERGY_DRAIN_PER_FRAME = 0.3;
@@ -94,20 +95,22 @@ export const ALLY_COST = 2500;
 export const REINFORCEMENT_COST = 3000;
 export const REINFORCEMENT_COOLDOWN_MS = 180000; // 3 minutes
 
-export const AI_HELP_RADIUS = 700;
+export const AI_HELP_RADIUS = 1500;
 
 export const MAP_WIDTH = 12000;
 export const MAP_HEIGHT = 12000;
 
 export const ZONES: Zone[] = [
-    { id: 'start_field', type: 'asteroid_field', subtype: 'ore', x: 4000, y: MAP_HEIGHT / 2, radius: 1500, density: 0.4 },
-    { id: 'enemy_field', type: 'asteroid_field', subtype: 'ore', x: MAP_WIDTH - 4000, y: MAP_HEIGHT / 2, radius: 1500, density: 0.4 },
-    { id: 'center_field_1', type: 'asteroid_field', subtype: 'ore', x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 - 2000, radius: 1500, density: 0.8 },
-    { id: 'center_field_2', type: 'asteroid_field', subtype: 'ore', x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 + 2000, radius: 1500, density: 0.8 },
+    { id: 'start_field_1', type: 'asteroid_field', subtype: 'ore', x: 4000, y: MAP_HEIGHT / 2, radius: 1500, density: 0.4 },
+    { id: 'start_field_2', type: 'asteroid_field', subtype: 'ore', x: 2500, y: MAP_HEIGHT/2 - 2000, radius: 1000, density: 0.3 },
+    { id: 'enemy_field_1', type: 'asteroid_field', subtype: 'ore', x: MAP_WIDTH - 4000, y: MAP_HEIGHT / 2, radius: 1500, density: 0.4 },
+    { id: 'enemy_field_2', type: 'asteroid_field', subtype: 'ore', x: MAP_WIDTH - 2500, y: MAP_HEIGHT/2 + 2000, radius: 1000, density: 0.3 },
+    { id: 'center_field_dense', type: 'asteroid_field', subtype: 'ore', x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2, radius: 2000, density: 1.0 },
     { id: 'top_gas_field', type: 'asteroid_field', subtype: 'gas', x: MAP_WIDTH / 2 - 3000, y: 2000, radius: 1000, density: 0.2 },
     { id: 'bottom_gas_field', type: 'asteroid_field', subtype: 'gas', x: MAP_WIDTH / 2 + 3000, y: MAP_HEIGHT - 2000, radius: 1000, density: 0.2 },
-    { id: 'top_nebula', type: 'nebula', x: MAP_WIDTH / 2, y: 2000, radius: 1500, color: 'hsl(260 80% 50% / 0.15)' },
-    { id: 'bottom_vortex', type: 'vortex', x: MAP_WIDTH / 2, y: MAP_HEIGHT - 2000, radius: 1000 },
+    { id: 'top_left_nebula', type: 'nebula', x: 2000, y: 2000, radius: 1800, color: 'hsl(260 80% 50% / 0.15)' },
+    { id: 'bottom_right_nebula', type: 'nebula', x: MAP_WIDTH - 2000, y: MAP_HEIGHT-2000, radius: 1800, color: 'hsl(190 80% 50% / 0.15)' },
+    { id: 'center_vortex', type: 'vortex', x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2, radius: 500 },
 ];
 
 export const UPGRADE_COSTS = {

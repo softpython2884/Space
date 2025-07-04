@@ -126,7 +126,7 @@ export type AsteroidState = {
   rotation: number;
   mineableCharges: number;
   cooldownUntil: number;
-  type?: 'ore' | 'gas';
+  type?: 'ore' | 'gas' | 'electric';
 }
 
 export type StationState = {

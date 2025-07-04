@@ -31,7 +31,7 @@ import { ElectricCloud } from './electric-cloud';
 import { Vortex } from './vortex';
 import { Explosion } from './explosion';
 import { WarpInEffect } from './warp-in-effect';
-import { MINING_DEPLETION_CHARGES, GAS_ASTEROID_EXPLOSION_RADIUS, GAS_ASTEROID_EXPLOSION_DAMAGE, BEAM_RANGE, INITIAL_PLAYER_DATA, INITIAL_FACTION_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS, OUTPOST_REGEN_RATE, OUTPOST_REGEN_RADIUS, AI_HELP_RADIUS, MAP_WIDTH, MAP_HEIGHT, ZONES, BEAM_DAMAGE_PER_FRAME, BEAM_ENERGY_DRAIN_PER_FRAME, REINFORCEMENT_COST, REINFORCEMENT_COOLDOWN_MS, STATION_FIRE_RATE_MS, STATION_RANGE, STATION_PROJECTILE_DAMAGE, STATION_DEFENSE_WAVE_COOLDOWN_MS, STATION_DEFENSE_WAVE_SIZE } from '@/lib/constants';
+import { MINING_DEPLETION_CHARGES, GAS_ASTEROID_EXPLOSION_RADIUS, GAS_ASTEROID_EXPLOSION_DAMAGE, ELECTRIC_ASTEROID_ENERGY_YIELD, BEAM_RANGE, BEAM_ENERGY_DRAIN_PER_FRAME, BEAM_DAMAGE_PER_FRAME, INITIAL_PLAYER_DATA, INITIAL_FACTION_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS, OUTPOST_REGEN_RATE, OUTPOST_REGEN_RADIUS, AI_HELP_RADIUS, MAP_WIDTH, MAP_HEIGHT, ZONES, REINFORCEMENT_COST, REINFORCEMENT_COOLDOWN_MS, STATION_FIRE_RATE_MS, STATION_RANGE, STATION_PROJECTILE_DAMAGE, STATION_DEFENSE_WAVE_COOLDOWN_MS, STATION_DEFENSE_WAVE_SIZE } from '@/lib/constants';
 import type { ControlScheme, PlayerData, FactionData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState, AsteroidState, StationState, BotShipType, ContextMenuTargetType, PlayerActionType, Resources, PlayerUpgrades, PlayerShipClass, BeamState, ProjectileState, PlayerAction, EnemyAiState, OutpostState, ChatMessage, Zone, Effect, StellarBaseData } from '@/lib/types';
 import { ClientOnly } from '@/components/client-only';
 import { GameOverOverlay } from './game-over-overlay';
@@ -223,6 +223,7 @@ const generateInitialAsteroids = (zones: Zone[]): AsteroidState[] => {
         if (zone.type === 'asteroid_field') {
             const count = Math.floor(Math.PI * zone.radius * zone.radius / 100000) * (zone.density || 0.5);
             for (let i = 0; i < count; i++) {
+                const asteroidType = (zone.subtype === 'ore' && Math.random() < 0.1) ? 'gas' : (zone.subtype || 'ore');
                 asteroids.push({
                     id: id++,
                     x: zone.x + Math.cos(Math.random() * 2 * Math.PI) * Math.random() * zone.radius,
@@ -231,7 +232,21 @@ const generateInitialAsteroids = (zones: Zone[]): AsteroidState[] => {
                     rotation: Math.random() * 360,
                     mineableCharges: MINING_DEPLETION_CHARGES,
                     cooldownUntil: 0,
-                    type: zone.subtype || 'ore',
+                    type: asteroidType,
+                });
+            }
+        } else if (zone.type === 'nebula') {
+            const count = Math.floor(Math.PI * zone.radius * zone.radius / 500000); // fewer asteroids in nebulas
+            for (let i = 0; i < count; i++) {
+                asteroids.push({
+                    id: id++,
+                    x: zone.x + Math.cos(Math.random() * 2 * Math.PI) * Math.random() * zone.radius,
+                    y: zone.y + Math.sin(Math.random() * 2 * Math.PI) * Math.random() * zone.radius,
+                    size: Math.random() * 30 + 40,
+                    rotation: Math.random() * 360,
+                    mineableCharges: 1, // Electric asteroids are one-time use
+                    cooldownUntil: 0,
+                    type: 'electric',
                 });
             }
         }
@@ -943,38 +958,38 @@ export function GameContainer() {
     const reinforcementCount = 8;
     const despawnTime = Date.now() + 120000; // 2 minutes
     const newWarpEffects: Effect[] = [];
-    const newAllies: EnemyState[] = [];
-
+    
     for (let i = 0; i < reinforcementCount; i++) {
-        const shipInfo = SHIP_DATA['Chasseur'];
         const spawnOffset = { x: (Math.random() - 0.5) * 200, y: (Math.random() - 0.5) * 200 };
         const spawnX = position.x + spawnOffset.x;
         const spawnY = position.y + spawnOffset.y;
         
         newWarpEffects.push({ id: getUniqueId(), x: spawnX, y: spawnY });
 
-        const newAlly: EnemyState = {
-            id: getUniqueId(),
-            type: 'Chasseur',
-            x: spawnX,
-            y: spawnY,
-            vx: 0, vy: 0, rotation: 0,
-            health: shipInfo.baseHealth * 3,
-            maxHealth: shipInfo.baseHealth * 3,
-            lastShotTimestamp: 0, lastAutoShotTimestamp: 0,
-            aiState: 'patrolling_order',
-            orderTarget: { x: position.x, y: position.y },
-            lastKnownPlayerPosition: null, stateChangeTimestamp: 0,
-            energy: shipInfo.maxEnergy, maxEnergy: shipInfo.maxEnergy, cargo: 0, lastEnergyUseTimestamp: 0,
-            isAlly: true, combatTargetId: null, lastAttackerId: null, patrolTarget: null,
-            cruiseState: 'idle', cruiseAvailableAt: 0,
-            despawnTimestamp: despawnTime,
-        };
-        newAllies.push(newAlly);
+        // Delayed spawn
+        setTimeout(() => {
+            const newAlly: EnemyState = {
+                id: getUniqueId(),
+                type: 'Chasseur',
+                x: spawnX,
+                y: spawnY,
+                vx: 0, vy: 0, rotation: 0,
+                health: SHIP_DATA['Chasseur'].baseHealth * 3,
+                maxHealth: SHIP_DATA['Chasseur'].baseHealth * 3,
+                lastShotTimestamp: 0, lastAutoShotTimestamp: 0,
+                aiState: 'patrolling_order',
+                orderTarget: { x: position.x, y: position.y },
+                lastKnownPlayerPosition: null, stateChangeTimestamp: 0,
+                energy: SHIP_DATA['Chasseur'].maxEnergy, maxEnergy: SHIP_DATA['Chasseur'].maxEnergy, cargo: 0, lastEnergyUseTimestamp: 0,
+                isAlly: true, combatTargetId: null, lastAttackerId: null, patrolTarget: null,
+                cruiseState: 'idle', cruiseAvailableAt: 0,
+                despawnTimestamp: despawnTime,
+            };
+            setEnemies(prev => [...prev, newAlly]);
+        }, 1000); // 1 sec delay to sync with animation
     }
 
     setWarpEffects(prev => [...prev, ...newWarpEffects]);
-    setEnemies(prev => [...prev, ...newAllies]);
 
     addChatMessage('System', `${reinforcementCount} Chasseur reinforcements have arrived. They will depart in 2 minutes.`, 'text-green-400');
     setIsPlacingReinforcements(false);
@@ -1586,10 +1601,19 @@ export function GameContainer() {
                       const asteroid = asteroidsRef.current.find(a => a.id === action.targetId);
                       if (!asteroid) break;
 
-                        let oreGained = 0;
-                        let gasGained = 0;
+                      let oreGained = 0;
+                      let gasGained = 0;
                         
-                        if (asteroid.type === 'gas') {
+                        if (asteroid.type === 'electric') {
+                            const energyGained = ELECTRIC_ASTEROID_ENERGY_YIELD;
+                            const { ship, upgrades } = playerDataRef.current;
+                            const maxEnergy = SHIP_DATA[ship.class].maxEnergy;
+                            setPlayerData(d => ({ ...d, energy: Math.min(maxEnergy, d.energy + energyGained) }));
+                            addChatMessage('System', `Energy surge detected! +${energyGained} energy.`, 'text-cyan-400');
+                            setExplosions(prev => [...prev, { id: getUniqueId(), x: asteroid.x, y: asteroid.y, size: 1 }]);
+                            setAsteroids(prev => prev.filter(a => a.id !== asteroid.id));
+
+                        } else if (asteroid.type === 'gas') {
                             gasGained = Math.floor(Math.random() * 51) + 50; // A lot of gas
                             addChatMessage('System', `Gas pocket detonated!`, 'text-red-400');
                             setExplosions(prev => [...prev, { id: getUniqueId(), x: asteroid.x, y: asteroid.y, size: 2 }]);
@@ -1611,6 +1635,7 @@ export function GameContainer() {
 
                         } else {
                             oreGained = Math.floor(Math.random() * 26) + 25;
+                            gasGained = Math.floor(Math.random() * 5) + 1;
                             setAsteroids(prev => {
                                 const newAsteroids = prev.map(a => {
                                     if (a.id === action.targetId) {
@@ -2141,7 +2166,7 @@ export function GameContainer() {
                     let closestAsteroid: AsteroidState | null = null;
                     let minDistance = Infinity;
                     for (const asteroid of asteroidsRef.current) {
-                        if (asteroid.cooldownUntil > timestamp || asteroid.mineableCharges <= 0) continue;
+                        if (asteroid.type !== 'ore' || asteroid.cooldownUntil > timestamp || asteroid.mineableCharges <= 0) continue;
                         const distance = Math.hypot(asteroid.x - updatedEnemy.x, asteroid.y - updatedEnemy.y);
                         if (distance < minDistance) {
                             minDistance = distance;
@@ -2204,6 +2229,19 @@ export function GameContainer() {
                     }
                     if (timestamp - updatedEnemy.stateChangeTimestamp > MINER_SIMULATED_MINE_TIME_MS) {
                         updatedEnemy.cargo = (updatedEnemy.cargo || 0) + MINER_CARGO_PER_TRIP;
+
+                        setAsteroids(prev => {
+                            const newAsteroids = prev.map(a => {
+                                if (a.id === updatedEnemy.targetObjectId) {
+                                    const newCharges = a.mineableCharges - 1;
+                                    if (newCharges <= 0) return null; // Mark for removal
+                                    return { ...a, mineableCharges: newCharges };
+                                }
+                                return a;
+                            });
+                            return newAsteroids.filter(Boolean) as AsteroidState[];
+                        });
+                        
                         updatedEnemy.aiState = 'returning_to_base';
                         updatedEnemy.targetObjectId = null;
                         updatedEnemy.stateChangeTimestamp = timestamp;
@@ -2749,7 +2787,6 @@ export function GameContainer() {
         nextAttackWaveTimestamp.current = timestamp + 120000 + Math.random() * 120000; // 2-4 mins for next wave
       }
 
-      const stationsWithNewEnemies = [...stationsWithDamage];
       let newEnemiesFromStations: EnemyState[] = [];
       let newWarpEffectsFromStations: Effect[] = [];
 
@@ -2977,7 +3014,7 @@ export function GameContainer() {
     }
     // Outpost vision
     for (const outpost of outposts) {
-        if (Math.hypot(entity.x - outpost.x, entity.y - outpost.y) < OUTPOST_RANGE) {
+        if (outpost.ownerId === -1 && Math.hypot(entity.x - outpost.x, entity.y - outpost.y) < OUTPOST_RANGE) {
             return true;
         }
     }
@@ -3131,6 +3168,7 @@ export function GameContainer() {
         />
         {visibleEnemies.map(enemy => {
           const props = {
+            key: enemy.id,
             x: enemy.x,
             y: enemy.y,
             rotation: enemy.rotation,
@@ -3142,19 +3180,19 @@ export function GameContainer() {
           };
           switch (enemy.type) {
             case 'Chasseur':
-              return <EnemyShip key={enemy.id} {...props} />;
+              return <EnemyShip {...props} />;
             case 'Frégate':
-              return <FrigateShip key={enemy.id} {...props} />;
+              return <FrigateShip {...props} />;
             case 'Mineur':
-              return <StaffShip key={enemy.id} {...props} />;
+              return <StaffShip {...props} />;
             case 'Intercepteur':
-              return <InterceptorShip key={enemy.id} {...props} />;
+              return <InterceptorShip {...props} />;
             case 'Destroyer':
-              return <DestroyerShip key={enemy.id} {...props} />;
+              return <DestroyerShip {...props} />;
             case 'Porteur':
-              return <CarrierShip key={enemy.id} {...props} />;
+              return <CarrierShip {...props} />;
             case 'Cargo':
-              return <CargoShip key={enemy.id} {...props} />;
+              return <CargoShip {...props} />;
             default:
               return null;
           }
