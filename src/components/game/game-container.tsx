@@ -31,7 +31,7 @@ import { ElectricCloud } from './electric-cloud';
 import { Vortex } from './vortex';
 import { Explosion } from './explosion';
 import { WarpInEffect } from './warp-in-effect';
-import { MINING_DEPLETION_CHARGES, GAS_ASTEROID_EXPLOSION_RADIUS, GAS_ASTEROID_EXPLOSION_DAMAGE, ELECTRIC_ASTEROID_ENERGY_YIELD, BEAM_RANGE, BEAM_ENERGY_DRAIN_PER_FRAME, BEAM_DAMAGE_PER_FRAME, INITIAL_PLAYER_DATA, INITIAL_FACTION_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS, OUTPOST_REGEN_RATE, OUTPOST_REGEN_RADIUS, AI_HELP_RADIUS, MAP_WIDTH, MAP_HEIGHT, ZONES, REINFORCEMENT_COST, REINFORCEMENT_COOLDOWN_MS, STATION_FIRE_RATE_MS, STATION_RANGE, STATION_PROJECTILE_DAMAGE, STATION_DEFENSE_WAVE_COOLDOWN_MS, STATION_DEFENSE_WAVE_SIZE } from '@/lib/constants';
+import { MINING_DEPLETION_CHARGES, GAS_ASTEROID_EXPLOSION_RADIUS, GAS_ASTEROID_EXPLOSION_DAMAGE, ELECTRIC_ASTEROID_ENERGY_YIELD, BEAM_ENERGY_DRAIN_PER_FRAME, BEAM_DAMAGE_PER_FRAME, INITIAL_PLAYER_DATA, INITIAL_FACTION_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS, OUTPOST_REGEN_RATE, OUTPOST_REGEN_RADIUS, AI_HELP_RADIUS, MAP_WIDTH, MAP_HEIGHT, ZONES, REINFORCEMENT_COST, REINFORCEMENT_COOLDOWN_MS, STATION_FIRE_RATE_MS, STATION_RANGE, STATION_PROJECTILE_DAMAGE, STATION_DEFENSE_WAVE_COOLDOWN_MS, STATION_DEFENSE_WAVE_SIZE } from '@/lib/constants';
 import type { ControlScheme, PlayerData, FactionData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState, AsteroidState, StationState, BotShipType, ContextMenuTargetType, PlayerActionType, Resources, PlayerUpgrades, PlayerShipClass, BeamState, ProjectileState, PlayerAction, EnemyAiState, OutpostState, ChatMessage, Zone, Effect, StellarBaseData } from '@/lib/types';
 import { ClientOnly } from '@/components/client-only';
 import { GameOverOverlay } from './game-over-overlay';
@@ -120,7 +120,7 @@ const MINER_SIMULATED_MINE_TIME_MS = 8000;
 const MINER_CARGO_PER_TRIP = 20;
 const MINER_AVOIDANCE_RADIUS = 300;
 const AI_SCAVENGE_RADIUS = 1000;
-const AI_SEPARATION_DISTANCE = 100;
+const AI_SEPARATION_DISTANCE = 150;
 const AI_PREFERRED_COMBAT_DISTANCE_FACTOR = 0.7;
 const NEBULA_DAMAGE_PER_FRAME = 0.05;
 
@@ -182,30 +182,25 @@ const generateInitialEnemies = (playerStation: StationState, enemyStation: Stati
         }
 
         // 1 Frigate with 2 Chasseur escorts (defense)
-        const frigate = createShip('Frégate', stationX, stationY - 200, isAlly, 'guarding', { patrolCenter: { x: stationX, y: stationY } });
+        const frigate = createShip('Frégate', stationX, stationY - 200, isAlly, 'guarding', { patrolCenter: { x: stationX, y: stationY }, role: 'escort' });
         fleet.push(frigate);
         for (let i = 0; i < 2; i++) {
             fleet.push(createShip('Chasseur', frigate.x + (i*100-50), frigate.y + 50, isAlly, 'following', { followTargetId: frigate.id, patrolCenter: { x: stationX, y: stationY } }));
         }
 
-        const attackForceCommon = {
-            aiState: 'guarding' as EnemyAiState, 
-            role: 'attack' as const,
-            patrolCenter: { x: stationX, y: stationY }
-        };
-        
         // 4 Interceptors
         for (let i = 0; i < 4; i++) {
-            fleet.push(createShip('Intercepteur', stationX + (Math.random() - 0.5) * 300, stationY - 300 + (Math.random() - 0.5) * 100, isAlly, 'guarding', attackForceCommon));
+            fleet.push(createShip('Intercepteur', stationX + (Math.random() - 0.5) * 300, stationY - 300 + (Math.random() - 0.5) * 100, isAlly, 'guarding', { role: 'attack', patrolCenter: { x: stationX, y: stationY } }));
         }
         
         // 7 Chasseurs
         for (let i = 0; i < 7; i++) {
-            fleet.push(createShip('Chasseur', stationX + (Math.random() - 0.5) * 400, stationY - 400 + (Math.random() - 0.5) * 100, isAlly, 'guarding', attackForceCommon));
+            const role = i < 4 ? 'attack' : 'escort';
+            fleet.push(createShip('Chasseur', stationX + (Math.random() - 0.5) * 400, stationY - 400 + (Math.random() - 0.5) * 100, isAlly, 'guarding', { role: 'attack', patrolCenter: { x: stationX, y: stationY } }));
         }
         
         // 1 Destroyer
-        fleet.push(createShip('Destroyer', stationX, stationY - 500, isAlly, 'guarding', attackForceCommon));
+        fleet.push(createShip('Destroyer', stationX, stationY - 500, isAlly, 'guarding', { role: 'attack', patrolCenter: { x: stationX, y: stationY } }));
 
         // 2 Cargo ships
         for (let i = 0; i < 2; i++) {
@@ -962,6 +957,52 @@ export function GameContainer() {
     ));
   }, [addChatMessage]);
 
+  const createNewShip = useCallback((type: BotShipType, isAlly: boolean, position: {x: number, y: number}, state: EnemyAiState = 'patrolling', options: Partial<EnemyState> = {}) => {
+      const shipInfo = SHIP_DATA[type];
+      let role: EnemyState['role'] = 'attack';
+      if (type === 'Mineur') role = 'miner';
+      if (type === 'Cargo') role = 'scavenger';
+
+      return {
+          id: getUniqueId(),
+          type,
+          x: position.x + (Math.random() - 0.5) * 150,
+          y: position.y + (Math.random() - 0.5) * 150,
+          vx: 0, vy: 0, rotation: 0,
+          health: shipInfo.baseHealth * 3,
+          maxHealth: shipInfo.baseHealth * 3,
+          lastShotTimestamp: 0, lastAutoShotTimestamp: 0,
+          aiState: state,
+          lastKnownPlayerPosition: null, stateChangeTimestamp: 0,
+          energy: shipInfo.maxEnergy, maxEnergy: shipInfo.maxEnergy, cargo: 0, lastEnergyUseTimestamp: 0,
+          isAlly, combatTargetId: null, lastAttackerId: null, patrolTarget: null, patrolCenter: {x: position.x, y: position.y},
+          role: role,
+          cruiseState: 'idle' as 'idle' | 'charging' | 'cruising', cruiseAvailableAt: 0,
+          ...options
+      };
+  }, []);
+
+  const callAiReinforcements = useCallback((position: { x: number, y: number }) => {
+    addChatMessage('System', `Enemy reinforcements detected!`, 'text-red-400');
+    const reinforcementCount = 5; // AI gets fewer reinforcements
+    const despawnTime = Date.now() + 90000; // 1.5 minutes
+    const newWarpEffects: Effect[] = [];
+    const newEnemies: EnemyState[] = [];
+    
+    for (let i = 0; i < reinforcementCount; i++) {
+        const spawnOffset = { x: (Math.random() - 0.5) * 200, y: (Math.random() - 0.5) * 200 };
+        const spawnX = position.x + spawnOffset.x;
+        const spawnY = position.y + spawnOffset.y;
+        newWarpEffects.push({ id: getUniqueId(), x: spawnX, y: spawnY });
+        
+        const newShip = createNewShip('Chasseur', false, {x: spawnX, y: spawnY}, 'patrolling_order', { orderTarget: {x: spawnX, y: spawnY }, despawnTimestamp: despawnTime });
+        newEnemies.push(newShip);
+    }
+
+    setWarpEffects(prev => [...prev, ...newWarpEffects]);
+    setEnemies(prev => [...prev, ...newEnemies]);
+  }, [addChatMessage, createNewShip]);
+
   const handleCallReinforcements = useCallback((position: { x: number, y: number }) => {
     const now = Date.now();
     if (now < reinforcementAvailableAt.current) {
@@ -982,6 +1023,7 @@ export function GameContainer() {
     const reinforcementCount = 8;
     const despawnTime = Date.now() + 120000; // 2 minutes
     const newWarpEffects: Effect[] = [];
+    const newEnemies: EnemyState[] = [];
     
     for (let i = 0; i < reinforcementCount; i++) {
         const spawnOffset = { x: (Math.random() - 0.5) * 200, y: (Math.random() - 0.5) * 200 };
@@ -989,35 +1031,22 @@ export function GameContainer() {
         const spawnY = position.y + spawnOffset.y;
         
         newWarpEffects.push({ id: getUniqueId(), x: spawnX, y: spawnY });
-
-        // Delayed spawn
-        setTimeout(() => {
-            const newAlly: EnemyState = {
-                id: getUniqueId(),
-                type: 'Chasseur',
-                x: spawnX,
-                y: spawnY,
-                vx: 0, vy: 0, rotation: 0,
-                health: SHIP_DATA['Chasseur'].baseHealth * 3,
-                maxHealth: SHIP_DATA['Chasseur'].baseHealth * 3,
-                lastShotTimestamp: 0, lastAutoShotTimestamp: 0,
-                aiState: 'patrolling_order',
-                orderTarget: { x: position.x, y: position.y },
-                lastKnownPlayerPosition: null, stateChangeTimestamp: 0,
-                energy: SHIP_DATA['Chasseur'].maxEnergy, maxEnergy: SHIP_DATA['Chasseur'].maxEnergy, cargo: 0, lastEnergyUseTimestamp: 0,
-                isAlly: true, combatTargetId: null, lastAttackerId: null, patrolTarget: null,
-                cruiseState: 'idle', cruiseAvailableAt: 0,
-                despawnTimestamp: despawnTime,
-            };
-            setEnemies(prev => [...prev, newAlly]);
-        }, 1000); // 1 sec delay to sync with animation
+        
+        const newAlly = createNewShip(
+            'Chasseur', 
+            true, 
+            {x: spawnX, y: spawnY}, 
+            'patrolling_order', 
+            { orderTarget: { x: position.x, y: position.y }, despawnTimestamp: despawnTime }
+        );
+        newEnemies.push(newAlly);
     }
 
     setWarpEffects(prev => [...prev, ...newWarpEffects]);
-
+    setEnemies(prev => [...prev, ...newEnemies]);
     addChatMessage('System', `${reinforcementCount} Chasseur reinforcements have arrived. They will depart in 2 minutes.`, 'text-green-400');
     setIsPlacingReinforcements(false);
-  }, [addChatMessage]);
+  }, [addChatMessage, createNewShip]);
 
 
   const handleToggleWeapon = useCallback((weapon: 'manualTurrets' | 'autoTurrets' | 'beam') => {
@@ -1370,7 +1399,7 @@ export function GameContainer() {
         setPlayerRotation(aimAngle);
       }
 
-      const accelVec = { x: 0, y: 0 };
+      let accelVec = { x: 0, y: 0 };
       const isMovementDisabled = isPlayerActionInProgress || shipModeRef.current === 'scan' || cruiseStateRef.current === 'charging';
 
       if (!isMovementDisabled) {
@@ -1429,6 +1458,18 @@ export function GameContainer() {
       
       let newVx = (velocityRef.current.x + accelVec.x) * FRICTION;
       let newVy = (velocityRef.current.y + accelVec.y) * FRICTION;
+
+      for (const zone of zones) {
+        if (zone.type === 'vortex') {
+            const distToCenter = Math.hypot(playerPositionRef.current.x - zone.x, playerPositionRef.current.y - zone.y);
+            if (distToCenter < zone.radius && distToCenter > 10) {
+                const pullForce = (1 - (distToCenter / zone.radius)) * 0.15; // Stronger pull
+                const angleToCenter = Math.atan2(zone.y - playerPositionRef.current.y, zone.x - playerPositionRef.current.x);
+                newVx += Math.cos(angleToCenter) * pullForce;
+                newVy += Math.sin(angleToCenter) * pullForce;
+            }
+        }
+      }
       
       const calculatedSpeed = Math.hypot(newVx, newVy);
       setSpeed(calculatedSpeed);
@@ -1958,7 +1999,7 @@ export function GameContainer() {
                 : enemiesRef.current.find(e => e.id === updatedEnemy.followTargetId);
             
             if (targetToFollow) {
-                const distanceToTarget = Math.hypot(targetToFollow.x - updatedEnemy.x, targetToFollow.y - updatedEnemy.y);
+                const distanceToTarget = Math.hypot(targetToFollow.x - updatedEnemy.x, updatedEnemy.y - updatedEnemy.y);
                 const isTargetCruising = updatedEnemy.followTargetId === -1 
                     ? cruiseStateRef.current === 'cruising'
                     : enemiesRef.current.find(e => e.id === updatedEnemy.followTargetId)?.cruiseState === 'cruising';
@@ -2142,8 +2183,7 @@ export function GameContainer() {
               }
           }
           
-          const accelFromSeparation = { x: separation.x * 0.1, y: separation.y * 0.1 };
-          let finalAccel = { x: accelFromSeparation.x, y: accelFromSeparation.y };
+          let finalAccel = { x: separation.x * 0.1, y: separation.y * 0.1 };
 
           switch(updatedEnemy.aiState) {
             case 'holding_position':
@@ -2549,6 +2589,18 @@ export function GameContainer() {
           let newEnemyVx = (updatedEnemy.vx + finalAccel.x) * FRICTION;
           let newEnemyVy = (updatedEnemy.vy + finalAccel.y) * FRICTION;
           
+          for (const zone of zones) {
+            if (zone.type === 'vortex') {
+                const distToCenter = Math.hypot(updatedEnemy.x - zone.x, updatedEnemy.y - zone.y);
+                if (distToCenter < zone.radius && distToCenter > 10) {
+                    const pullForce = (1 - (distToCenter / zone.radius)) * 0.15;
+                    const angleToCenter = Math.atan2(zone.y - updatedEnemy.y, zone.x - updatedEnemy.x);
+                    newEnemyVx += Math.cos(angleToCenter) * pullForce;
+                    newEnemyVy += Math.sin(angleToCenter) * pullForce;
+                }
+            }
+          }
+
           const enemySpeed = Math.hypot(newEnemyVx, newEnemyVy);
           if (enemySpeed > maxAiSpeed) {
               newEnemyVx = (newEnemyVx / enemySpeed) * maxAiSpeed;
@@ -3013,59 +3065,13 @@ export function GameContainer() {
         animationFrameId = requestAnimationFrame(gameLoop);
       }
     };
-
-    const callAiReinforcements = (position: { x: number, y: number }) => {
-        addChatMessage('System', `Enemy reinforcements detected!`, 'text-red-400');
-        const reinforcementCount = 5; // AI gets fewer reinforcements
-        const despawnTime = Date.now() + 90000; // 1.5 minutes
-        const newWarpEffects: Effect[] = [];
-        const newEnemies: EnemyState[] = [];
-        
-        for (let i = 0; i < reinforcementCount; i++) {
-            const spawnOffset = { x: (Math.random() - 0.5) * 200, y: (Math.random() - 0.5) * 200 };
-            const spawnX = position.x + spawnOffset.x;
-            const spawnY = position.y + spawnOffset.y;
-            newWarpEffects.push({ id: getUniqueId(), x: spawnX, y: spawnY });
-            
-            const newShip = createNewShip('Chasseur', false, {x: spawnX, y: spawnY}, 'patrolling_order', { orderTarget: {x: spawnX, y: spawnY }, despawnTimestamp: despawnTime });
-            newEnemies.push(newShip);
-        }
-
-        setWarpEffects(prev => [...prev, ...newWarpEffects]);
-        setEnemies(prev => [...prev, ...newEnemies]);
-    }
-
-    const createNewShip = (type: BotShipType, isAlly: boolean, position: {x: number, y: number}, state: EnemyAiState = 'patrolling', options: Partial<EnemyState> = {}) => {
-        const shipInfo = SHIP_DATA[type];
-        let role: EnemyState['role'] = 'attack';
-        if (type === 'Mineur') role = 'miner';
-        if (type === 'Cargo') role = 'scavenger';
-
-        return {
-            id: getUniqueId(),
-            type,
-            x: position.x + (Math.random() - 0.5) * 150,
-            y: position.y + (Math.random() - 0.5) * 150,
-            vx: 0, vy: 0, rotation: 0,
-            health: shipInfo.baseHealth * 3,
-            maxHealth: shipInfo.baseHealth * 3,
-            lastShotTimestamp: 0, lastAutoShotTimestamp: 0,
-            aiState: state,
-            lastKnownPlayerPosition: null, stateChangeTimestamp: 0,
-            energy: shipInfo.maxEnergy, maxEnergy: shipInfo.maxEnergy, cargo: 0, lastEnergyUseTimestamp: 0,
-            isAlly, combatTargetId: null, lastAttackerId: null, patrolTarget: null, patrolCenter: {x: position.x, y: position.y},
-            role: role,
-            cruiseState: 'idle' as 'idle' | 'charging' | 'cruising', cruiseAvailableAt: 0,
-            ...options
-        };
-    };
     
     if(viewSize.width > 0 && !isGameOver) {
       animationFrameId = requestAnimationFrame(gameLoop);
     }
     
     return () => cancelAnimationFrame(animationFrameId);
-  }, [viewSize, isGameOver, controlScheme, isDocked, applyDamage, handleActionSelect, handleBuyAlly, handleBuyShip, handleBuyUpgrade, handleRepairHull, handleSellResource, resetGame, addChatMessage, handleBuildShipFromTactical, handleBuildOutpost, handleRespawn, zones, cheats, handleCallReinforcements, handleAllAttack, handleAllFollow, handleAllHold]);
+  }, [viewSize, isGameOver, controlScheme, isDocked, applyDamage, handleActionSelect, handleBuyAlly, handleBuyShip, handleBuyUpgrade, handleRepairHull, handleSellResource, resetGame, addChatMessage, handleBuildShipFromTactical, handleBuildOutpost, handleRespawn, zones, cheats, handleCallReinforcements, handleAllAttack, handleAllFollow, handleAllHold, callAiReinforcements, createNewShip]);
 
   const isEntityVisible = useCallback((entity: { x: number; y: number }) => {
     // Player vision
@@ -3233,8 +3239,7 @@ export function GameContainer() {
           isShieldActive={shipMode === 'shield'} 
         />
         {visibleEnemies.map(enemy => {
-          const { key, ...props } = {
-            key: enemy.id,
+          const props = {
             x: enemy.x,
             y: enemy.y,
             rotation: enemy.rotation,
@@ -3246,19 +3251,19 @@ export function GameContainer() {
           };
           switch (enemy.type) {
             case 'Chasseur':
-              return <EnemyShip key={key} {...props} />;
+              return <EnemyShip key={enemy.id} {...props} />;
             case 'Frégate':
-              return <FrigateShip key={key} {...props} />;
+              return <FrigateShip key={enemy.id} {...props} />;
             case 'Mineur':
-              return <StaffShip key={key} {...props} />;
+              return <StaffShip key={enemy.id} {...props} />;
             case 'Intercepteur':
-              return <InterceptorShip key={key} {...props} />;
+              return <InterceptorShip key={enemy.id} {...props} />;
             case 'Destroyer':
-              return <DestroyerShip key={key} {...props} />;
+              return <DestroyerShip key={enemy.id} {...props} />;
             case 'Porteur':
-              return <CarrierShip key={key} {...props} />;
+              return <CarrierShip key={enemy.id} {...props} />;
             case 'Cargo':
-              return <CargoShip key={key} {...props} />;
+              return <CargoShip key={enemy.id} {...props} />;
             default:
               return null;
           }
@@ -3393,7 +3398,7 @@ export function GameContainer() {
         playerData={playerData}
         stationData={mainStation || null}
         onSellResource={handleSellResource}
-        onBuyUpgrade={onBuyUpgrade}
+        onBuyUpgrade={handleBuyUpgrade}
         onRepairHull={handleRepairHull}
         onBuyShip={handleBuyShip}
         onBuyAlly={handleBuyAlly}
@@ -3403,5 +3408,3 @@ export function GameContainer() {
     </div>
   );
 }
-
-    
