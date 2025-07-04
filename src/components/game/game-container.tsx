@@ -45,6 +45,7 @@ const PROJECTILE_SPEED = 8;
 const MAP_WIDTH = 4000;
 const MAP_HEIGHT = 4000;
 const FIRE_RATE_MS = 250; 
+const AUTO_TURRET_FIRE_RATE_MS = 800;
 const ENEMY_CLICK_RADIUS = 30;
 const STATION_CLICK_RADIUS = 75;
 const ASTEROID_CLICK_RADIUS = 2.0; 
@@ -64,9 +65,14 @@ const STATION_COLLISION_RADIUS = 75;
 const ASTEROID_COLLISION_RADIUS = 0.75;
 
 const PLAYER_PROJECTILE_DAMAGE = 10;
+const HEAVY_PLAYER_PROJECTILE_DAMAGE = 20;
 const ENEMY_PROJECTILE_DAMAGE = 5;
-const BEAM_DAMAGE = 1.5;
-const HEAVY_BEAM_DAMAGE = 3;
+
+// New beam damage constants
+const BEAM_DAMAGE_PER_FRAME = 0.15;
+const HEAVY_BEAM_DAMAGE_PER_FRAME = 0.3;
+const BEAM_RAMP_UP_TIME_MS = 2000; // Time to reach max damage multiplier
+const BEAM_RAMP_UP_MULTIPLIER = 4; // Max damage multiplier
 
 const ASTEROID_COLLISION_DAMAGE = 5;
 const ENEMY_COLLISION_DAMAGE = 10;
@@ -74,6 +80,8 @@ const STATION_COLLISION_DAMAGE = 20;
 const COLLISION_SPEED_THRESHOLD = 1;
 
 const ENERGY_PER_SHOT = 2;
+const AUTO_TURRET_ENERGY_COST = 3;
+const AI_BEAM_ENERGY_COST = 40;
 const LOW_HEALTH_THRESHOLD = 30;
 
 const ENEMY_AGGRO_RADIUS = 800;
@@ -164,21 +172,21 @@ const generateInitialEnemies = (): EnemyState[] => {
     
     return [
     // Pirates
-    { id: 1, type: 'chasseur', x: MAP_WIDTH / 2 + 1500, y: MAP_HEIGHT / 2 + 1500, vx: 0, vy: 0, rotation: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
-    { id: 2, type: 'chasseur', x: MAP_WIDTH / 2 - 1600, y: MAP_HEIGHT / 2 - 1200, vx: 0, vy: 0, rotation: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
-    { id: 3, type: 'frigate', x: MAP_WIDTH / 2 + 800, y: MAP_HEIGHT / 2 + 1800, vx: 0, vy: 0, rotation: 0, health: 300, maxHealth: 300, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 10, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
-    { id: 4, type: 'staff', x: 850, y: 850, vx: 0.5, vy: -0.5, rotation: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 20, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null, role: 'miner' },
-    { id: 5, type: 'staff', x: 2800, y: 3000, vx: -0.5, vy: 0.5, rotation: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 20, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null, role: 'miner' },
+    { id: 1, type: 'Chasseur', x: MAP_WIDTH / 2 + 1500, y: MAP_HEIGHT / 2 + 1500, vx: 0, vy: 0, rotation: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, lastAutoShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
+    { id: 2, type: 'Chasseur', x: MAP_WIDTH / 2 - 1600, y: MAP_HEIGHT / 2 - 1200, vx: 0, vy: 0, rotation: 0, health: 100, maxHealth: 100, lastShotTimestamp: 0, lastAutoShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
+    { id: 3, type: 'Frégate', x: MAP_WIDTH / 2 + 800, y: MAP_HEIGHT / 2 + 1800, vx: 0, vy: 0, rotation: 0, health: 300, maxHealth: 300, lastShotTimestamp: 0, lastAutoShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 10, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
+    { id: 4, type: 'Mineur', x: 850, y: 850, vx: 0.5, vy: -0.5, rotation: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, lastAutoShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 20, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null, role: 'miner' },
+    { id: 5, type: 'Mineur', x: 2800, y: 3000, vx: -0.5, vy: 0.5, rotation: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, lastAutoShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 20, lastEnergyUseTimestamp: 0, isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null, role: 'miner' },
 
     // Allied Escort
-    { id: 6, type: 'frigate', x: stationX - 150, y: stationY, vx: 0, vy: 0, rotation: 0, health: 300, maxHealth: 300, lastShotTimestamp: 0, aiState: 'guarding', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'escort', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
-    { id: 7, type: 'interceptor', x: stationX + 150, y: stationY - 100, vx: 0, vy: 0, rotation: 0, health: 120, maxHealth: 120, lastShotTimestamp: 0, aiState: 'following', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'escort', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null, followTargetId: 6 },
-    { id: 8, type: 'interceptor', x: stationX + 150, y: stationY + 100, vx: 0, vy: 0, rotation: 0, health: 120, maxHealth: 120, lastShotTimestamp: 0, aiState: 'following', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'escort', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null, followTargetId: 6 },
+    { id: 6, type: 'Frégate', x: stationX - 150, y: stationY, vx: 0, vy: 0, rotation: 0, health: 300, maxHealth: 300, lastShotTimestamp: 0, lastAutoShotTimestamp: 0, aiState: 'guarding', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'escort', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
+    { id: 7, type: 'Intercepteur', x: stationX + 150, y: stationY - 100, vx: 0, vy: 0, rotation: 0, health: 120, maxHealth: 120, lastShotTimestamp: 0, lastAutoShotTimestamp: 0, aiState: 'following', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'escort', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null, followTargetId: 6 },
+    { id: 8, type: 'Intercepteur', x: stationX + 150, y: stationY + 100, vx: 0, vy: 0, rotation: 0, health: 120, maxHealth: 120, lastShotTimestamp: 0, lastAutoShotTimestamp: 0, aiState: 'following', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'escort', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null, followTargetId: 6 },
 
     // Allied Miners
-    { id: 9, type: 'staff', x: stationX, y: stationY - 150, vx: 0, vy: 0, rotation: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'miner', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
-    { id: 10, type: 'staff', x: stationX - 130, y: stationY - 75, vx: 0, vy: 0, rotation: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'miner', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
-    { id: 11, type: 'staff', x: stationX + 130, y: stationY + 75, vx: 0, vy: 0, rotation: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'miner', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
+    { id: 9, type: 'Mineur', x: stationX, y: stationY - 150, vx: 0, vy: 0, rotation: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, lastAutoShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'miner', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
+    { id: 10, type: 'Mineur', x: stationX - 130, y: stationY - 75, vx: 0, vy: 0, rotation: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, lastAutoShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'miner', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
+    { id: 11, type: 'Mineur', x: stationX + 130, y: stationY + 75, vx: 0, vy: 0, rotation: 0, health: 50, maxHealth: 50, lastShotTimestamp: 0, lastAutoShotTimestamp: 0, aiState: 'patrolling', lastKnownPlayerPosition: null, stateChangeTimestamp: 0, energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0, isAlly: true, role: 'miner', patrolCenter: { x: stationX, y: stationY }, combatTargetId: null, lastAttackerId: null, patrolTarget: null },
 ]};
 
 
@@ -234,6 +242,7 @@ export function GameContainer() {
   const containerRef = useRef<HTMLDivElement>(null);
   const lastEnergyUseTimestamp = useRef(0);
   const lastFiredTimestamp = useRef(0);
+  const lastPlayerAutoShotTimestamp = useRef(0);
 
   const modeChangeAvailableAtRef = useRef(0);
   const cruiseAvailableAtRef = useRef(0);
@@ -290,6 +299,9 @@ export function GameContainer() {
   
   const playerActionRef = useRef(playerAction);
   useEffect(() => { playerActionRef.current = playerAction; }, [playerAction]);
+
+  const activeBeamsRef = useRef(activeBeams);
+  useEffect(() => { activeBeamsRef.current = activeBeams; }, [activeBeams]);
   
   const isPlayerActionInProgress = playerAction !== null;
 
@@ -545,7 +557,7 @@ export function GameContainer() {
 
     const newAlly: EnemyState = {
         id: getUniqueId(),
-        type: 'chasseur',
+        type: 'Chasseur',
         x: playerPositionRef.current.x + (Math.random() - 0.5) * 100,
         y: playerPositionRef.current.y + (Math.random() - 0.5) * 100,
         vx: 0,
@@ -554,6 +566,7 @@ export function GameContainer() {
         health: 100,
         maxHealth: 100,
         lastShotTimestamp: 0,
+        lastAutoShotTimestamp: 0,
         aiState: 'following',
         lastKnownPlayerPosition: null,
         stateChangeTimestamp: 0,
@@ -605,17 +618,23 @@ export function GameContainer() {
         isLeftMouseDown.current = true;
         setContextMenu(null);
 
-        let enemyClicked = false;
+        let clickedOnShip = false;
         for (const enemy of enemiesRef.current) {
             const distance = Math.hypot(clickWorldX - enemy.x, clickWorldY - enemy.y);
             if (distance < ENEMY_CLICK_RADIUS) {
-                setTargetId(enemy.id === targetIdRef.current ? null : enemy.id);
+                clickedOnShip = true;
+                if (!enemy.isAlly) { // Can only target non-allies
+                    setTargetId(enemy.id === targetIdRef.current ? null : enemy.id);
+                } else {
+                    setTargetId(null); // Deselect if clicking an ally
+                }
                 setAutoMoveTarget(null);
-                enemyClicked = true;
-                break; 
+                break;
             }
         }
-        if (!enemyClicked) setTargetId(null);
+        if (!clickedOnShip) { // If clicked on empty space
+            setTargetId(null);
+        }
       } else if (event.button === 1) {
         event.preventDefault();
         setAutoMoveTarget({ x: clickWorldX, y: clickWorldY });
@@ -628,8 +647,10 @@ export function GameContainer() {
         for (const enemy of enemiesRef.current) {
           const distance = Math.hypot(clickWorldX - enemy.x, clickWorldY - enemy.y);
           if (distance < ENEMY_CLICK_RADIUS * 2) {
-            setContextMenu({ x: event.clientX, y: event.clientY, targetId: enemy.id, targetType: 'enemy' });
-            return;
+            if (!enemy.isAlly) {
+                setContextMenu({ x: event.clientX, y: event.clientY, targetId: enemy.id, targetType: 'enemy' });
+            }
+            return; // Stop after finding the first ship
           }
         }
         for (const asteroid of asteroidsRef.current) {
@@ -862,6 +883,7 @@ export function GameContainer() {
       const canShoot = playerDataRef.current.energy >= ENERGY_PER_SHOT && (shipMode === 'normal' || shipMode === 'stealth' || shipMode === 'shield') && cruiseStateRef.current === 'idle' && !isPlayerActionInProgress;
       const isShootingManually = keysPressed.current.has(' ');
       const playerShipConfig = SHIP_DATA[playerDataRef.current.ship.class];
+      let hasUpgradedWeapons = playerDataRef.current.upgrades.maxHealth > 0; // Placeholder for weapon upgrade
 
       if ((currentTarget || isShootingManually) && canShoot && timestamp - lastFiredTimestamp.current > FIRE_RATE_MS) {
         lastFiredTimestamp.current = timestamp;
@@ -871,7 +893,7 @@ export function GameContainer() {
         if (currentTarget) fireRotation = Math.atan2(currentTarget.y - playerPositionRef.current.y, currentTarget.x - playerPositionRef.current.x) * (180 / Math.PI);
         
         const newProjectiles: ProjectileState[] = [];
-        const { manualTurrets, beam } = playerShipConfig.weapons;
+        const { manualTurrets } = playerShipConfig.weapons;
 
         if (manualTurrets.count > 0) {
             const energyCost = ENERGY_PER_SHOT * manualTurrets.count;
@@ -897,29 +919,83 @@ export function GameContainer() {
         if (newProjectiles.length > 0) {
             setPlayerProjectiles(prev => [...prev, ...newProjectiles]);
         }
-        
-        if (beam && beam.count > 0 && currentTarget && !currentTarget.isAlly) {
-          const energyCost = ENERGY_PER_SHOT * beam.count * 2; // Beams are costly
-          if (playerDataRef.current.energy >= energyCost) {
-            setPlayerData(d => ({ ...d, energy: d.energy - energyCost }));
-            const newBeams: BeamState[] = [];
-            for (let i = 0; i < beam.count; i++) {
-              newBeams.push({
-                id: getUniqueId(),
-                sourceId: -1,
-                targetId: currentTarget.id,
-                endTime: timestamp + 200, // Beam lasts 200ms
-                type: beam.type,
-              });
+      }
 
-              // Apply damage instantly for simplicity
-              setEnemies(prev => prev.map(e => e.id === currentTarget.id ? { ...e, health: Math.max(0, e.health - (beam.type === 'heavy' ? HEAVY_BEAM_DAMAGE : BEAM_DAMAGE)) } : e));
+      // Player auto-turret logic
+      const { autoTurrets } = playerShipConfig.weapons;
+      if (hasUpgradedWeapons && autoTurrets && autoTurrets.count > 0 && timestamp - lastPlayerAutoShotTimestamp > AUTO_TURRET_FIRE_RATE_MS) {
+        if (playerDataRef.current.energy >= AUTO_TURRET_ENERGY_COST * autoTurrets.count) {
+            let autoTarget: EnemyState | null = null;
+            let minDistance = ENEMY_AGGRO_RADIUS;
+            for (const enemy of enemiesRef.current) {
+                if (!enemy.isAlly) {
+                    const distance = Math.hypot(enemy.x - playerPositionRef.current.x, enemy.y - playerPositionRef.current.y);
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        autoTarget = enemy;
+                    }
+                }
             }
-            setActiveBeams(prev => [...prev, ...newBeams]);
-          }
+            if (autoTarget) {
+                lastPlayerAutoShotTimestamp = timestamp;
+                setPlayerData(d => ({ ...d, energy: d.energy - AUTO_TURRET_ENERGY_COST * autoTurrets.count }));
+                const shipRotRad = playerRotationRef.current * (Math.PI / 180);
+                const fireRotation = Math.atan2(autoTarget.y - playerPositionRef.current.y, autoTarget.x - playerPositionRef.current.x) * (180 / Math.PI);
+                const newAutoProjectiles: ProjectileState[] = [];
+                for (const offset of autoTurrets.offsets) {
+                     const rotatedOffsetX = offset.x * Math.cos(shipRotRad) - offset.y * Math.sin(shipRotRad);
+                    const rotatedOffsetY = offset.x * Math.sin(shipRotRad) + offset.y * Math.cos(shipRotRad);
+                    newAutoProjectiles.push({ 
+                        id: getUniqueId(), 
+                        x: playerPositionRef.current.x + rotatedOffsetX, 
+                        y: playerPositionRef.current.y + rotatedOffsetY, 
+                        rotation: fireRotation, 
+                        ownerId: -1, 
+                        type: autoTurrets.type 
+                    });
+                }
+                 if (newAutoProjectiles.length > 0) {
+                    setPlayerProjectiles(prev => [...prev, ...newAutoProjectiles]);
+                }
+            }
         }
       }
-      setActiveBeams(prev => prev.filter(b => b.endTime > timestamp));
+        
+      // Beam weapon logic for player
+      const { beam } = playerShipConfig.weapons;
+      const isShootingTargetWithBeams = beam && beam.count > 0 && currentTarget && !currentTarget.isAlly && isLeftMouseDown.current && canShoot;
+
+      if (isShootingTargetWithBeams) {
+        const existingBeams = activeBeamsRef.current.filter(b => b.sourceId === -1);
+        if (existingBeams.length === 0) {
+            const energyCost = AI_BEAM_ENERGY_COST; // Use a higher cost to initiate beam
+            if (playerDataRef.current.energy >= energyCost) {
+                setPlayerData(d => ({ ...d, energy: d.energy - energyCost }));
+                lastEnergyUseTimestamp.current = timestamp;
+                const newBeams: BeamState[] = [];
+                const shipRotRad = playerRotationRef.current * (Math.PI / 180);
+                for (const offset of beam.offsets) {
+                    const rotatedOffsetX = offset.x * Math.cos(shipRotRad) - offset.y * Math.sin(shipRotRad);
+                    const rotatedOffsetY = offset.x * Math.sin(shipRotRad) + offset.y * Math.cos(shipRotRad);
+                    newBeams.push({
+                        id: getUniqueId(),
+                        sourceId: -1,
+                        targetId: currentTarget.id,
+                        startTime: timestamp,
+                        type: beam.type,
+                        sourceOffsetX: rotatedOffsetX,
+                        sourceOffsetY: rotatedOffsetY,
+                    });
+                }
+                setActiveBeams(prev => [...prev, ...newBeams]);
+            }
+        }
+      } else {
+          // If not shooting target, remove player's beams
+          if (activeBeamsRef.current.some(b => b.sourceId === -1)) {
+              setActiveBeams(prev => prev.filter(b => b.sourceId !== -1));
+          }
+      }
       
       if (playerActionRef.current) {
           const action = playerActionRef.current;
@@ -1078,22 +1154,27 @@ export function GameContainer() {
           }
           
           let collisionRadius = ENEMY_COLLISION_RADIUS;
-          if (enemy.type === 'frigate') collisionRadius = FRIGATE_COLLISION_RADIUS;
-          else if (enemy.type === 'staff') collisionRadius = STAFF_COLLISION_RADIUS;
+          if (enemy.type === 'Frégate') collisionRadius = FRIGATE_COLLISION_RADIUS;
+          else if (enemy.type === 'Mineur') collisionRadius = STAFF_COLLISION_RADIUS;
 
           // Projectile hits on this enemy
           for (const proj of [...playerProjectilesRef.current, ...enemyProjectilesRef.current]) {
               if (hitProjectileIds.has(proj.id)) continue;
               if (proj.ownerId === updatedEnemy.id) continue; // Can't hit self
               
-              const projOwner = proj.ownerId === -1 ? {isAlly: true} : enemiesRef.current.find(e => e.id === proj.ownerId);
-              if (projOwner && projOwner.isAlly === updatedEnemy.isAlly) continue; // Faction check
+              const projOwnerIsPlayer = proj.ownerId === -1;
+              const projOwner = projOwnerIsPlayer ? null : enemiesRef.current.find(e => e.id === proj.ownerId);
+
+              // Faction check: can't hit allies
+              if ((projOwnerIsPlayer && updatedEnemy.isAlly) || (projOwner && projOwner.isAlly === updatedEnemy.isAlly)) {
+                 continue;
+              }
 
               const distance = Math.hypot(proj.x - updatedEnemy.x, proj.y - updatedEnemy.y);
               if (distance < collisionRadius) {
                   hitProjectileIds.add(proj.id);
-                  const damage = proj.ownerId === -1 ? PLAYER_PROJECTILE_DAMAGE : ENEMY_PROJECTILE_DAMAGE;
-                  updatedEnemy.health -= proj.type === 'heavy' ? damage * 1.5 : damage;
+                  const damage = proj.ownerId === -1 ? (proj.type === 'heavy' ? HEAVY_PLAYER_PROJECTILE_DAMAGE : PLAYER_PROJECTILE_DAMAGE) : ENEMY_PROJECTILE_DAMAGE;
+                  updatedEnemy.health -= damage;
                   updatedEnemy.lastAttackerId = proj.ownerId;
                   
                   const isMiner = updatedEnemy.role === 'miner';
@@ -1104,13 +1185,13 @@ export function GameContainer() {
                     updatedEnemy.aiState = 'chasing';
                     updatedEnemy.stateChangeTimestamp = timestamp;
                     
-                    const attacker = proj.ownerId === -1 
+                    const attacker = projOwnerIsPlayer
                         ? {x: playerPositionRef.current.x, y: playerPositionRef.current.y} 
                         : enemiesRef.current.find(e => e.id === proj.ownerId);
 
                     if (attacker) {
                         updatedEnemy.lastKnownPlayerPosition = { x: attacker.x, y: attacker.y };
-                        updatedEnemy.combatTargetId = proj.ownerId === -1 ? -1 : proj.ownerId;
+                        updatedEnemy.combatTargetId = projOwnerIsPlayer ? -1 : proj.ownerId;
                     }
                   }
               }
@@ -1144,15 +1225,22 @@ export function GameContainer() {
           const shouldFlee = (updatedEnemy.health / updatedEnemy.maxHealth) < ENEMY_FLEE_HEALTH_THRESHOLD;
           if (updatedEnemy.aiState !== 'fleeing' && shouldFlee && updatedEnemy.lastAttackerId !== null) {
               updatedEnemy.aiState = 'fleeing';
+              if (updatedEnemy.energy > 50) {
+                 updatedEnemy.shipMode = 'shield'; // Activate shield on flee
+              }
           } else if (updatedEnemy.aiState === 'fleeing') {
               const attacker = updatedEnemy.lastAttackerId === -1 
                   ? playerPositionRef.current 
                   : enemiesRef.current.find(e => e.id === updatedEnemy.lastAttackerId);
               if (attacker) {
                   const distFromAttacker = Math.hypot(updatedEnemy.x - attacker.x, updatedEnemy.y - attacker.y);
-                  if (distFromAttacker > aggroRadius * 1.5) updatedEnemy.aiState = 'patrolling';
+                  if (distFromAttacker > aggroRadius * 1.5) {
+                    updatedEnemy.aiState = 'patrolling';
+                    updatedEnemy.shipMode = 'normal';
+                  }
               } else {
                   updatedEnemy.aiState = 'patrolling';
+                  updatedEnemy.shipMode = 'normal';
               }
           } else if (isMiner) {
               if (updatedEnemy.cargo >= MINER_CARGO_PER_TRIP && updatedEnemy.aiState !== 'returning_to_base') {
@@ -1164,7 +1252,7 @@ export function GameContainer() {
               // Group Aggro
               if (updatedEnemy.combatTargetId === null) {
                   for (const otherShip of enemiesRef.current) {
-                      if (otherShip.id === updatedEnemy.id || otherShip.isAlly !== updatedEnemy.isAlly) continue;
+                      if (otherShip.id === updatedEnemy.id || otherShip.isAlly === updatedEnemy.isAlly) continue;
                       if (otherShip.combatTargetId !== null && otherShip.aiState === 'chasing') {
                           const distToAlly = Math.hypot(updatedEnemy.x - otherShip.x, updatedEnemy.y - otherShip.y);
                           if (distToAlly < AI_HELP_RADIUS) {
@@ -1375,10 +1463,10 @@ export function GameContainer() {
                     break;
                 }
                 const targetShip = updatedEnemy.combatTargetId === -1 
-                    ? { x: playerPositionRef.current.x, y: playerPositionRef.current.y, isAlly: false }
+                    ? { x: playerPositionRef.current.x, y: playerPositionRef.current.y, isAlly: false, health: playerDataRef.current.health }
                     : enemiesRef.current.find(e => e.id === updatedEnemy.combatTargetId);
 
-                if (targetShip) {
+                if (targetShip && targetShip.health > 0) {
                     updatedEnemy.lastKnownPlayerPosition = { x: targetShip.x, y: targetShip.y };
                     const distanceToTarget = Math.hypot(targetShip.x - updatedEnemy.x, targetShip.y - updatedEnemy.y);
                     const angleToTarget = Math.atan2(targetShip.y - updatedEnemy.y, targetShip.x - updatedEnemy.x);
@@ -1393,23 +1481,50 @@ export function GameContainer() {
                     }
 
                     if (timestamp - updatedEnemy.lastShotTimestamp > ENEMY_FIRE_RATE_MS && updatedEnemy.energy >= ENEMY_ENERGY_PER_SHOT) {
-                        let projectileType: 'basic' | 'heavy' = 'basic';
-                        if (updatedEnemy.type === 'frigate') {
-                            projectileType = 'heavy';
+                        const enemyShipConfig = SHIP_DATA[updatedEnemy.type];
+                        if (enemyShipConfig.weapons.manualTurrets.count > 0) {
+                           newEnemyProjectiles.push({ id: getUniqueId(), x: updatedEnemy.x, y: updatedEnemy.y, rotation: angleToTarget * (180 / Math.PI), ownerId: updatedEnemy.id, type: 'basic' });
+                           updatedEnemy.lastShotTimestamp = timestamp;
+                           updatedEnemy.energy -= ENEMY_ENERGY_PER_SHOT;
+                           updatedEnemy.lastEnergyUseTimestamp = timestamp;
                         }
-                        newEnemyProjectiles.push({ id: getUniqueId(), x: updatedEnemy.x, y: updatedEnemy.y, rotation: angleToTarget * (180 / Math.PI), ownerId: updatedEnemy.id, type: projectileType });
-                        updatedEnemy.lastShotTimestamp = timestamp;
-                        updatedEnemy.energy -= ENEMY_ENERGY_PER_SHOT;
-                        updatedEnemy.lastEnergyUseTimestamp = timestamp;
                     }
+
+                    const enemyShipConfig = SHIP_DATA[updatedEnemy.type];
+                    if (enemyShipConfig.weapons.beam && updatedEnemy.energy >= AI_BEAM_ENERGY_COST) {
+                        const isAlreadyBeaming = activeBeamsRef.current.some(b => b.sourceId === updatedEnemy.id);
+                        if (!isAlreadyBeaming) {
+                            const newBeams: BeamState[] = [];
+                            const shipRotRad = updatedEnemy.rotation * (Math.PI / 180);
+                            for (const offset of enemyShipConfig.weapons.beam.offsets) {
+                                const rotatedOffsetX = offset.x * Math.cos(shipRotRad) - offset.y * Math.sin(shipRotRad);
+                                const rotatedOffsetY = offset.x * Math.sin(shipRotRad) + offset.y * Math.cos(shipRotRad);
+                                newBeams.push({
+                                    id: getUniqueId(),
+                                    sourceId: updatedEnemy.id,
+                                    targetId: updatedEnemy.combatTargetId!,
+                                    startTime: timestamp,
+                                    type: enemyShipConfig.weapons.beam.type,
+                                    sourceOffsetX: rotatedOffsetX,
+                                    sourceOffsetY: rotatedOffsetY,
+                                });
+                            }
+                            setActiveBeams(prev => [...prev, ...newBeams]);
+                            updatedEnemy.energy -= AI_BEAM_ENERGY_COST;
+                            updatedEnemy.lastEnergyUseTimestamp = timestamp;
+                        }
+                    }
+
                 } else {
                     updatedEnemy.aiState = 'searching';
                     updatedEnemy.combatTargetId = null;
                     updatedEnemy.stateChangeTimestamp = timestamp;
+                    setActiveBeams(prev => prev.filter(b => b.sourceId !== updatedEnemy.id));
                 }
                 break;
             }
             case 'searching':
+                setActiveBeams(prev => prev.filter(b => b.sourceId !== updatedEnemy.id));
                 if (timestamp - updatedEnemy.stateChangeTimestamp > ENEMY_SEARCH_DURATION_MS) {
                     updatedEnemy.aiState = 'patrolling';
                     updatedEnemy.lastKnownPlayerPosition = null;
@@ -1427,6 +1542,7 @@ export function GameContainer() {
                 }
                 break;
             case 'fleeing': {
+                setActiveBeams(prev => prev.filter(b => b.sourceId !== updatedEnemy.id));
                 const attacker = updatedEnemy.lastAttackerId === -1 
                     ? playerPositionRef.current
                     : enemiesRef.current.find(e => e.id === updatedEnemy.lastAttackerId);
@@ -1468,10 +1584,9 @@ export function GameContainer() {
                         updatedEnemy.vy = Math.sin(angleToPatrolPoint) * ENEMY_SPEED * 0.5;
                     }
                     
-                    // Separation logic
                     let separationVec = { x: 0, y: 0 };
                     for (const otherShip of enemiesRef.current) {
-                        if (otherShip.id !== updatedEnemy.id && otherShip.followTargetId === updatedEnemy.followTargetId) {
+                        if (otherShip.id !== updatedEnemy.id && (otherShip.isAlly === updatedEnemy.isAlly || otherShip.followTargetId === updatedEnemy.followTargetId)) {
                             const dist = Math.hypot(updatedEnemy.x - otherShip.x, updatedEnemy.y - otherShip.y);
                             if (dist > 0 && dist < AI_SEPARATION_DISTANCE) {
                                 const angleAway = Math.atan2(updatedEnemy.y - otherShip.y, updatedEnemy.x - otherShip.x);
@@ -1483,9 +1598,7 @@ export function GameContainer() {
                     updatedEnemy.vx += separationVec.x * 0.5;
                     updatedEnemy.vy += separationVec.y * 0.5;
 
-
                 } else {
-                    // Target to follow is gone, revert to patrolling
                     updatedEnemy.aiState = 'patrolling';
                     updatedEnemy.followTargetId = null;
                 }
@@ -1508,6 +1621,26 @@ export function GameContainer() {
       }).filter(Boolean) as EnemyState[];
 
       if (newEnemyProjectiles.length > 0) setEnemyProjectiles(prev => [...prev, ...newEnemyProjectiles]);
+
+      activeBeamsRef.current.forEach(beam => {
+        const source = beam.sourceId === -1 ? { x: playerPositionRef.current.x, y: playerPositionRef.current.y } : enemiesRef.current.find(e => e.id === beam.sourceId);
+        const target = beam.targetId === -1 ? { x: playerPositionRef.current.x, y: playerPositionRef.current.y } : enemiesRef.current.find(e => e.id === beam.targetId);
+
+        if (!source || !target) return;
+
+        const duration = timestamp - beam.startTime;
+        const rampUpTime = BEAM_RAMP_UP_TIME_MS;
+        const maxMultiplier = BEAM_RAMP_UP_MULTIPLIER;
+        const damageMultiplier = 1 + (Math.min(duration, rampUpTime) / rampUpTime) * (maxMultiplier - 1);
+        const frameDamage = (beam.type === 'heavy' ? HEAVY_BEAM_DAMAGE_PER_FRAME : BEAM_DAMAGE_PER_FRAME) * damageMultiplier;
+
+        if (beam.targetId === -1) {
+            applyDamage(frameDamage);
+        } else {
+            processedEnemies = processedEnemies.map(e => e.id === beam.targetId ? { ...e, health: Math.max(0, e.health - frameDamage) } : e);
+        }
+    });
+
       
       let playerVelocityUpdate = { ...velocityRef.current };
       if (timestamp - lastCollisionTimestamp > 500) {
@@ -1530,8 +1663,8 @@ export function GameContainer() {
               for (let i = 0; i < processedEnemies.length; i++) {
                   let enemy = processedEnemies[i];
                   let enemyRadius = ENEMY_COLLISION_RADIUS;
-                  if (enemy.type === 'frigate') enemyRadius = FRIGATE_COLLISION_RADIUS;
-                  else if (enemy.type === 'staff') enemyRadius = STAFF_COLLISION_RADIUS;
+                  if (enemy.type === 'Frégate') enemyRadius = FRIGATE_COLLISION_RADIUS;
+                  else if (enemy.type === 'Mineur') enemyRadius = STAFF_COLLISION_RADIUS;
                   const distance = Math.hypot(enemy.x - playerPositionRef.current.x, enemy.y - playerPositionRef.current.y);
                   if (distance < enemyRadius + PLAYER_COLLISION_RADIUS) {
                       collided = true;
@@ -1647,8 +1780,8 @@ export function GameContainer() {
           for (let i = 0; i < processedEnemies.length; i++) {
               if (collectedDebrisIds.has(d.id)) break;
               let enemyRadius = ENEMY_COLLISION_RADIUS;
-              if (processedEnemies[i].type === 'frigate') enemyRadius = FRIGATE_COLLISION_RADIUS;
-              else if (processedEnemies[i].type === 'staff') enemyRadius = STAFF_COLLISION_RADIUS;
+              if (processedEnemies[i].type === 'Frégate') enemyRadius = FRIGATE_COLLISION_RADIUS;
+              else if (processedEnemies[i].type === 'Mineur') enemyRadius = STAFF_COLLISION_RADIUS;
               const enemyDist = Math.hypot(d.x - processedEnemies[i].x, d.y - processedEnemies[i].y);
               if (enemyDist < DEBRIS_COLLISION_RADIUS + enemyRadius) {
                   const cargoToAdd = (d.resources.ore || 0) + (d.resources.gas || 0);
@@ -1663,6 +1796,9 @@ export function GameContainer() {
       setDebris(finalDebris);
 
       setEnemies(processedEnemies);
+
+      const activeEntities = new Set([-1, ...processedEnemies.map(e => e.id)]);
+      setActiveBeams(prev => prev.filter(b => activeEntities.has(b.sourceId) && activeEntities.has(b.targetId)));
 
 
       if (playerDataRef.current.health <= 0) {
@@ -1726,15 +1862,16 @@ export function GameContainer() {
       maxHealth: enemy.maxHealth,
       isTargeted: enemy.id === targetId,
       isAlly: enemy.isAlly || false,
+      shipMode: enemy.shipMode || 'normal',
     };
     switch (enemy.type) {
-      case 'chasseur':
+      case 'Chasseur':
         return <EnemyShip key={enemy.id} {...props} />;
-      case 'frigate':
+      case 'Frégate':
         return <FrigateShip key={enemy.id} {...props} />;
-      case 'staff':
+      case 'Mineur':
         return <StaffShip key={enemy.id} {...props} />;
-      case 'interceptor':
+      case 'Intercepteur':
         return <InterceptorShip key={enemy.id} {...props} />;
       default:
         return null;
@@ -1767,27 +1904,25 @@ export function GameContainer() {
           <Projectile key={`enemy-proj-${p.id}`} x={p.x} y={p.y} rotation={p.rotation} type={p.type} />
         ))}
         {activeBeams.map(beam => {
-            let sourceEntity, targetEntity;
+            const sourceEntity = beam.sourceId === -1 
+                ? { x: playerPositionRef.current.x, y: playerPositionRef.current.y } 
+                : enemiesRef.current.find(e => e.id === beam.sourceId);
 
-            if (beam.sourceId === -1) {
-                sourceEntity = playerPositionRef.current;
-            } else {
-                sourceEntity = enemiesRef.current.find(e => e.id === beam.sourceId);
-            }
-
-            if (beam.targetId === -1) {
-                targetEntity = playerPositionRef.current;
-            } else {
-                targetEntity = enemiesRef.current.find(e => e.id === beam.targetId);
-            }
+            const targetEntity = beam.targetId === -1 
+                ? { x: playerPositionRef.current.x, y: playerPositionRef.current.y }
+                : enemiesRef.current.find(e => e.id === beam.targetId);
 
             if (!sourceEntity || !targetEntity) return null;
+
+            const sourceX = sourceEntity.x + (beam.sourceOffsetX || 0);
+            const sourceY = sourceEntity.y + (beam.sourceOffsetY || 0);
 
             return (
                 <Beam 
                     key={beam.id}
-                    x1={sourceEntity.x}
-                    y1={sourceEntity.y}
+                    id={beam.id}
+                    x1={sourceX}
+                    y1={sourceY}
                     x2={targetEntity.x}
                     y2={targetEntity.y}
                     type={beam.type}

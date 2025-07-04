@@ -31,9 +31,15 @@ export interface WeaponConfig {
         type: 'basic' | 'heavy';
         offsets: {x: number, y: number}[];
     };
+    autoTurrets?: {
+        count: number;
+        type: 'basic' | 'heavy';
+        offsets: {x: number, y: number}[];
+    };
     beam?: {
         count: number;
         type: 'basic' | 'heavy';
+        offsets: {x: number, y: number}[];
     };
 }
 
@@ -72,7 +78,7 @@ export interface StellarBaseData {
 }
 
 export type EnemyAiState = 'patrolling' | 'chasing' | 'searching' | 'fleeing' | 'following' | 'mining' | 'returning_to_base' | 'guarding' | 'scavenging';
-export type BotShipType = 'chasseur' | 'frigate' | 'staff' | 'interceptor';
+export type BotShipType = 'Chasseur' | 'Frégate' | 'Mineur' | 'Intercepteur';
 
 export type EnemyState = {
   id: number;
@@ -85,6 +91,7 @@ export type EnemyState = {
   health: number;
   maxHealth: number;
   lastShotTimestamp: number;
+  lastAutoShotTimestamp: number;
   aiState: EnemyAiState;
   lastKnownPlayerPosition: { x: number, y: number } | null;
   stateChangeTimestamp: number;
@@ -100,6 +107,7 @@ export type EnemyState = {
   lastAttackerId?: number | null;
   patrolTarget?: { x: number, y: number } | null;
   followTargetId?: number | null;
+  shipMode?: ShipMode;
 };
 
 export type AsteroidState = {
@@ -134,6 +142,8 @@ export interface BeamState {
   id: number;
   sourceId: number;
   targetId: number;
-  endTime: number;
+  startTime: number;
   type: 'basic' | 'heavy';
+  sourceOffsetX?: number;
+  sourceOffsetY?: number;
 }
