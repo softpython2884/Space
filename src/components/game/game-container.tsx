@@ -1344,17 +1344,14 @@ export function GameContainer() {
                 setPlayerData(d => ({...d, energy: d.energy - BEAM_INITIAL_ENERGY_COST}));
                 lastEnergyUseTimestamp.current = timestamp;
                 const newBeams: BeamState[] = [];
-                const shipRotRad = playerRotationRef.current * (Math.PI / 180);
                 for (const offset of beam.offsets) {
-                    const rotatedOffsetX = offset.x * Math.cos(shipRotRad) - offset.y * Math.sin(shipRotRad);
-                    const rotatedOffsetY = offset.x * Math.sin(shipRotRad) + offset.y * Math.cos(shipRotRad);
                     newBeams.push({
                         id: getUniqueId(),
                         sourceId: -1,
                         targetId: currentTarget.id,
                         type: beam.type,
-                        sourceOffsetX: rotatedOffsetX,
-                        sourceOffsetY: rotatedOffsetY,
+                        sourceOffsetX: offset.x,
+                        sourceOffsetY: offset.y,
                         isAlly: true
                     });
                 }
@@ -1682,12 +1679,6 @@ export function GameContainer() {
               if (closestTarget) {
                   updatedEnemy.combatTargetId = closestTarget.id;
                   updatedEnemy.aiState = 'chasing';
-              } else if (updatedEnemy.role === 'attack') { // If attacker and no target, go for base
-                  const enemyBase = stationsRef.current.find(s => s.owner !== (updatedEnemy.isAlly ? 'player' : 'enemy'));
-                  if (enemyBase) {
-                     updatedEnemy.combatTargetId = enemyBase.id + 10000;
-                     updatedEnemy.aiState = 'chasing';
-                  }
               }
           }
 
@@ -1923,17 +1914,14 @@ export function GameContainer() {
                         if (!isAlreadyBeaming) {
                             updatedEnemy.energy -= BEAM_INITIAL_ENERGY_COST;
                             const newBeams: BeamState[] = [];
-                            const shipRotRad = updatedEnemy.rotation * (Math.PI / 180);
                             for (const offset of enemyShipInfo.weapons.beam.offsets) {
-                                const rotatedOffsetX = offset.x * Math.cos(shipRotRad) - offset.y * Math.sin(shipRotRad);
-                                const rotatedOffsetY = offset.x * Math.sin(shipRotRad) + offset.y * Math.cos(shipRotRad);
                                 newBeams.push({
                                     id: getUniqueId(),
                                     sourceId: updatedEnemy.id,
                                     targetId: targetShip.id,
                                     type: enemyShipInfo.weapons.beam.type,
-                                    sourceOffsetX: rotatedOffsetX,
-                                    sourceOffsetY: rotatedOffsetY,
+                                    sourceOffsetX: offset.x,
+                                    sourceOffsetY: offset.y,
                                     isAlly: updatedEnemy.isAlly
                                 });
                             }
@@ -1969,43 +1957,64 @@ export function GameContainer() {
                     }
                 }
                 break;
-            case 'fleeing':
-            case 'recharging': {
+            case 'fleeing': {
                 currentActiveBeams = currentActiveBeams.filter(b => b.sourceId !== updatedEnemy.id);
                 const fleeSpeedMultiplier = updatedEnemy.cruiseState === 'cruising' ? 5 : 1.2;
                 
                 let fleeTargetPos: {x: number, y: number} | null = null;
-                if(updatedEnemy.aiState === 'fleeing') {
-                    const faction = updatedEnemy.isAlly ? 'player' : 'enemy';
-                    fleeTargetPos = stationsRef.current.find(s => s.owner === faction) || null;
-                }
+                const faction = updatedEnemy.isAlly ? 'player' : 'enemy';
+                fleeTargetPos = stationsRef.current.find(s => s.owner === faction) || null;
 
                 if (fleeTargetPos) { // Fleeing to base
                      const angleToBase = Math.atan2(fleeTargetPos.y - updatedEnemy.y, fleeTargetPos.x - updatedEnemy.x);
                      updatedEnemy.vx = Math.cos(angleToBase) * ENEMY_SPEED * fleeSpeedMultiplier;
                      updatedEnemy.vy = Math.sin(angleToBase) * ENEMY_SPEED * fleeSpeedMultiplier;
-                } else { // Fleeing from threat (or recharging)
+                } else { // No base, flee from threat
                     const threat = updatedEnemy.fleeFrom || updatedEnemy.lastKnownPlayerPosition;
                     if (threat) {
                          const angleAway = Math.atan2(updatedEnemy.y - threat.y, updatedEnemy.x - threat.x);
                          updatedEnemy.vx = Math.cos(angleAway) * ENEMY_SPEED * fleeSpeedMultiplier;
                          updatedEnemy.vy = Math.sin(angleAway) * ENEMY_SPEED * fleeSpeedMultiplier;
-                    } else { // No threat, just patrol
+                    } else { 
                         updatedEnemy.aiState = 'patrolling';
                     }
                 }
 
-                if (updatedEnemy.aiState === 'fleeing' && fleeTargetPos) {
-                     const distToBase = Math.hypot(updatedEnemy.x - fleeTargetPos.x, updatedEnemy.y - fleeTargetPos.y);
-                     if (distToBase < STATION_INTERACTION_RADIUS * 1.5) {
-                         updatedEnemy.aiState = updatedEnemy.isAlly ? 'guarding' : 'patrolling';
-                     }
+                 const distToBase = fleeTargetPos ? Math.hypot(updatedEnemy.x - fleeTargetPos.x, updatedEnemy.y - fleeTargetPos.y) : Infinity;
+                 if (distToBase < STATION_INTERACTION_RADIUS * 1.5) {
+                     updatedEnemy.aiState = updatedEnemy.isAlly ? 'guarding' : 'patrolling';
+                 }
+
+                break;
+            }
+            case 'recharging': {
+                currentActiveBeams = currentActiveBeams.filter(b => b.sourceId !== updatedEnemy.id);
+                let fleeFromThreat = false;
+                const potentialThreats = [
+                    {id: -1, x: playerPositionRef.current.x, y: playerPositionRef.current.y, isAlly: true },
+                    ...enemiesRef.current
+                ].filter(e => e.isAlly !== updatedEnemy.isAlly);
+
+                for (const pTarget of potentialThreats) {
+                    const dist = Math.hypot(updatedEnemy.x - pTarget.x, updatedEnemy.y - pTarget.y);
+                    if (dist < ENEMY_AGGRO_RADIUS * 0.75) {
+                        const angleAway = Math.atan2(updatedEnemy.y - pTarget.y, updatedEnemy.x - pTarget.x);
+                        updatedEnemy.vx = Math.cos(angleAway) * ENEMY_SPEED * 0.8;
+                        updatedEnemy.vy = Math.sin(angleAway) * ENEMY_SPEED * 0.8;
+                        fleeFromThreat = true;
+                        break;
+                    }
                 }
 
-                if (updatedEnemy.aiState === 'recharging' && timestamp - updatedEnemy.stateChangeTimestamp > 3000) {
+                if (!fleeFromThreat) {
+                    updatedEnemy.vx *= FRICTION;
+                    updatedEnemy.vy *= FRICTION;
+                }
+                
+                if (!isLowEnergy) {
                     updatedEnemy.aiState = 'patrolling';
+                    updatedEnemy.stateChangeTimestamp = timestamp;
                 }
-
                 break;
             }
             case 'following': {
@@ -2077,7 +2086,8 @@ export function GameContainer() {
           } else {
               target = processedEnemies.find(e => e.id === beam.targetId) || null;
           }
-      
+
+
           if (!source || !target) return null;
       
           const frameDamage = BEAM_DAMAGE_PER_FRAME;
@@ -2503,7 +2513,7 @@ export function GameContainer() {
           isShieldActive={shipMode === 'shield'} 
         />
         {visibleEnemies.map(enemy => {
-          const props = {
+          const { key, ...props } = {
             key: enemy.id,
             x: enemy.x,
             y: enemy.y,
@@ -2516,13 +2526,13 @@ export function GameContainer() {
           };
           switch (enemy.type) {
             case 'Chasseur':
-              return <EnemyShip {...props} />;
+              return <EnemyShip key={key} {...props} />;
             case 'Frégate':
-              return <FrigateShip {...props} />;
+              return <FrigateShip key={key} {...props} />;
             case 'Mineur':
-              return <StaffShip {...props} />;
+              return <StaffShip key={key} {...props} />;
             case 'Intercepteur':
-              return <InterceptorShip {...props} />;
+              return <InterceptorShip key={key} {...props} />;
             default:
               return null;
           }
