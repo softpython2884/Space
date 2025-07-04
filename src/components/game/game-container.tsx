@@ -27,7 +27,7 @@ import { CruiseStreaks } from '@/components/game/cruise-streaks';
 import { ElectricCloud } from './electric-cloud';
 import { Vortex } from './vortex';
 import { INITIAL_PLAYER_DATA, INITIAL_FACTION_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS, BEAM_INITIAL_ENERGY_COST, BEAM_DAMAGE_PER_FRAME, MAP_WIDTH, MAP_HEIGHT, ZONES } from '@/lib/constants';
-import type { ControlScheme, PlayerData, FactionData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState, AsteroidState, StationState, BotShipType, ContextMenuTargetType, PlayerActionType, Resources, PlayerUpgrades, PlayerShipClass, BeamState, ProjectileState, PlayerAction, EnemyAiState, OutpostState, ChatMessage, Zone } from '@/lib/types';
+import type { ControlScheme, PlayerData, FactionData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState, AsteroidState, StationState, BotShipType, ContextMenuTargetType, PlayerActionType, Resources, PlayerUpgrades, PlayerShipClass, BeamState, ProjectileState, PlayerAction, EnemyAiState, OutpostState, ChatMessage, Zone, StellarBaseData } from '@/lib/types';
 import { ClientOnly } from '@/components/client-only';
 import { GameOverOverlay } from './game-over-overlay';
 import { TacticalViewOverlay } from './tactical-view-overlay';
@@ -36,6 +36,7 @@ import { StationMenu } from '../game-ui/station-menu';
 import { PlayerUpgradesDisplay } from '../game-ui/player-upgrades';
 import { cn } from '@/lib/utils';
 import { ActionProgress } from '../game-ui/action-progress';
+import { useToast } from '@/hooks/use-toast';
 
 
 let ACCELERATION = 0.1;
@@ -481,7 +482,6 @@ export function GameContainer() {
     const targetAsteroid = asteroidsRef.current.find(a => a.id === targetId);
     
     if (action === 'mining' && targetAsteroid) {
-        addChatMessage('Player', `Initiating mining sequence on asteroid #${targetId}.`, 'text-cyan-300');
         if (targetAsteroid.cooldownUntil > Date.now()) {
             addChatMessage('System', "Asteroid is depleted. Try again later.", 'text-yellow-400');
             return;
@@ -517,7 +517,6 @@ export function GameContainer() {
 
     if (targetEnemy) {
       if (targetEnemy.isAlly) {
-        addChatMessage('System', "Cannot perform hostile actions on an allied ship.", 'text-yellow-400');
         return;
       }
       const distance = Math.hypot(targetEnemy.x - playerPositionRef.current.x, targetEnemy.y - playerPositionRef.current.y);
