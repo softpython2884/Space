@@ -26,7 +26,7 @@ import { ShipModeSelector } from '@/components/game-ui/ship-mode-selector';
 import { CruiseStreaks } from '@/components/game/cruise-streaks';
 import { ElectricCloud } from './electric-cloud';
 import { Vortex } from './vortex';
-import { INITIAL_PLAYER_DATA, INITIAL_FACTION_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS, BEAM_INITIAL_ENERGY_COST, BEAM_DAMAGE_PER_FRAME, MAP_WIDTH, MAP_HEIGHT, ZONES } from '@/lib/constants';
+import { INITIAL_PLAYER_DATA, INITIAL_FACTION_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS, BEAM_INITIAL_ENERGY_COST, MAP_WIDTH, MAP_HEIGHT, ZONES } from '@/lib/constants';
 import type { ControlScheme, PlayerData, FactionData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState, AsteroidState, StationState, BotShipType, ContextMenuTargetType, PlayerActionType, Resources, PlayerUpgrades, PlayerShipClass, BeamState, ProjectileState, PlayerAction, EnemyAiState, OutpostState, ChatMessage, Zone, StellarBaseData } from '@/lib/types';
 import { ClientOnly } from '@/components/client-only';
 import { GameOverOverlay } from './game-over-overlay';
@@ -300,6 +300,7 @@ export function GameContainer() {
   const keysPressed = useRef<Set<string>>(new Set());
   const mousePosition = useRef({ x: 0, y: 0 });
   const isLeftMouseDown = useRef(false);
+  const isRightMouseDown = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastEnergyUseTimestamp = useRef(0);
   const lastFiredTimestamp = useRef(0);
@@ -402,7 +403,11 @@ export function GameContainer() {
   }, []);
 
   const handleRespawn = useCallback(() => {
-    addChatMessage('System', "Respawning at base. Some resources and credits were lost.", 'text-red-400');
+    toast({
+        variant: "destructive",
+        title: "Vaisseau Détruit!",
+        description: "Redéploiement à la base. Ressources de soute et une partie des crédits perdus.",
+    });
     
     const playerBase = stationsRef.current.find(s => s.owner === 'player');
     if (playerBase) {
@@ -430,7 +435,7 @@ export function GameContainer() {
             cargo: { current: 0 }
         };
     });
-  }, [addChatMessage]);
+  }, [addChatMessage, toast]);
 
   const resetGame = useCallback(() => {
     const newStations = generateInitialStations();
@@ -893,7 +898,7 @@ export function GameContainer() {
             }));
 
             lastMousePosForPan.current = { x: event.clientX, y: event.clientY };
-        } else if (isLeftMouseDown.current && isTacticalViewRef.current) {
+        } else if (isRightMouseDown.current && isTacticalViewRef.current) {
             setSelectionBox(prev => {
                 if (!prev) return null;
                 return { ...prev, endX: event.clientX, endY: event.clientY };
@@ -913,26 +918,10 @@ export function GameContainer() {
       if (event.button === 0) { // Left Click
         isLeftMouseDown.current = true;
         setContextMenu(null);
+        
         if (isTacticalViewRef.current) {
-            let clickedOnAlly = false;
-            for (const enemy of enemiesRef.current) {
-                if (!enemy.isAlly) continue;
-                const distance = Math.hypot(clickWorldX - enemy.x, clickWorldY - enemy.y);
-                if (distance < ENEMY_CLICK_RADIUS) {
-                    clickedOnAlly = true;
-                    if (event.shiftKey) {
-                        setSelectedAllyIds(prev => prev.includes(enemy.id) ? prev.filter(id => id !== enemy.id) : [...prev, enemy.id]);
-                    } else {
-                        setSelectedAllyIds([enemy.id]);
-                    }
-                    break;
-                }
-            }
-            if (!clickedOnAlly) {
-                 if (!event.shiftKey) setSelectedAllyIds([]);
-                 // Start drawing selection box instead of panning immediately
-                 setSelectionBox({ startX: event.clientX, startY: event.clientY, endX: event.clientX, endY: event.clientY });
-            }
+            setIsPanning(true);
+            lastMousePosForPan.current = { x: event.clientX, y: event.clientY };
             return;
         }
 
@@ -974,37 +963,53 @@ export function GameContainer() {
         setContextMenu(null);
       } else if (event.button === 2) { // Right Click
         event.preventDefault();
+        isRightMouseDown.current = true;
         setContextMenu(null);
 
-        if (isTacticalViewRef.current && selectedAllyIdsRef.current.length > 0) {
-            // Check for target enemy/ally
+        if (isTacticalViewRef.current) {
+            let clickedOnAlly = false;
+            let clickedOnEnemy = false;
+
+             // Check for target enemy/ally
             for (const enemy of enemiesRef.current) {
                 const distance = Math.hypot(clickWorldX - enemy.x, clickWorldY - enemy.y);
                 if (distance < ENEMY_CLICK_RADIUS * 2) {
                     if (enemy.isAlly) {
-                         setContextMenu({ x: event.clientX, y: event.clientY, worldX: clickWorldX, worldY: clickWorldY, targetId: enemy.id, targetType: 'ally' });
+                        clickedOnAlly = true;
                     } else {
-                        addChatMessage('Commander', `Units ${selectedAllyIdsRef.current.join(', ')} ordered to attack target ${enemy.id}.`, 'text-cyan-400');
-                        setEnemies(prev => prev.map(e => selectedAllyIdsRef.current.includes(e.id) ? { ...e, aiState: 'chasing', combatTargetId: enemy.id, orderTarget: null } : e));
+                        clickedOnEnemy = true;
+                    }
+                    if (selectedAllyIdsRef.current.length > 0) {
+                        if (enemy.isAlly) {
+                            setContextMenu({ x: event.clientX, y: event.clientY, worldX: clickWorldX, worldY: clickWorldY, targetId: enemy.id, targetType: 'ally' });
+                        } else {
+                            addChatMessage('Commander', `Units ${selectedAllyIdsRef.current.join(', ')} ordered to attack target ${enemy.id}.`, 'text-cyan-400');
+                            setEnemies(prev => prev.map(e => selectedAllyIdsRef.current.includes(e.id) ? { ...e, aiState: 'chasing', combatTargetId: enemy.id, orderTarget: null } : e));
+                        }
+                    } else {
+                        if(enemy.isAlly) {
+                             if (event.shiftKey) {
+                                setSelectedAllyIds(prev => prev.includes(enemy.id) ? prev.filter(id => id !== enemy.id) : [...prev, enemy.id]);
+                            } else {
+                                setSelectedAllyIds([enemy.id]);
+                            }
+                        }
                     }
                     return;
                 }
             }
-             // Check for target asteroid
-            for (const asteroid of asteroidsRef.current) {
-                const distance = Math.hypot(clickWorldX - asteroid.x, clickWorldY - asteroid.y);
-                if (distance < asteroid.size * ASTEROID_COLLISION_RADIUS) {
-                    addChatMessage('Commander', `Mining units ordered to asteroid ${asteroid.id}.`, 'text-cyan-400');
-                    setEnemies(prev => prev.map(e => (selectedAllyIdsRef.current.includes(e.id) && e.type === 'Mineur') ? { ...e, aiState: 'mining', targetObjectId: asteroid.id, orderTarget: null } : e));
-                    return;
+            if (!clickedOnAlly && !clickedOnEnemy) {
+                if (selectedAllyIdsRef.current.length > 0) {
+                     setContextMenu({ x: event.clientX, y: event.clientY, worldX: clickWorldX, worldY: clickWorldY, targetId: null, targetType: 'tactical_space' });
+                } else {
+                    if (!event.shiftKey) setSelectedAllyIds([]);
+                    setSelectionBox({ startX: event.clientX, startY: event.clientY, endX: event.clientX, endY: event.clientY });
                 }
             }
-            // Open context menu for tactical orders
-            setContextMenu({ x: event.clientX, y: event.clientY, worldX: clickWorldX, worldY: clickWorldY, targetId: null, targetType: 'tactical_space' });
             return;
         }
 
-        // Open context menu
+        // Open context menu (non-tactical)
         for (const enemy of enemiesRef.current) {
           const distance = Math.hypot(clickWorldX - enemy.x, clickWorldY - enemy.y);
           if (distance < ENEMY_CLICK_RADIUS * 2) {
@@ -1033,6 +1038,10 @@ export function GameContainer() {
     const handleMouseUp = (event: MouseEvent) => {
         if (event.button === 0) {
             isLeftMouseDown.current = false;
+            setIsPanning(false);
+        }
+        if (event.button === 2) { // Right mouse up
+            isRightMouseDown.current = false;
             if (selectionBox) {
                 const { startX, startY, endX, endY } = selectionBox;
                 const minX = Math.min(startX, endX);
@@ -1064,9 +1073,6 @@ export function GameContainer() {
 
                 setSelectionBox(null);
             }
-        }
-        if(isPanningRef.current) {
-            setIsPanning(false);
         }
     };
     
@@ -2526,32 +2532,44 @@ export function GameContainer() {
   
   const visibleAsteroids = React.useMemo(() =>
     asteroids.filter(a => {
+        if(isTacticalView) return true;
         const distance = Math.hypot(a.x - cameraPosition.x, a.y - cameraPosition.y);
         return shipMode === 'stealth' ? distance < STEALTH_AGGRO_RADIUS * 1.5 : distance < radarRange * 1.5;
     }),
-    [asteroids, cameraPosition.x, cameraPosition.y, radarRange, shipMode]
+    [asteroids, cameraPosition.x, cameraPosition.y, radarRange, shipMode, isTacticalView]
   );
 
   const visibleStations = React.useMemo(() =>
     stations.filter(s => {
+        if(isTacticalView) return true;
         const distance = Math.hypot(s.x - cameraPosition.x, s.y - cameraPosition.y);
         return shipMode === 'stealth' ? distance < STEALTH_AGGRO_RADIUS * 1.5 : distance < radarRange * 1.5;
     }),
-    [stations, cameraPosition.x, cameraPosition.y, radarRange, shipMode]
+    [stations, cameraPosition.x, cameraPosition.y, radarRange, shipMode, isTacticalView]
   );
 
   const visibleOutposts = React.useMemo(() =>
-    outposts.filter(o => Math.hypot(o.x - cameraPosition.x, o.y - cameraPosition.y) < radarRange * 1.5),
-    [outposts, cameraPosition.x, cameraPosition.y, radarRange]
+    outposts.filter(o => {
+        if(isTacticalView) return true;
+        return Math.hypot(o.x - cameraPosition.x, o.y - cameraPosition.y) < radarRange * 1.5
+    }),
+    [outposts, cameraPosition.x, cameraPosition.y, radarRange, isTacticalView]
   );
   
   const visibleDebris = React.useMemo(() =>
-    debris.filter(d => Math.hypot(d.x - cameraPosition.x, d.y - cameraPosition.y) < radarRange * 1.5),
-    [debris, cameraPosition.x, cameraPosition.y, radarRange]
+    debris.filter(d => {
+        if(isTacticalView) return true;
+        return Math.hypot(d.x - cameraPosition.x, d.y - cameraPosition.y) < radarRange * 1.5
+    }),
+    [debris, cameraPosition.x, cameraPosition.y, radarRange, isTacticalView]
   );
   
   const containerClass = cn(
-    "relative w-full h-full overflow-hidden bg-gray-900 cursor-crosshair",
+    "relative w-full h-full overflow-hidden bg-gray-900",
+    {
+        'cursor-grab': isPanning,
+        'cursor-crosshair': !isPanning,
+    },
     shipMode === 'stealth' && 'stealth-effect',
     cruiseState === 'cruising' && 'cruise-effect',
     cruiseState === 'charging' && 'cruise-charging-effect',
@@ -2643,7 +2661,6 @@ export function GameContainer() {
         />
         {visibleEnemies.map(enemy => {
           const props = {
-            key: enemy.id,
             x: enemy.x,
             y: enemy.y,
             rotation: enemy.rotation,
@@ -2655,13 +2672,13 @@ export function GameContainer() {
           };
           switch (enemy.type) {
             case 'Chasseur':
-              return <EnemyShip {...props} />;
+              return <EnemyShip key={enemy.id} {...props} />;
             case 'Frégate':
-              return <FrigateShip {...props} />;
+              return <FrigateShip key={enemy.id} {...props} />;
             case 'Mineur':
-              return <StaffShip {...props} />;
+              return <StaffShip key={enemy.id} {...props} />;
             case 'Intercepteur':
-              return <InterceptorShip {...props} />;
+              return <InterceptorShip key={enemy.id} {...props} />;
             default:
               return null;
           }
