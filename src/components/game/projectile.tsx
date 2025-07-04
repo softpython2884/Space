@@ -4,10 +4,9 @@ interface ProjectileProps {
   x: number;
   y: number;
   rotation: number;
-  isAlly: boolean;
 }
 
-export function Projectile({ x, y, rotation, isAlly }: ProjectileProps) {
+export function Projectile({ x, y, rotation }: ProjectileProps) {
   const colorClass = "bg-orange-400";
   const shadowStyle = '0 0 6px hsl(30 100% 50%)';
 
