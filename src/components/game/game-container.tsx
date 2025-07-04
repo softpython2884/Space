@@ -29,7 +29,7 @@ import { ShipModeSelector } from '@/components/game-ui/ship-mode-selector';
 import { CruiseStreaks } from '@/components/game/cruise-streaks';
 import { ElectricCloud } from './electric-cloud';
 import { Vortex } from './vortex';
-import { BEAM_RANGE, INITIAL_PLAYER_DATA, INITIAL_FACTION_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS, AI_HELP_RADIUS, MAP_WIDTH, MAP_HEIGHT, ZONES, BEAM_DAMAGE_PER_FRAME, REINFORCEMENT_COST, REINFORCEMENT_COOLDOWN_MS } from '@/lib/constants';
+import { BEAM_RANGE, INITIAL_PLAYER_DATA, INITIAL_FACTION_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS, AI_HELP_RADIUS, MAP_WIDTH, MAP_HEIGHT, ZONES, BEAM_DAMAGE_PER_FRAME, BEAM_ENERGY_DRAIN_PER_FRAME, REINFORCEMENT_COST, REINFORCEMENT_COOLDOWN_MS } from '@/lib/constants';
 import type { ControlScheme, PlayerData, FactionData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState, AsteroidState, StationState, BotShipType, ContextMenuTargetType, PlayerActionType, Resources, PlayerUpgrades, PlayerShipClass, BeamState, ProjectileState, PlayerAction, EnemyAiState, OutpostState, ChatMessage, Zone, StellarBaseData } from '@/lib/types';
 import { ClientOnly } from '@/components/client-only';
 import { GameOverOverlay } from './game-over-overlay';

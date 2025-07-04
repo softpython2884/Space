@@ -18,7 +18,7 @@ export const INITIAL_PLAYER_DATA: PlayerData = {
     },
   },
   health: 900,
-  energy: 1000,
+  energy: 10000,
   cargo: {
     current: 0,
   },
@@ -66,6 +66,7 @@ export const SHIP_DATA: Record<PlayerShipClass, {
 };
 
 export const BEAM_DAMAGE_PER_FRAME = 0.5;
+export const BEAM_ENERGY_DRAIN_PER_FRAME = 0.3;
 export const BEAM_RANGE = 1000;
 export const STATION_BASE_HEALTH = 45000;
 export const STATION_BASE_SHIELD = 9000;
