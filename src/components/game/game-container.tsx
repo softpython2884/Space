@@ -109,7 +109,7 @@ const SHIELD_DAMAGE_TO_ENERGY_COST = 0.5;
 const MODE_CHANGE_COOLDOWN_MS = 2000;
 
 // Enemy AI Constants
-const ENEMY_MAX_ENERGY = 100;
+const ENEMY_MAX_ENERGY = 1000;
 const ENEMY_ENERGY_PER_SHOT = 10;
 const ENEMY_ENERGY_REGEN_RATE = 0.05;
 const ENEMY_ENERGY_REGEN_DELAY_MS = 3000;
@@ -1691,16 +1691,16 @@ export function GameContainer() {
         }
 
         if (shipModeRef.current === 'shield') {
-            setPlayerData(d => {
-                if (d.energy > 0) {
-                    lastEnergyUseTimestamp.current = timestamp;
-                    return { ...d, energy: Math.max(0, d.energy - SHIELD_ENERGY_DRAIN_RATE) };
-                }
-                return d;
-            });
-            if (playerDataRef.current.energy <= 0) {
-                setShipMode('normal');
-            }
+          setPlayerData(d => {
+              if (d.energy > 0) {
+                  lastEnergyUseTimestamp.current = timestamp;
+                  return { ...d, energy: Math.max(0, d.energy - SHIELD_ENERGY_DRAIN_RATE) };
+              }
+              return d;
+          });
+          if (playerDataRef.current.energy <= 0) {
+              setShipMode('normal');
+          }
         } else if (timestamp - lastEnergyUseTimestamp.current > ENERGY_REGEN_DELAY_MS) {
             setPlayerData(d => ({ ...d, energy: Math.min(maxEnergy, d.energy + baseEnergyRecharge) }));
         }
@@ -1763,7 +1763,7 @@ export function GameContainer() {
                   const canSee = visionSources.some(source => Math.hypot(source.x - pTarget.x, source.y - pTarget.y) < STATION_RANGE);
                   if (canSee) {
                      const dist = Math.hypot(station.x - pTarget.x, station.y - pTarget.y);
-                     if (dist < STATION_RANGE && (!closestTarget || dist < closestTarget.dist)) {
+                     if (!closestTarget || dist < closestTarget.dist) {
                          closestTarget = { id: pTarget.id, x: pTarget.x, y: pTarget.y, dist };
                      }
                   }
@@ -1857,7 +1857,7 @@ export function GameContainer() {
                 : enemiesRef.current.find(e => e.id === updatedEnemy.followTargetId);
             
             if (targetToFollow) {
-                const distanceToTarget = Math.hypot(targetToFollow.x - updatedEnemy.x, updatedEnemy.y - updatedEnemy.y);
+                const distanceToTarget = Math.hypot(targetToFollow.x - updatedEnemy.x, targetToFollow.y - updatedEnemy.y);
                 const playerIsCruising = cruiseStateRef.current === 'cruising';
                 const canCruise = timestamp >= (updatedEnemy.cruiseAvailableAt || 0) && updatedEnemy.energy >= CRUISE_ENERGY_COST;
 
@@ -2888,7 +2888,6 @@ export function GameContainer() {
   }, [viewSize, isGameOver, controlScheme, isDocked, applyDamage, handleActionSelect, handleBuyAlly, handleBuyShip, handleBuyUpgrade, handleRepairHull, handleSellResource, resetGame, addChatMessage, handleBuildShipFromTactical, handleBuildOutpost, handleRespawn, zones, cheats, handleCallReinforcements, handleAllAttack, handleAllFollow, handleAllHold]);
 
   const allies = React.useMemo(() => enemies.filter(e => e.isAlly), [enemies]);
-  const radarRange = shipMode === 'scan' ? BASE_RADAR_RANGE * 1.5 : BASE_RADAR_RANGE;
 
 
   const isEntityVisible = useCallback((entity: { x: number; y: number }) => {
@@ -3057,6 +3056,7 @@ export function GameContainer() {
         />
         {visibleEnemies.map(enemy => {
           const props = {
+            key: enemy.id,
             x: enemy.x,
             y: enemy.y,
             rotation: enemy.rotation,
@@ -3068,19 +3068,19 @@ export function GameContainer() {
           };
           switch (enemy.type) {
             case 'Chasseur':
-              return <EnemyShip key={enemy.id} {...props} />;
+              return <EnemyShip {...props} />;
             case 'Frégate':
-              return <FrigateShip key={enemy.id} {...props} />;
+              return <FrigateShip {...props} />;
             case 'Mineur':
-              return <StaffShip key={enemy.id} {...props} />;
+              return <StaffShip {...props} />;
             case 'Intercepteur':
-              return <InterceptorShip key={enemy.id} {...props} />;
+              return <InterceptorShip {...props} />;
             case 'Destroyer':
-              return <DestroyerShip key={enemy.id} {...props} />;
+              return <DestroyerShip {...props} />;
             case 'Porteur':
-              return <CarrierShip key={enemy.id} {...props} />;
+              return <CarrierShip {...props} />;
             case 'Cargo':
-              return <CargoShip key={enemy.id} {...props} />;
+              return <CargoShip {...props} />;
             default:
               return null;
           }
@@ -3225,3 +3225,5 @@ export function GameContainer() {
     </div>
   );
 }
+
+    
