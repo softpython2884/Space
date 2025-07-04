@@ -849,7 +849,11 @@ export function GameContainer() {
                               const maxCargo = SHIP_DATA[ship.class].baseCargo + UPGRADE_VALUES.cargoCapacity[upgrades.cargoCapacity];
                               const availableSpace = maxCargo - d.cargo.current;
                               const oreToAdd = Math.min(oreGained, availableSpace);
-                              toast({ title: "Mining Successful", description: `Extracted ${oreToAdd} units of ore.` });
+                              
+                              setTimeout(() => {
+                                toast({ title: "Mining Successful", description: `Extracted ${oreToAdd} units of ore.` });
+                              }, 0);
+
                               return {
                                   ...d,
                                   resources: { ...d.resources, ore: d.resources.ore + oreToAdd },
@@ -861,7 +865,9 @@ export function GameContainer() {
                               if (a.id === action.targetId) {
                                   const newCharges = a.mineableCharges - 1;
                                   if (newCharges <= 0) {
-                                      toast({ title: "Asteroid Depleted", description: `This asteroid needs time to recover.` });
+                                      setTimeout(() => {
+                                        toast({ title: "Asteroid Depleted", description: `This asteroid needs time to recover.` });
+                                      }, 0);
                                       return { ...a, mineableCharges: MINING_CHARGES, cooldownUntil: Date.now() + MINING_LONG_COOLDOWN_MS };
                                   }
                                   return { ...a, mineableCharges: newCharges };
@@ -884,7 +890,9 @@ export function GameContainer() {
                               }
                           };
                           setDebris(prev => [...prev, newDebris]);
-                          toast({ title: "Pillage Successful", description: "Enemy ship damaged, cargo dropped." });
+                          setTimeout(() => {
+                            toast({ title: "Pillage Successful", description: "Enemy ship damaged, cargo dropped." });
+                          }, 0);
                       }
                       break;
                   }
@@ -894,10 +902,14 @@ export function GameContainer() {
                           const success = Math.random() < BOARDING_SUCCESS_CHANCE;
                           if (success) {
                               setEnemies(prev => prev.map(e => e.id === action.targetId ? { ...e, isAlly: true, aiState: 'following' } : e));
-                              toast({ title: "Boarding Successful!", description: "The enemy ship is now under your control." });
+                              setTimeout(() => {
+                                toast({ title: "Boarding Successful!", description: "The enemy ship is now under your control." });
+                              }, 0);
                           } else {
                               applyDamage(BOARDING_FAIL_DAMAGE);
-                              toast({ title: "Boarding Failed", description: "Your crew was repelled and sustained damage.", variant: 'destructive' });
+                              setTimeout(() => {
+                                toast({ title: "Boarding Failed", description: "Your crew was repelled and sustained damage.", variant: 'destructive' });
+                              }, 0);
                           }
                       }
                       break;
