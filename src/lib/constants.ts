@@ -66,15 +66,22 @@ export const SHIP_DATA: Record<PlayerShipClass, {
     'Mineur': { name: 'Mineur', description: 'Extraction rapide des ressources. 1 tourelle manuelle. Vitesse de minage x1.5.', cost: 2000, baseHealth: 300, baseCargo: 500, maxEnergy: 15000, baseEnergyRecharge: 0.08, miningBonus: 1.5, weapons: { manualTurrets: { count: 1, type: 'basic', offsets: [{x: 0, y: -15}] } } },
 };
 
+export const GAS_ASTEROID_EXPLOSION_RADIUS = 250;
+export const GAS_ASTEROID_EXPLOSION_DAMAGE = 50;
+export const MINING_DEPLETION_CHARGES = 2;
+
 export const BEAM_DAMAGE_PER_FRAME = 0.5;
 export const BEAM_ENERGY_DRAIN_PER_FRAME = 0.3;
 export const BEAM_RANGE = 1000;
 export const STATION_BASE_HEALTH = 50000;
 export const STATION_BASE_SHIELD = 15000;
+
 export const OUTPOST_COST = 5000;
 export const OUTPOST_HEALTH = 2000;
 export const OUTPOST_RANGE = 900;
 export const OUTPOST_FIRE_RATE_MS = 1000;
+export const OUTPOST_REGEN_RADIUS = 250;
+export const OUTPOST_REGEN_RATE = 0.05;
 
 export const STATION_FIRE_RATE_MS = 2000;
 export const STATION_RANGE = 2000;
@@ -93,10 +100,12 @@ export const MAP_WIDTH = 12000;
 export const MAP_HEIGHT = 12000;
 
 export const ZONES: Zone[] = [
-    { id: 'start_field', type: 'asteroid_field', x: 4000, y: MAP_HEIGHT / 2, radius: 1500, density: 0.4 },
-    { id: 'enemy_field', type: 'asteroid_field', x: MAP_WIDTH - 4000, y: MAP_HEIGHT / 2, radius: 1500, density: 0.4 },
-    { id: 'center_field_1', type: 'asteroid_field', x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 - 2000, radius: 1500, density: 0.8 },
-    { id: 'center_field_2', type: 'asteroid_field', x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 + 2000, radius: 1500, density: 0.8 },
+    { id: 'start_field', type: 'asteroid_field', subtype: 'ore', x: 4000, y: MAP_HEIGHT / 2, radius: 1500, density: 0.4 },
+    { id: 'enemy_field', type: 'asteroid_field', subtype: 'ore', x: MAP_WIDTH - 4000, y: MAP_HEIGHT / 2, radius: 1500, density: 0.4 },
+    { id: 'center_field_1', type: 'asteroid_field', subtype: 'ore', x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 - 2000, radius: 1500, density: 0.8 },
+    { id: 'center_field_2', type: 'asteroid_field', subtype: 'ore', x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 + 2000, radius: 1500, density: 0.8 },
+    { id: 'top_gas_field', type: 'asteroid_field', subtype: 'gas', x: MAP_WIDTH / 2 - 3000, y: 2000, radius: 1000, density: 0.2 },
+    { id: 'bottom_gas_field', type: 'asteroid_field', subtype: 'gas', x: MAP_WIDTH / 2 + 3000, y: MAP_HEIGHT - 2000, radius: 1000, density: 0.2 },
     { id: 'top_nebula', type: 'nebula', x: MAP_WIDTH / 2, y: 2000, radius: 1500, color: 'hsl(260 80% 50% / 0.15)' },
     { id: 'bottom_vortex', type: 'vortex', x: MAP_WIDTH / 2, y: MAP_HEIGHT - 2000, radius: 1000 },
 ];
