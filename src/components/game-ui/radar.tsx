@@ -1,20 +1,22 @@
 'use client';
 
-import type { EnemyState, StationState, AsteroidState } from "@/components/game/game-container";
+import type { EnemyState, StationState, AsteroidState, Debris } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import React from 'react';
+import { Package } from "lucide-react";
 
 interface RadarProps {
     playerPosition: { x: number; y: number };
     enemies: EnemyState[];
     stations: StationState[];
     asteroids: AsteroidState[];
+    debris: Debris[];
     radarRange: number;
 }
 
 const RADAR_SIZE = 256; // pixels
 
-const RadarDot = ({ color, size = 'w-2 h-2', pulse = false, type = 'dot' }: { color: string, size?: string, pulse?: boolean, type?: 'dot' | 'triangle' | 'square' | 'circle' }) => {
+const RadarDot = ({ color, size = 'w-2 h-2', pulse = false, type = 'dot', children }: { color: string, size?: string, pulse?: boolean, type?: 'dot' | 'triangle' | 'square' | 'circle' | 'icon', children?: React.ReactNode }) => {
     const icon = () => {
         switch(type) {
             case 'triangle':
@@ -23,6 +25,8 @@ const RadarDot = ({ color, size = 'w-2 h-2', pulse = false, type = 'dot' }: { co
                  return <div className={cn(size, color)} />;
             case 'circle':
                 return <div className={cn("rounded-full", size, color, 'border-2')} />;
+            case 'icon':
+                return children;
             default:
                 return <div className={cn("rounded-full", size, color)} />;
         }
@@ -36,7 +40,7 @@ const RadarDot = ({ color, size = 'w-2 h-2', pulse = false, type = 'dot' }: { co
     )
 };
 
-export function Radar({ playerPosition, enemies, stations, asteroids, radarRange }: RadarProps) {
+export function Radar({ playerPosition, enemies, stations, asteroids, debris, radarRange }: RadarProps) {
 
     const scale = RADAR_SIZE / (radarRange * 2);
 
@@ -120,6 +124,7 @@ export function Radar({ playerPosition, enemies, stations, asteroids, radarRange
                 {enemies.map(e => renderObjectOnRadar(e, `enemy-${e.id}`, getEnemyIcon(e)))}
                 {stations.map(s => renderObjectOnRadar(s, `station-${s.id}`, <RadarDot color="border-blue-400" type="circle" pulse />))}
                 {asteroids.map(a => renderObjectOnRadar(a, `asteroid-${a.id}`, <RadarDot color="bg-gray-500" />))}
+                {debris.map(d => renderObjectOnRadar(d, `debris-${d.id}`, <RadarDot color="" type="icon"><Package className="h-2.5 w-2.5 text-yellow-500" /></RadarDot>))}
             </div>
 
             <div className="absolute bottom-2 text-xs text-primary/70 tracking-widest font-mono">

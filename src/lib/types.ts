@@ -25,6 +25,18 @@ export interface PlayerUpgrades {
   cargoCapacity: number;
 }
 
+export interface WeaponConfig {
+    manualTurrets: {
+        count: number;
+        type: 'basic' | 'heavy';
+        offsets: {x: number, y: number}[];
+    };
+    beam?: {
+        count: number;
+        type: 'basic' | 'heavy';
+    };
+}
+
 export interface ShipData {
     class: PlayerShipClass;
     role: ShipRole;
@@ -116,4 +128,12 @@ export type Debris = {
   x: number;
   y: number;
   resources: Partial<Resources>;
+}
+
+export interface BeamState {
+  id: number;
+  sourceId: number;
+  targetId: number;
+  endTime: number;
+  type: 'basic' | 'heavy';
 }
