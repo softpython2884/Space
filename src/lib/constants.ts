@@ -66,7 +66,6 @@ export const SHIP_DATA: Record<PlayerShipClass, {
 };
 
 export const BEAM_DAMAGE_PER_FRAME = 0.5;
-export const BEAM_INITIAL_ENERGY_COST = 25;
 export const STATION_BASE_HEALTH = 45000;
 export const STATION_BASE_SHIELD = 9000;
 export const OUTPOST_COST = 5000;
