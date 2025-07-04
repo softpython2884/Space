@@ -33,7 +33,7 @@ import { BEAM_RANGE, INITIAL_PLAYER_DATA, INITIAL_FACTION_DATA, UPGRADE_VALUES, 
 import type { ControlScheme, PlayerData, FactionData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState, AsteroidState, StationState, BotShipType, ContextMenuTargetType, PlayerActionType, Resources, PlayerUpgrades, PlayerShipClass, BeamState, ProjectileState, PlayerAction, EnemyAiState, OutpostState, ChatMessage, Zone, StellarBaseData } from '@/lib/types';
 import { ClientOnly } from '@/components/client-only';
 import { GameOverOverlay } from './game-over-overlay';
-import { TacticalViewOverlay } from './tactical-view-overlay';
+import { TacticalViewOverlay } from '../game-ui/tactical-view-overlay';
 import { ContextMenu } from '../game-ui/context-menu';
 import { StationMenu } from '../game-ui/station-menu';
 import { PlayerUpgradesDisplay } from '../game-ui/player-upgrades';
@@ -143,7 +143,6 @@ const STATION_PLAYER_REGEN_RATE = 0.1;
 const STATION_SHIELD_REGEN_RATE = 0.05;
 const STATION_SHIELD_REGEN_DELAY_MS = 5000;
 
-const BEAM_ENERGY_DRAIN_PER_FRAME = 0.25;
 
 let uniqueIdCounter = 0;
 const getUniqueId = () => {
@@ -177,7 +176,7 @@ const generateInitialEnemies = (playerStation: StationState, enemyStation: Stati
         
         // 3 Miners
         for (let i = 0; i < 3; i++) {
-            fleet.push(createShip('Mineur', stationX + (Math.random() - 0.5) * 400, stationY + 150 + (Math.random() - 0.5) * 400, isAlly, 'guarding', { role: 'miner', patrolCenter: { x: stationX, y: stationY } }));
+            fleet.push(createShip('Mineur', stationX + (Math.random() - 0.5) * 400, stationY + 150 + (Math.random() - 0.5) * 400, isAlly, 'patrolling', { role: 'miner', patrolCenter: { x: stationX, y: stationY } }));
         }
 
         // 1 Frigate with 2 Chasseur escorts (defense)
@@ -1362,9 +1361,9 @@ export function GameContainer() {
       const calculatedSpeed = Math.hypot(newVx, newVy);
       setSpeed(calculatedSpeed);
 
-      if (calculatedSpeed > currentMaxSpeed) {
-        newVx = (newVx / calculatedSpeed) * currentMaxSpeed;
-        newVy = (newVy / calculatedSpeed) * currentMaxSpeed;
+      if (calculatedSpeed > MAX_SPEED) {
+        newVx = (newVx / calculatedSpeed) * MAX_SPEED;
+        newVy = (newVy / calculatedSpeed) * MAX_SPEED;
       }
       
       const newVelocity = { x: newVx, y: newVy };
@@ -1385,9 +1384,37 @@ export function GameContainer() {
       const isShootingManually = keysPressed.current.has(' ');
       const playerShipConfig = SHIP_DATA[playerDataRef.current.ship.class];
 
-      if (activeWeapons.manualTurrets && playerShipConfig.weapons.manualTurrets && (currentTarget || isShootingManually) && canShoot && timestamp - lastFiredTimestamp.current > FIRE_RATE_MS) {
+      // Auto-fire on locked target
+      if (activeWeapons.manualTurrets && playerShipConfig.weapons.manualTurrets && currentTarget && canShoot && timestamp - lastFiredTimestamp.current > FIRE_RATE_MS) {
         const { manualTurrets } = playerShipConfig.weapons;
+        if (playerDataRef.current.energy >= ENERGY_PER_SHOT * manualTurrets.count) {
+          lastFiredTimestamp.current = timestamp;
+          lastEnergyUseTimestamp.current = timestamp;
+          setPlayerData(d => ({ ...d, energy: d.energy - (ENERGY_PER_SHOT * manualTurrets.count) }));
+          const shipRotRad = playerRotationRef.current * (Math.PI / 180);
+          
+          const newProjectiles: ProjectileState[] = [];
+          for (const offset of manualTurrets.offsets) {
+              const rotatedOffsetX = offset.x * Math.cos(shipRotRad) - offset.y * Math.sin(shipRotRad);
+              const rotatedOffsetY = offset.x * Math.sin(shipRotRad) + offset.y * Math.cos(shipRotRad);
+              const turretX = playerPositionRef.current.x + rotatedOffsetX;
+              const turretY = playerPositionRef.current.y + rotatedOffsetY;
+              const fireRotation = Math.atan2(currentTarget.y - turretY, currentTarget.x - turretX) * (180 / Math.PI);
 
+              newProjectiles.push({ 
+                  id: getUniqueId(), 
+                  x: turretX, y: turretY, startX: turretX, startY: turretY,
+                  rotation: fireRotation, ownerId: -1, type: manualTurrets.type 
+              });
+          }
+          if (newProjectiles.length > 0) {
+              setPlayerProjectiles(prev => [...prev, ...newProjectiles]);
+          }
+        }
+      } 
+      // Manual fire at cursor (no lock)
+      else if (activeWeapons.manualTurrets && playerShipConfig.weapons.manualTurrets && isShootingManually && !currentTarget && canShoot && timestamp - lastFiredTimestamp.current > FIRE_RATE_MS) {
+        const { manualTurrets } = playerShipConfig.weapons;
         if (playerDataRef.current.energy >= ENERGY_PER_SHOT * manualTurrets.count) {
             lastFiredTimestamp.current = timestamp;
             lastEnergyUseTimestamp.current = timestamp;
@@ -1402,26 +1429,16 @@ export function GameContainer() {
                 const turretX = playerPositionRef.current.x + rotatedOffsetX;
                 const turretY = playerPositionRef.current.y + rotatedOffsetY;
 
-                let fireRotation = aimAngle;
-                if (currentTarget) {
-                    fireRotation = Math.atan2(currentTarget.y - turretY, currentTarget.x - turretX) * (180 / Math.PI);
-                } else {
-                      const mouseVecX = mouseWorldX - playerPositionRef.current.x;
-                      const mouseVecY = mouseWorldY - playerPositionRef.current.y;
-                      const adjustedMouseX = turretX + mouseVecX;
-                      const adjustedMouseY = turretY + mouseVecY;
-                      fireRotation = Math.atan2(adjustedMouseY - turretY, adjustedMouseX - turretX) * (180 / Math.PI);
-                }
+                const mouseVecX = mouseWorldX - playerPositionRef.current.x;
+                const mouseVecY = mouseWorldY - playerPositionRef.current.y;
+                const adjustedMouseX = turretX + mouseVecX;
+                const adjustedMouseY = turretY + mouseVecY;
+                const fireRotation = Math.atan2(adjustedMouseY - turretY, adjustedMouseX - turretX) * (180 / Math.PI);
 
                 newProjectiles.push({ 
                     id: getUniqueId(), 
-                    x: turretX, 
-                    y: turretY, 
-                    startX: turretX,
-                    startY: turretY,
-                    rotation: fireRotation, 
-                    ownerId: -1, 
-                    type: manualTurrets.type 
+                    x: turretX, y: turretY, startX: turretX, startY: turretY,
+                    rotation: fireRotation, ownerId: -1, type: manualTurrets.type 
                 });
             }
             if (newProjectiles.length > 0) {
@@ -1756,6 +1773,19 @@ export function GameContainer() {
           let updatedEnemy = { ...enemy };
           const enemyShipInfo = SHIP_DATA[updatedEnemy.type];
 
+          // Check if it's an ally following the player and the player is cruising
+          if (updatedEnemy.isAlly && updatedEnemy.aiState === 'following' && updatedEnemy.followTargetId === -1) {
+              const playerIsCruising = cruiseStateRef.current === 'cruising';
+              const canCruise = timestamp >= (updatedEnemy.cruiseAvailableAt || 0) && updatedEnemy.energy >= CRUISE_ENERGY_COST;
+
+              if (playerIsCruising && updatedEnemy.cruiseState === 'idle' && canCruise) {
+                  updatedEnemy.cruiseState = 'charging';
+                  updatedEnemy.energy -= CRUISE_ENERGY_COST;
+              } else if (!playerIsCruising && updatedEnemy.cruiseState !== 'idle') {
+                  updatedEnemy.cruiseState = 'idle';
+              }
+          }
+
           // --- AI CRUISE STATE MACHINE ---
           if (updatedEnemy.cruiseState === 'charging') {
               if (!updatedEnemy.cruiseChargeStartTimestamp) updatedEnemy.cruiseChargeStartTimestamp = timestamp;
@@ -2080,7 +2110,7 @@ export function GameContainer() {
                          }
                     }
                     updatedEnemy.cargo = 0;
-                    updatedEnemy.aiState = 'guarding';
+                    updatedEnemy.aiState = 'patrolling';
                     updatedEnemy.health = updatedEnemy.maxHealth; // Full heal at base
                     updatedEnemy.energy = updatedEnemy.maxEnergy; // Full energy at base
                     updatedEnemy.targetObjectId = null;
@@ -2234,7 +2264,7 @@ export function GameContainer() {
             case 'following': {
                  // Check for nearby enemies to engage
                 const potentialTargets = [...enemiesRef.current.filter(e => !e.isAlly)];
-                if(!updatedEnemy.isAlly) potentialTargets.push({ ...playerDataRef.current, x: playerPositionRef.current.x, y: playerPositionRef.current.y, isAlly: true, id: -1 });
+                if(!updatedEnemy.isAlly) potentialTargets.push({ ...playerDataRef.current, x: playerPositionRef.current.x, y: playerPositionRef.current.y, isAlly: true, id: -1 } as any);
 
                 let closestTarget: {id: number, dist: number} | null = null;
                 for (const pTarget of potentialTargets) {
@@ -2338,7 +2368,7 @@ export function GameContainer() {
       
       let playerVelocityUpdate = { ...velocityRef.current };
       if (timestamp - lastCollisionTimestamp > 500) {
-          const speedFactor = 0.5 + (speed / (currentMaxSpeed || MAX_SPEED)) * 0.5;
+          const speedFactor = 0.5 + (speed / (MAX_SPEED || MAX_SPEED)) * 0.5;
           let collisionDamage = 0;
           let repulsionAngle = 0;
           let repulsionForce = 0.8;
@@ -2827,7 +2857,7 @@ export function GameContainer() {
             rotation: enemy.rotation,
             health: enemy.health,
             maxHealth: enemy.maxHealth,
-            isTargeted: enemy.id === targetId,
+            isTargeted: enemy.id === targetId || (enemy.id + 10000) === targetId,
             isAlly: enemy.isAlly || false,
             isSelected: selectedAllyIds.includes(enemy.id),
           };
@@ -2843,9 +2873,9 @@ export function GameContainer() {
             case 'Destroyer':
               return <DestroyerShip key={enemy.id} {...props} />;
             case 'Porteur':
-                return <CarrierShip key={enemy.id} {...props} />;
+              return <CarrierShip key={enemy.id} {...props} />;
             case 'Cargo':
-                return <CargoShip key={enemy.id} {...props} />;
+              return <CargoShip key={enemy.id} {...props} />;
             default:
               return null;
           }
