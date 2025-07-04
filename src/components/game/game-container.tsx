@@ -108,12 +108,14 @@ const ENEMY_ENERGY_REGEN_RATE = 0.05;
 const ENEMY_ENERGY_REGEN_DELAY_MS = 3000;
 const ENEMY_FLEE_HEALTH_THRESHOLD = 0.3;
 const LOW_ENERGY_FLEE_THRESHOLD = 0.15; // Flee if energy is below 15%
-const GUARD_PATROL_RADIUS = 600;
+const GUARD_PATROL_RADIUS = 800;
 const MINER_SIMULATED_MINE_TIME_MS = 8000;
 const MINER_CARGO_PER_TRIP = 20;
 const MINER_AVOIDANCE_RADIUS = 300;
 const AI_SCAVENGE_RADIUS = 500;
 const AI_SEPARATION_DISTANCE = 50;
+const AI_PREFERRED_COMBAT_DISTANCE_FACTOR = 0.7;
+const NEBULA_DAMAGE_PER_FRAME = 0.05;
 
 
 // Action constants
@@ -198,14 +200,14 @@ const generateInitialAsteroids = (zones: Zone[]): AsteroidState[] => {
 };
 
 const generateInitialStations = (): StationState[] => [
-    { id: 1, owner: 'player', x: 1000, y: MAP_HEIGHT / 2, health: STATION_BASE_HEALTH, maxHealth: STATION_BASE_HEALTH, shield: STATION_BASE_SHIELD, maxShield: STATION_BASE_SHIELD, lastHitTimestamp: 0 },
-    { id: 2, owner: 'enemy', x: MAP_WIDTH - 1000, y: MAP_HEIGHT / 2, health: STATION_BASE_HEALTH, maxHealth: STATION_BASE_HEALTH, shield: STATION_BASE_SHIELD, maxShield: STATION_BASE_SHIELD, lastHitTimestamp: 0 },
+    { id: 1, owner: 'player', x: 1500, y: MAP_HEIGHT / 2, health: STATION_BASE_HEALTH, maxHealth: STATION_BASE_HEALTH, shield: STATION_BASE_SHIELD, maxShield: STATION_BASE_SHIELD, lastHitTimestamp: 0 },
+    { id: 2, owner: 'enemy', x: MAP_WIDTH - 1500, y: MAP_HEIGHT / 2, health: STATION_BASE_HEALTH, maxHealth: STATION_BASE_HEALTH, shield: STATION_BASE_SHIELD, maxShield: STATION_BASE_SHIELD, lastHitTimestamp: 0 },
 ];
 
 
 export function GameContainer() {
   const { toast } = useToast();
-  const [playerPosition, setPlayerPosition] = useState({ x: 1000, y: MAP_HEIGHT / 2 + 200 });
+  const [playerPosition, setPlayerPosition] = useState({ x: 1500, y: MAP_HEIGHT / 2 + 200 });
   const [velocity, setVelocity] = useState({ x: 0, y: 0 });
   const [speed, setSpeed] = useState(0);
   const [playerRotation, setPlayerRotation] = useState(0);
@@ -248,7 +250,7 @@ export function GameContainer() {
 
 
   // Tactical View State
-  const [cameraPosition, setCameraPosition] = useState({ x: 1000, y: MAP_HEIGHT / 2 + 200 });
+  const [cameraPosition, setCameraPosition] = useState({ x: 1500, y: MAP_HEIGHT / 2 + 200 });
   const [isTacticalView, setIsTacticalView] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const lastMousePosForPan = useRef({ x: 0, y: 0 });
@@ -1062,6 +1064,26 @@ export function GameContainer() {
       if (!isTacticalViewRef.current) {
         setCameraPosition(playerPositionRef.current);
       }
+
+      // Apply environmental damage from zones
+      for(const zone of zones) {
+          if (zone.type === 'nebula') {
+              const checkAndDamage = (entity: {x:number, y:number, health:number}, applyDmg: (d:number) => void) => {
+                  const distToCenter = Math.hypot(entity.x - zone.x, entity.y - zone.y);
+                  if (distToCenter < zone.radius) {
+                      applyDmg(NEBULA_DAMAGE_PER_FRAME);
+                  }
+              }
+              checkAndDamage(playerPositionRef.current, (dmg) => applyDamage(dmg));
+              setEnemies(prev => prev.map(e => {
+                  const dist = Math.hypot(e.x - zone.x, e.y - zone.y);
+                  if(dist < zone.radius) {
+                      return {...e, health: e.health - NEBULA_DAMAGE_PER_FRAME};
+                  }
+                  return e;
+              }));
+          }
+      }
       
       if (cruiseStateRef.current === 'charging') {
         if (cruiseChargeStartTimestampRef.current === 0) cruiseChargeStartTimestampRef.current = timestamp;
@@ -1184,8 +1206,8 @@ export function GameContainer() {
       const isShootingManually = keysPressed.current.has(' ');
       const playerShipConfig = SHIP_DATA[playerDataRef.current.ship.class];
 
-      if (activeWeapons.manualTurrets && playerShipConfig.manualTurrets && (currentTarget || isShootingManually) && canShoot && timestamp - lastFiredTimestamp.current > FIRE_RATE_MS) {
-        const { manualTurrets } = playerShipConfig;
+      if (activeWeapons.manualTurrets && playerShipConfig.weapons.manualTurrets && (currentTarget || isShootingManually) && canShoot && timestamp - lastFiredTimestamp.current > FIRE_RATE_MS) {
+        const { manualTurrets } = playerShipConfig.weapons;
 
         if (manualTurrets.count > 0 && playerDataRef.current.energy >= ENERGY_PER_SHOT * manualTurrets.count) {
             lastFiredTimestamp.current = timestamp;
@@ -1228,7 +1250,7 @@ export function GameContainer() {
       }
 
       // Player auto-turret logic
-      const { autoTurrets } = playerShipConfig;
+      const { autoTurrets } = playerShipConfig.weapons;
       if (activeWeapons.autoTurrets && autoTurrets && autoTurrets.count > 0 && timestamp - lastPlayerAutoShotTimestamp.current > AUTO_TURRET_FIRE_RATE_MS) {
         if (playerDataRef.current.energy >= AUTO_TURRET_ENERGY_COST * autoTurrets.count) {
             let autoTarget: EnemyState | null = null;
@@ -1271,7 +1293,7 @@ export function GameContainer() {
       }
         
       // Beam weapon logic for player
-      const { beam } = playerShipConfig;
+      const { beam } = playerShipConfig.weapons;
       const isTryingToShootBeam = activeWeapons.beam && beam && beam.count > 0 && currentTarget && !currentTarget.isAlly && (isLeftMouseDown.current || isShootingManually);
       const existingPlayerBeams = activeBeamsRef.current.filter(b => b.sourceId === -1);
       
@@ -1541,9 +1563,9 @@ export function GameContainer() {
                   const isMiner = updatedEnemy.role === 'miner';
                   const isLowHealth = (updatedEnemy.health / updatedEnemy.maxHealth) < ENEMY_FLEE_HEALTH_THRESHOLD;
                   
-                  if (isMiner || isLowHealth) {
+                  if ((isMiner || isLowHealth) && updatedEnemy.aiState !== 'fleeing') {
                       updatedEnemy.aiState = 'fleeing';
-                  } else if (updatedEnemy.aiState !== 'chasing') {
+                  } else if (updatedEnemy.aiState !== 'chasing' && updatedEnemy.aiState !== 'fleeing') {
                     updatedEnemy.aiState = 'chasing';
                     updatedEnemy.stateChangeTimestamp = timestamp;
                     
@@ -1588,7 +1610,7 @@ export function GameContainer() {
           const isLowHealth = (updatedEnemy.health / updatedEnemy.maxHealth) < ENEMY_FLEE_HEALTH_THRESHOLD;
           const hasEnoughEnergyForWeapons = updatedEnemy.energy > (ENEMY_ENERGY_PER_SHOT * 2);
 
-          if (updatedEnemy.aiState !== 'fleeing' && updatedEnemy.aiState !== 'returning_to_base' && (isLowHealth || !hasEnoughEnergyForWeapons)) {
+          if (updatedEnemy.aiState !== 'fleeing' && (isLowHealth || !hasEnoughEnergyForWeapons)) {
               updatedEnemy.aiState = 'fleeing';
               updatedEnemy.combatTargetId = null; // Drop target when fleeing
               const canCruise = updatedEnemy.cruiseState === 'idle' && timestamp > (updatedEnemy.cruiseAvailableAt || 0) && updatedEnemy.energy >= CRUISE_ENERGY_COST;
@@ -1599,10 +1621,8 @@ export function GameContainer() {
               }
           }
 
-          const distanceToPlayer = Math.hypot(updatedEnemy.x - playerPositionRef.current.x, updatedEnemy.y - playerPositionRef.current.y);
           const aggroRadius = shipModeRef.current === 'stealth' ? STEALTH_AGGRO_RADIUS : ENEMY_AGGRO_RADIUS;
-          const canSeePlayer = distanceToPlayer < aggroRadius;
-
+          
           // 1. State Transitions
           const isMiner = updatedEnemy.role === 'miner' || updatedEnemy.type === 'Mineur';
           
@@ -1612,7 +1632,7 @@ export function GameContainer() {
               if(homeBase) {
                 const distToBase = Math.hypot(updatedEnemy.x - homeBase.x, updatedEnemy.y - homeBase.y);
                 if (distToBase < STATION_INTERACTION_RADIUS * 1.5) {
-                    updatedEnemy.aiState = 'patrolling';
+                    updatedEnemy.aiState = updatedEnemy.isAlly ? 'guarding' : 'patrolling';
                 }
               }
           } else if (isMiner) {
@@ -1621,78 +1641,58 @@ export function GameContainer() {
               } else if (updatedEnemy.aiState === 'patrolling' && updatedEnemy.cargo < MINER_CARGO_PER_TRIP) {
                   updatedEnemy.aiState = 'mining';
               }
-          } else {
-              // Group Aggro
-              if (updatedEnemy.combatTargetId === null) {
-                  for (const otherShip of enemiesRef.current) {
-                      if (otherShip.id === updatedEnemy.id || otherShip.isAlly === updatedEnemy.isAlly) continue;
-                      if (otherShip.combatTargetId !== null && otherShip.aiState === 'chasing') {
-                          const distToAlly = Math.hypot(updatedEnemy.x - otherShip.x, updatedEnemy.y - otherShip.y);
-                          if (distToAlly < AI_HELP_RADIUS) {
-                              updatedEnemy.combatTargetId = otherShip.combatTargetId;
-                              break;
-                          }
-                      }
-                  }
-              }
-              
-              // Individual Aggro
-              if (updatedEnemy.combatTargetId === null) {
+          } else { // Combat logic
+              const potentialTargets = [
+                  {id: -1, x: playerPositionRef.current.x, y: playerPositionRef.current.y, isAlly: true, health: playerDataRef.current.health}, 
+                  ...enemiesRef.current
+              ].filter(e => e.isAlly !== updatedEnemy.isAlly);
+
+              if (updatedEnemy.combatTargetId === null || !potentialTargets.find(t => t.id === updatedEnemy.combatTargetId)) {
+                  // Find new target
                   let closestTarget: {id: number, dist: number} | null = null;
-                  
-                  const allPlayerTargets = [ {id: -1, x: playerPositionRef.current.x, y: playerPositionRef.current.y, isAlly: true}, ...enemiesRef.current.filter(e => e.isAlly)];
-                  
-                  for (const pTarget of allPlayerTargets) {
+                  for (const pTarget of potentialTargets) {
                       const dist = Math.hypot(updatedEnemy.x - pTarget.x, updatedEnemy.y - pTarget.y);
                       if (dist < aggroRadius && (!closestTarget || dist < closestTarget.dist)) {
                           closestTarget = { id: pTarget.id, dist };
                       }
                   }
-
-                  if(closestTarget) {
+                  if (closestTarget) {
                     updatedEnemy.combatTargetId = closestTarget.id;
+                    updatedEnemy.aiState = 'chasing';
+                  } else {
+                     // No targets in range, check for station
+                     const enemyBase = stationsRef.current.find(s => s.owner !== (updatedEnemy.isAlly ? 'player' : 'enemy'));
+                     if(enemyBase && !updatedEnemy.isAlly) { // Only enemies attack stations for now
+                        updatedEnemy.combatTargetId = enemyBase.id + 10000;
+                        updatedEnemy.aiState = 'chasing';
+                     } else if (updatedEnemy.isAlly && updatedEnemy.aiState !== 'guarding' && !updatedEnemy.orderTarget) {
+                         updatedEnemy.aiState = 'guarding'; // Allies guard if nothing else to do
+                     }
+                  }
+              }
+
+              if (updatedEnemy.aiState === 'chasing' && updatedEnemy.combatTargetId === null) {
+                  updatedEnemy.aiState = 'searching';
+                  updatedEnemy.stateChangeTimestamp = timestamp;
+              }
+
+              // Scavenging logic
+              if ((updatedEnemy.aiState === 'patrolling' || updatedEnemy.aiState === 'guarding' || updatedEnemy.aiState === 'following') && updatedEnemy.cargo <= 0) {
+                  let closestDebris = null;
+                  let minDebrisDist = AI_SCAVENGE_RADIUS;
+                  for(const d of debrisRef.current) {
+                      const dist = Math.hypot(updatedEnemy.x - d.x, updatedEnemy.y - d.y);
+                      if (dist < minDebrisDist) {
+                          minDebrisDist = dist;
+                          closestDebris = d;
+                      }
+                  }
+                  if (closestDebris) {
+                      updatedEnemy.aiState = 'scavenging';
+                      updatedEnemy.targetObjectId = closestDebris.id;
                   }
               }
           }
-          
-           // If no other target, non-allies will consider attacking the player station
-          if(updatedEnemy.combatTargetId === null && !updatedEnemy.isAlly) {
-            const playerStation = stationsRef.current.find(s => s.owner === 'player');
-            if(playerStation && playerStation.health > 0) {
-              const distToStation = Math.hypot(updatedEnemy.x - playerStation.x, updatedEnemy.y - playerStation.y);
-              if (distToStation < aggroRadius * 2.5) {
-                  updatedEnemy.combatTargetId = playerStation.id + 10000; // Special ID for station
-              }
-            }
-          }
-
-
-          if (updatedEnemy.combatTargetId !== null && updatedEnemy.aiState !== 'chasing' && updatedEnemy.aiState !== 'fleeing' && !isMiner && !updatedEnemy.orderTarget) {
-              updatedEnemy.aiState = 'chasing';
-          } else if (updatedEnemy.combatTargetId === null && updatedEnemy.aiState === 'chasing') {
-              updatedEnemy.aiState = 'searching';
-              updatedEnemy.stateChangeTimestamp = timestamp;
-          }
-
-          // New state transitions for cargo and scavenging
-          if (!isMiner && updatedEnemy.cargo > 0 && updatedEnemy.aiState !== 'chasing' && updatedEnemy.aiState !== 'fleeing' && updatedEnemy.aiState !== 'returning_to_base') {
-              updatedEnemy.aiState = 'returning_to_base';
-          } else if ((updatedEnemy.aiState === 'patrolling' || updatedEnemy.aiState === 'guarding' || updatedEnemy.aiState === 'following') && updatedEnemy.cargo <= 0) {
-              let closestDebris = null;
-              let minDebrisDist = AI_SCAVENGE_RADIUS;
-              for(const d of debrisRef.current) {
-                  const dist = Math.hypot(updatedEnemy.x - d.x, updatedEnemy.y - d.y);
-                  if (dist < minDebrisDist) {
-                      minDebrisDist = dist;
-                      closestDebris = d;
-                  }
-              }
-              if (closestDebris) {
-                  updatedEnemy.aiState = 'scavenging';
-                  updatedEnemy.targetObjectId = closestDebris.id;
-              }
-          }
-
 
           // 2. Execute State Action
           const speedMultiplier = updatedEnemy.cruiseState === 'cruising' ? 5 : 1;
@@ -1732,7 +1732,27 @@ export function GameContainer() {
                 }
                 break;
             }
-            case 'guarding':
+            case 'guarding': {
+                const playerBase = stationsRef.current.find(s => s.owner === 'player');
+                const center = playerBase ? {x: playerBase.x, y: playerBase.y} : {x: 1500, y: MAP_HEIGHT/2};
+                
+                if (!updatedEnemy.patrolTarget || Math.hypot(updatedEnemy.x - updatedEnemy.patrolTarget.x, updatedEnemy.y - updatedEnemy.patrolTarget.y) < 50) {
+                     if (timestamp - updatedEnemy.stateChangeTimestamp > 5000) {
+                        const randomAngle = Math.random() * 2 * Math.PI;
+                        const randomDist = Math.random() * GUARD_PATROL_RADIUS;
+                        updatedEnemy.patrolTarget = {
+                            x: center.x + Math.cos(randomAngle) * randomDist,
+                            y: center.y + Math.sin(randomAngle) * randomDist,
+                        };
+                        updatedEnemy.stateChangeTimestamp = timestamp;
+                     }
+                } else {
+                    const angleToTarget = Math.atan2(updatedEnemy.patrolTarget.y - updatedEnemy.y, updatedEnemy.patrolTarget.x - updatedEnemy.x);
+                    updatedEnemy.vx = Math.cos(angleToTarget) * ENEMY_SPEED * 0.3 * speedMultiplier;
+                    updatedEnemy.vy = Math.sin(angleToTarget) * ENEMY_SPEED * 0.3 * speedMultiplier;
+                }
+                break;
+            }
             case 'patrolling': {
                 const base = updatedEnemy.isAlly ? stationsRef.current.find(s => s.owner === 'player') : stationsRef.current.find(s => s.owner === 'enemy');
                 const center = updatedEnemy.patrolCenter ?? (base ? {x: base.x, y: base.y} : {x: MAP_WIDTH/2, y: MAP_HEIGHT/2});
@@ -1884,7 +1904,7 @@ export function GameContainer() {
                     const distanceToTarget = Math.hypot(targetShip.x - updatedEnemy.x, targetShip.y - updatedEnemy.y);
                     const angleToTarget = Math.atan2(targetShip.y - updatedEnemy.y, targetShip.x - updatedEnemy.x);
                     
-                    const preferredDistance = ENEMY_AGGRO_RADIUS * 0.6;
+                    const preferredDistance = ENEMY_AGGRO_RADIUS * AI_PREFERRED_COMBAT_DISTANCE_FACTOR;
                     if (distanceToTarget > preferredDistance) {
                          updatedEnemy.vx = Math.cos(angleToTarget) * ENEMY_SPEED;
                          updatedEnemy.vy = Math.sin(angleToTarget) * ENEMY_SPEED;
@@ -2166,7 +2186,8 @@ export function GameContainer() {
               const projOwner = enemiesRef.current.find(e => e.id === proj.ownerId);
 
               // Don't damage station if shot by its own faction
-              if ((station.owner === 'player' && (projOwnerIsPlayer || projOwner?.isAlly)) || (station.owner === 'enemy' && !projOwnerIsPlayer && !projOwner?.isAlly)) {
+              if ((station.owner === 'player' && (projOwnerIsPlayer || (projOwner && projOwner.isAlly))) || 
+                  (station.owner === 'enemy' && (!projOwnerIsPlayer && (!projOwner || !projOwner.isAlly)))) {
                 continue;
               }
               
@@ -2358,7 +2379,7 @@ export function GameContainer() {
     }
     
     return () => cancelAnimationFrame(animationFrameId);
-  }, [viewSize, isGameOver, controlScheme, isDocked, applyDamage, handleActionSelect, handleBuyAlly, handleBuyShip, handleBuyUpgrade, handleRepairHull, handleSellResource, resetGame, addChatMessage, handleBuildShipFromTactical, handleBuildOutpost, handleRespawn]);
+  }, [viewSize, isGameOver, controlScheme, isDocked, applyDamage, handleActionSelect, handleBuyAlly, handleBuyShip, handleBuyUpgrade, handleRepairHull, handleSellResource, resetGame, addChatMessage, handleBuildShipFromTactical, handleBuildOutpost, handleRespawn, zones]);
 
   let radarRange = BASE_RADAR_RANGE;
   if (shipMode === 'scan') radarRange = BASE_RADAR_RANGE * 2;
@@ -2432,11 +2453,13 @@ export function GameContainer() {
           transformOrigin: 'top left'
       }}>
         <GameMap width={MAP_WIDTH} height={MAP_HEIGHT} />
+        <ClientOnly>
         {zones.map(zone => {
             if (zone.type === 'nebula') return <ElectricCloud key={zone.id} {...zone} />;
             if (zone.type === 'vortex') return <Vortex key={zone.id} {...zone} />;
             return null;
         })}
+        </ClientOnly>
         {playerProjectiles.map((p) => (
           <Projectile key={`player-proj-${p.id}`} x={p.x} y={p.y} rotation={p.rotation} type={p.type} />
         ))}
@@ -2496,7 +2519,6 @@ export function GameContainer() {
         />
         {visibleEnemies.map(enemy => {
           const props = {
-            key: enemy.id,
             x: enemy.x,
             y: enemy.y,
             rotation: enemy.rotation,
@@ -2508,13 +2530,13 @@ export function GameContainer() {
           };
           switch (enemy.type) {
             case 'Chasseur':
-              return <EnemyShip {...props} />;
+              return <EnemyShip key={enemy.id} {...props} />;
             case 'Frégate':
-              return <FrigateShip {...props} />;
+              return <FrigateShip key={enemy.id} {...props} />;
             case 'Mineur':
-              return <StaffShip {...props} />;
+              return <StaffShip key={enemy.id} {...props} />;
             case 'Intercepteur':
-              return <InterceptorShip {...props} />;
+              return <InterceptorShip key={enemy.id} {...props} />;
             default:
               return null;
           }
@@ -2546,7 +2568,9 @@ export function GameContainer() {
         onBuildShip={handleBuildShipFromTactical}
         onBuildOutpost={handleBuildOutpost}
       />
+      <ClientOnly>
       {cruiseState === 'cruising' && <CruiseStreaks />}
+      </ClientOnly>
        {playerData.health < LOW_HEALTH_THRESHOLD * 3 && ( // Adjusted for higher base health
           <div className="absolute inset-0 pointer-events-none animate-pulse" style={{ boxShadow: 'inset 0 0 80px 30px rgba(255, 0, 0, 0.4)' }} />
        )}
