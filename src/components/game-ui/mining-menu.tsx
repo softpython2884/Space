@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -20,6 +20,8 @@ export function MiningMenu({ isOpen, onOpenChange, targetAsteroid, onComplete }:
   const [isMining, setIsMining] = useState(false);
   const [progress, setProgress] = useState(0);
   const [oreGained, setOreGained] = useState(0);
+  const startTimeRef = useRef(0);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     // Reset state when menu is opened or closed
@@ -27,27 +29,39 @@ export function MiningMenu({ isOpen, onOpenChange, targetAsteroid, onComplete }:
         setIsMining(false);
         setProgress(0);
         setOreGained(0);
+        if (intervalRef.current) clearInterval(intervalRef.current);
     }
   }, [isOpen]);
 
   useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (isMining && progress < 100) {
-      timer = setInterval(() => {
-        setProgress(prev => Math.min(prev + (100 / (MINING_DURATION_MS / 100)), 100));
-      }, 100);
-    } else if (progress >= 100 && isMining) {
-        const gained = Math.floor(Math.random() * 51) + 25;
-        setOreGained(gained);
-        onComplete({ ore: gained });
-        setIsMining(false);
+    if (isMining) {
+      startTimeRef.current = Date.now();
+      intervalRef.current = setInterval(() => {
+        const elapsed = Date.now() - startTimeRef.current;
+        const newProgress = Math.min((elapsed / MINING_DURATION_MS) * 100, 100);
+        setProgress(newProgress);
+        
+        if (newProgress >= 100) {
+          if (intervalRef.current) clearInterval(intervalRef.current);
+          const gained = Math.floor(Math.random() * 51) + 25;
+          setOreGained(gained);
+          onComplete({ ore: gained });
+          setIsMining(false);
+        }
+      }, 50); // check more frequently for smoother progress bar
+    } else {
+        if (intervalRef.current) clearInterval(intervalRef.current);
     }
-    return () => clearInterval(timer);
-  }, [isMining, progress, onComplete]);
+
+    return () => {
+        if (intervalRef.current) clearInterval(intervalRef.current);
+    }
+  }, [isMining, onComplete]);
 
   const handleStartMining = () => {
     setIsMining(true);
-    setProgress(1); // Start progress immediately
+    setProgress(0);
+    setOreGained(0);
   };
 
   if (!targetAsteroid) return null;
