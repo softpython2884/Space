@@ -5,9 +5,12 @@ import type { PlayerData } from "@/lib/types";
 import { UPGRADE_VALUES, SHIP_DATA } from "@/lib/constants";
 
 export function PlayerStatus({ data }: { data: PlayerData }) {
-  const maxHealth = SHIP_DATA[data.ship.class].baseHealth + UPGRADE_VALUES.maxHealth[data.upgrades.maxHealth];
-  const maxCargo = SHIP_DATA[data.ship.class].baseCargo + UPGRADE_VALUES.cargoCapacity[data.upgrades.cargoCapacity];
+  const shipInfo = SHIP_DATA[data.ship.class];
+  const maxHealth = shipInfo.baseHealth * 3 + UPGRADE_VALUES.maxHealth[data.upgrades.maxHealth];
+  const maxCargo = shipInfo.baseCargo + UPGRADE_VALUES.cargoCapacity[data.upgrades.cargoCapacity];
+  const maxEnergy = shipInfo.maxEnergy;
   const healthPercentage = (data.health / maxHealth) * 100;
+  const energyPercentage = (data.energy / maxEnergy) * 100;
 
   return (
     <Card className="w-80 bg-black/60 border-primary/50 text-foreground backdrop-blur-sm">
@@ -37,9 +40,9 @@ export function PlayerStatus({ data }: { data: PlayerData }) {
                 <Zap className="h-4 w-4 text-yellow-400" />
                 <span className="font-medium">Energy</span>
                </div>
-              <span className="ml-auto text-muted-foreground">{Math.round(data.energy)}%</span>
+              <span className="ml-auto text-muted-foreground">{Math.round(data.energy)} / {maxEnergy}</span>
             </div>
-            <Progress value={data.energy} className="h-2" />
+            <Progress value={energyPercentage} className="h-2" />
         </div>
          <div className="grid gap-2">
             <div className="flex items-center justify-between text-xs">

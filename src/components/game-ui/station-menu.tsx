@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { PlayerData, PlayerUpgrades, PlayerShipClass, StationState } from "@/lib/types";
 import { UPGRADE_COSTS, UPGRADE_VALUES, RESOURCE_PRICES, SHIP_DATA, ALLY_COST } from "@/lib/constants";
-import { CircleDollarSign, Mountain, Flame, Heart, Zap, ChevronsUp, Warehouse, Bot, Wrench, Ship, ShieldPlus } from "lucide-react";
+import { CircleDollarSign, Mountain, Flame, Heart, Zap, ChevronsUp, Warehouse, Bot, Wrench, Ship, ShieldPlus, Atom } from "lucide-react";
 
 interface StationMenuProps {
   isOpen: boolean;
@@ -192,7 +192,7 @@ export function StationMenu({ isOpen, onOpenChange, playerData, stationData, onS
                             canAfford={playerData.resources.money >= (UPGRADE_COSTS.maxHealth[playerData.upgrades.maxHealth] || Infinity)}
                         />
                         <UpgradeCard 
-                            title="Energy Reactor"
+                            title="Energy Recharge"
                             icon={Zap}
                             level={playerData.upgrades.energyRecharge}
                             maxLevel={UPGRADE_COSTS.energyRecharge.length}
@@ -217,6 +217,15 @@ export function StationMenu({ isOpen, onOpenChange, playerData, stationData, onS
                             cost={UPGRADE_COSTS.nanobots[playerData.upgrades.nanobots]}
                             onUpgrade={() => onBuyUpgrade('nanobots')}
                             canAfford={playerData.resources.money >= (UPGRADE_COSTS.nanobots[playerData.upgrades.nanobots] || Infinity)}
+                        />
+                         <UpgradeCard 
+                            title="Antimatter Reactor"
+                            icon={Atom}
+                            level={playerData.upgrades.antimatterReactor}
+                            maxLevel={UPGRADE_COSTS.antimatterReactor.length}
+                            cost={UPGRADE_COSTS.antimatterReactor[playerData.upgrades.antimatterReactor]}
+                            onUpgrade={() => onBuyUpgrade('antimatterReactor')}
+                            canAfford={playerData.resources.money >= (UPGRADE_COSTS.antimatterReactor[playerData.upgrades.antimatterReactor] || Infinity)}
                         />
                     </CardContent>
                 </Card>

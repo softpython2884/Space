@@ -69,12 +69,12 @@ const PLAYER_PROJECTILE_DAMAGE = 10;
 const HEAVY_PLAYER_PROJECTILE_DAMAGE = 20;
 const ENEMY_PROJECTILE_DAMAGE = 5;
 
-// New beam damage constants
+const BEAM_ENERGY_DRAIN_PER_FRAME = 0.1;
+const HEAVY_BEAM_ENERGY_DRAIN_PER_FRAME = 0.2;
 const BEAM_DAMAGE_PER_FRAME = 0.15;
 const HEAVY_BEAM_DAMAGE_PER_FRAME = 0.3;
-const BEAM_RAMP_UP_TIME_MS = 2000; // Time to reach max damage multiplier
-const BEAM_RAMP_UP_MULTIPLIER = 4; // Max damage multiplier
-const AI_BEAM_ENERGY_COST = 20;
+const BEAM_RAMP_UP_TIME_MS = 2000;
+const BEAM_RAMP_UP_MULTIPLIER = 4;
 
 
 const ASTEROID_COLLISION_DAMAGE = 5;
@@ -101,8 +101,8 @@ const CRUISE_ENERGY_COST = 50;
 const CRUISE_COOLDOWN_MS = 5000;
 
 // Shield Mode Constants
-const SHIELD_ENERGY_DRAIN_RATE = 0.005;
-const SHIELD_DAMAGE_TO_ENERGY_COST = 3;
+const SHIELD_ENERGY_DRAIN_RATE = 0.2;
+const SHIELD_DAMAGE_TO_ENERGY_COST = 0.5;
 
 // Mode Switching Constants
 const MODE_CHANGE_COOLDOWN_MS = 2000;
@@ -154,17 +154,16 @@ const getUniqueId = () => {
 const generateInitialEnemies = (): EnemyState[] => {
     const stationX = MAP_WIDTH / 2;
     const stationY = MAP_HEIGHT / 2;
-    const healthMultiplier = 3;
 
     const createEnemy = (id: number, type: BotShipType, x: number, y: number, aiState: EnemyAiState, options: Partial<EnemyState> = {}): EnemyState => {
         const shipData = SHIP_DATA[type];
         return {
             id, type, x, y, vx: 0, vy: 0, rotation: 0,
-            health: shipData.baseHealth * healthMultiplier,
-            maxHealth: shipData.baseHealth * healthMultiplier,
+            health: shipData.baseHealth * 3,
+            maxHealth: shipData.baseHealth * 3,
             lastShotTimestamp: 0, lastAutoShotTimestamp: 0,
             aiState, lastKnownPlayerPosition: null, stateChangeTimestamp: 0,
-            energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0,
+            energy: shipData.maxEnergy, maxEnergy: shipData.maxEnergy, cargo: 0, lastEnergyUseTimestamp: 0,
             isAlly: false, combatTargetId: null, lastAttackerId: null, patrolTarget: null,
             cruiseState: 'idle', cruiseAvailableAt: 0, cruiseChargeStartTimestamp: 0, cruiseDurationStartTimestamp: 0,
             ...options,
@@ -336,6 +335,37 @@ export function GameContainer() {
     setIsTacticalView(zoom === MIN_ZOOM);
   }, [zoom]);
 
+  const handleRespawn = useCallback(() => {
+    toast({
+        title: "Ship Destroyed!",
+        description: "Respawning at base. Some resources and credits were lost.",
+        variant: "destructive"
+    });
+    
+    setPlayerPosition({ x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 - 150 });
+    setVelocity({ x: 0, y: 0 });
+    setTargetId(null);
+    setPlayerAction(null);
+    
+    setPlayerData(prev => {
+        const shipInfo = SHIP_DATA['Chasseur'];
+        const maxHealth = shipInfo.baseHealth * 3 + UPGRADE_VALUES.maxHealth[prev.upgrades.maxHealth];
+        return {
+            ...prev,
+            ship: { ...prev.ship, class: 'Chasseur' },
+            health: maxHealth,
+            energy: shipInfo.maxEnergy,
+            resources: {
+                ...prev.resources,
+                money: Math.floor(prev.resources.money * 0.9), // Lose 10% money
+                ore: 0,
+                gas: 0,
+            },
+            cargo: { current: 0 }
+        };
+    });
+  }, [toast]);
+
   const resetGame = useCallback(() => {
     setPlayerPosition({ x: MAP_WIDTH / 2 + 200, y: MAP_HEIGHT / 2 + 200 });
     setCameraPosition({ x: MAP_WIDTH / 2 + 200, y: MAP_HEIGHT / 2 + 200 });
@@ -452,7 +482,7 @@ export function GameContainer() {
         setPlayerAction({ type: 'boarding', targetId, startTime: Date.now(), duration: BOARDING_DURATION_MS });
         break;
     }
-  }, [toast]);
+  }, [toast, handleRespawn]);
 
   const applyDamage = useCallback((damage: number) => {
     setPlayerData(d => {
@@ -573,6 +603,7 @@ export function GameContainer() {
             resources: { ...prev.resources, money: prev.resources.money - shipInfo.cost },
             ship: { ...prev.ship, class: shipClass },
             health: newMaxHealth, // Heal to full on new ship purchase
+            energy: shipInfo.maxEnergy, // Refill energy
           };
       });
       toast({ title: "Ship Purchased!", description: `You are now the captain of a new ${shipClass}.` });
@@ -604,7 +635,7 @@ export function GameContainer() {
           maxHealth: shipInfo.baseHealth * 3,
           lastShotTimestamp: 0, lastAutoShotTimestamp: 0,
           aiState: 'guarding', lastKnownPlayerPosition: null, stateChangeTimestamp: 0,
-          energy: ENEMY_MAX_ENERGY, maxEnergy: ENEMY_MAX_ENERGY, cargo: 0, lastEnergyUseTimestamp: 0,
+          energy: shipInfo.maxEnergy, maxEnergy: shipInfo.maxEnergy, cargo: 0, lastEnergyUseTimestamp: 0,
           isAlly: true, combatTargetId: null, lastAttackerId: null, patrolTarget: null,
           cruiseState: 'idle', cruiseAvailableAt: 0,
       };
@@ -625,6 +656,7 @@ export function GameContainer() {
         resources: { ...prev.resources, money: prev.resources.money - ALLY_COST }
     }));
 
+    const shipInfo = SHIP_DATA['Chasseur'];
     const newAlly: EnemyState = {
         id: getUniqueId(),
         type: 'Chasseur',
@@ -633,15 +665,15 @@ export function GameContainer() {
         vx: 0,
         vy: 0,
         rotation: 0,
-        health: SHIP_DATA['Chasseur'].baseHealth * 3,
-        maxHealth: SHIP_DATA['Chasseur'].baseHealth * 3,
+        health: shipInfo.baseHealth * 3,
+        maxHealth: shipInfo.baseHealth * 3,
         lastShotTimestamp: 0,
         lastAutoShotTimestamp: 0,
         aiState: 'following',
         lastKnownPlayerPosition: null,
         stateChangeTimestamp: 0,
-        energy: ENEMY_MAX_ENERGY,
-        maxEnergy: ENEMY_MAX_ENERGY,
+        energy: shipInfo.maxEnergy,
+        maxEnergy: shipInfo.maxEnergy,
         cargo: 0,
         lastEnergyUseTimestamp: 0,
         isAlly: true,
@@ -736,6 +768,8 @@ export function GameContainer() {
                 clickedOnShip = true;
                 if (!enemy.isAlly) {
                     setTargetId(enemy.id === targetIdRef.current ? null : enemy.id);
+                } else {
+                    setTargetId(null);
                 }
                 setAutoMoveTarget(null);
                 break;
@@ -864,7 +898,10 @@ export function GameContainer() {
 
   useEffect(() => {
     const { ship, upgrades, energy } = playerData;
-    const maxHealth = SHIP_DATA[ship.class].baseHealth * 3 + UPGRADE_VALUES.maxHealth[upgrades.maxHealth];
+    const shipInfo = SHIP_DATA[ship.class];
+    const maxHealth = shipInfo.baseHealth * 3 + UPGRADE_VALUES.maxHealth[upgrades.maxHealth];
+    const maxEnergy = shipInfo.maxEnergy;
+
     const newSystems: VesselSystemsData = {
         shields: 'Online',
         weapons: 'Ready',
@@ -880,7 +917,7 @@ export function GameContainer() {
     if (playerData.health <= 0) newSystems.shields = 'Offline';
     
     if (energy <= 0) newSystems.power = 'Offline';
-    else if (energy < 40) newSystems.power = 'Damaged';
+    else if (energy < maxEnergy * 0.4) newSystems.power = 'Damaged';
 
     setVesselSystems(newSystems);
   }, [playerData, shipMode, isPlayerActionInProgress]);
@@ -1033,7 +1070,6 @@ export function GameContainer() {
 
       if ((currentTarget || isShootingManually) && canShoot && timestamp - lastFiredTimestamp.current > FIRE_RATE_MS) {
         lastFiredTimestamp.current = timestamp;
-        lastEnergyUseTimestamp.current = timestamp;
         
         let fireRotation = aimAngle;
         if (currentTarget) fireRotation = Math.atan2(currentTarget.y - playerPositionRef.current.y, currentTarget.x - playerPositionRef.current.x) * (180 / Math.PI);
@@ -1044,6 +1080,7 @@ export function GameContainer() {
         if (manualTurrets.count > 0) {
             const energyCost = ENERGY_PER_SHOT * manualTurrets.count;
             if (playerDataRef.current.energy >= energyCost) {
+                lastEnergyUseTimestamp.current = timestamp;
                 setPlayerData(d => ({ ...d, energy: d.energy - energyCost }));
                 const shipRotRad = playerRotationRef.current * (Math.PI / 180);
                 
@@ -1069,7 +1106,9 @@ export function GameContainer() {
 
       // Player auto-turret logic
       const { autoTurrets } = playerShipConfig.weapons;
-      if (hasUpgradedWeapons && autoTurrets && autoTurrets.count > 0 && timestamp - lastPlayerAutoShotTimestamp.current > AUTO_TURRET_FIRE_RATE_MS) {
+      const hasAutoTurrets = autoTurrets && autoTurrets.count > 0 && hasUpgradedWeapons;
+
+      if (hasAutoTurrets && timestamp - lastPlayerAutoShotTimestamp.current > AUTO_TURRET_FIRE_RATE_MS) {
         if (playerDataRef.current.energy >= AUTO_TURRET_ENERGY_COST * autoTurrets.count) {
             let autoTarget: EnemyState | null = null;
             let minDistance = ENEMY_AGGRO_RADIUS;
@@ -1110,34 +1149,32 @@ export function GameContainer() {
       // Beam weapon logic for player
       const { beam } = playerShipConfig.weapons;
       const isShootingTargetWithBeams = beam && beam.count > 0 && currentTarget && !currentTarget.isAlly && isLeftMouseDown.current && canShoot;
+      
+      const existingPlayerBeams = activeBeamsRef.current.filter(b => b.sourceId === -1);
 
       if (isShootingTargetWithBeams) {
-        const existingBeams = activeBeamsRef.current.filter(b => b.sourceId === -1);
-        if (existingBeams.length === 0) {
-            const energyCost = AI_BEAM_ENERGY_COST;
-            if (playerDataRef.current.energy >= energyCost) {
-                setPlayerData(d => ({ ...d, energy: d.energy - energyCost }));
-                lastEnergyUseTimestamp.current = timestamp;
-                const newBeams: BeamState[] = [];
-                const shipRotRad = playerRotationRef.current * (Math.PI / 180);
-                for (const offset of beam.offsets) {
-                    const rotatedOffsetX = offset.x * Math.cos(shipRotRad) - offset.y * Math.sin(shipRotRad);
-                    const rotatedOffsetY = offset.x * Math.sin(shipRotRad) + offset.y * Math.cos(shipRotRad);
-                    newBeams.push({
-                        id: getUniqueId(),
-                        sourceId: -1,
-                        targetId: currentTarget.id,
-                        startTime: timestamp,
-                        type: beam.type,
-                        sourceOffsetX: rotatedOffsetX,
-                        sourceOffsetY: rotatedOffsetY,
-                    });
-                }
-                setActiveBeams(prev => [...prev, ...newBeams]);
+        if (existingPlayerBeams.length === 0 && playerDataRef.current.energy > 0) {
+            // Start new beams
+            const newBeams: BeamState[] = [];
+            const shipRotRad = playerRotationRef.current * (Math.PI / 180);
+            for (const offset of beam.offsets) {
+                const rotatedOffsetX = offset.x * Math.cos(shipRotRad) - offset.y * Math.sin(shipRotRad);
+                const rotatedOffsetY = offset.x * Math.sin(shipRotRad) + offset.y * Math.cos(shipRotRad);
+                newBeams.push({
+                    id: getUniqueId(),
+                    sourceId: -1,
+                    targetId: currentTarget.id,
+                    startTime: timestamp,
+                    type: beam.type,
+                    sourceOffsetX: rotatedOffsetX,
+                    sourceOffsetY: rotatedOffsetY,
+                });
             }
+            setActiveBeams(prev => [...prev, ...newBeams]);
         }
       } else {
-          if (activeBeamsRef.current.some(b => b.sourceId === -1)) {
+          // Stop existing beams if not shooting
+          if (existingPlayerBeams.length > 0) {
               setActiveBeams(prev => prev.filter(b => b.sourceId !== -1));
           }
       }
@@ -1245,10 +1282,18 @@ export function GameContainer() {
 
       // Player stats and station regen
       const { ship, upgrades } = playerDataRef.current;
-      const energyRechargeRate = UPGRADE_VALUES.energyRecharge[upgrades.energyRecharge];
+      const shipInfo = SHIP_DATA[ship.class];
+      const maxHealth = shipInfo.baseHealth * 3 + UPGRADE_VALUES.maxHealth[upgrades.maxHealth];
+      const maxEnergy = shipInfo.maxEnergy;
+      
+      const baseEnergyRechargeRate = shipInfo.baseEnergyRecharge + UPGRADE_VALUES.energyRecharge[upgrades.energyRecharge];
+      const antimatterRechargeRate = UPGRADE_VALUES.antimatterReactor[upgrades.antimatterReactor] || 0;
       const nanobotRechargeRate = UPGRADE_VALUES.nanobots[upgrades.nanobots];
-      const maxHealth = SHIP_DATA[ship.class].baseHealth * 3 + UPGRADE_VALUES.maxHealth[upgrades.maxHealth];
       const ENERGY_REGEN_DELAY_MS = 2000;
+
+      if (antimatterRechargeRate > 0) {
+        setPlayerData(d => ({ ...d, energy: Math.min(maxEnergy, d.energy + antimatterRechargeRate) }));
+      }
 
       if (shipModeRef.current === 'shield') {
           setPlayerData(d => {
@@ -1260,10 +1305,10 @@ export function GameContainer() {
           });
           if (playerDataRef.current.energy <= 0) setShipMode('normal');
       } else if (timestamp - lastEnergyUseTimestamp.current > ENERGY_REGEN_DELAY_MS) {
-          setPlayerData(d => ({ ...d, energy: Math.min(100, d.energy + energyRechargeRate) }));
+          setPlayerData(d => ({ ...d, energy: Math.min(maxEnergy, d.energy + baseEnergyRechargeRate) }));
       }
       if(nanobotRechargeRate > 0) setPlayerData(d => ({...d, health: Math.min(maxHealth, d.health + nanobotRechargeRate)}));
-      if (isDocked) setPlayerData(d => ({ ...d, health: Math.min(maxHealth, d.health + STATION_PLAYER_REGEN_RATE), energy: Math.min(100, d.energy + STATION_PLAYER_REGEN_RATE) }));
+      if (isDocked) setPlayerData(d => ({ ...d, health: Math.min(maxHealth, d.health + STATION_PLAYER_REGEN_RATE), energy: Math.min(maxEnergy, d.energy + STATION_PLAYER_REGEN_RATE * 5) }));
       
       setStations(prev => prev.map(station => {
         if (timestamp - station.lastHitTimestamp > STATION_SHIELD_REGEN_DELAY_MS) {
@@ -1290,9 +1335,11 @@ export function GameContainer() {
       const newEnemyProjectiles: ProjectileState[] = [];
       const hitProjectileIds = new Set<number>();
       const newDebrisFromKills: DebrisType[] = [];
+      let newActiveBeams = [...activeBeamsRef.current];
 
       let processedEnemies = enemiesRef.current.map(enemy => {
           let updatedEnemy = { ...enemy };
+          const enemyShipInfo = SHIP_DATA[updatedEnemy.type];
 
           // --- AI CRUISE STATE MACHINE ---
           if (updatedEnemy.cruiseState === 'charging') {
@@ -1387,7 +1434,7 @@ export function GameContainer() {
           const canSeePlayer = distanceToPlayer < aggroRadius;
 
           // 1. State Transitions
-          const isMiner = updatedEnemy.role === 'miner';
+          const isMiner = updatedEnemy.role === 'miner' || updatedEnemy.type === 'Mineur';
           const shouldFlee = (updatedEnemy.health / updatedEnemy.maxHealth) < ENEMY_FLEE_HEALTH_THRESHOLD;
           if (updatedEnemy.aiState !== 'fleeing' && shouldFlee && updatedEnemy.lastAttackerId !== null) {
               updatedEnemy.aiState = 'fleeing';
@@ -1456,7 +1503,19 @@ export function GameContainer() {
                           }
                       }
                   }
-                  updatedEnemy.combatTargetId = closestTarget;
+
+                  if(closestTarget) {
+                    updatedEnemy.combatTargetId = closestTarget;
+                  } else if (!updatedEnemy.isAlly) {
+                      // If no other target, attack the station
+                      const station = stationsRef.current[0];
+                      if(station) {
+                        const distToStation = Math.hypot(updatedEnemy.x - station.x, updatedEnemy.y - station.y);
+                        if (distToStation < aggroRadius * 2) {
+                            updatedEnemy.combatTargetId = station.id + 1000; // Special ID for station
+                        }
+                      }
+                  }
               }
           }
 
@@ -1651,9 +1710,16 @@ export function GameContainer() {
                     updatedEnemy.aiState = 'fleeing';
                     break;
                 }
-                const targetShip = updatedEnemy.combatTargetId === -1 
-                    ? { x: playerPositionRef.current.x, y: playerPositionRef.current.y, isAlly: false, health: playerDataRef.current.health }
-                    : enemiesRef.current.find(e => e.id === updatedEnemy.combatTargetId);
+                
+                let targetShip: {x:number, y:number, health:number, isAlly?:boolean} | null = null;
+                if(updatedEnemy.combatTargetId === -1) {
+                    targetShip = { x: playerPositionRef.current.x, y: playerPositionRef.current.y, isAlly: false, health: playerDataRef.current.health };
+                } else if(updatedEnemy.combatTargetId && updatedEnemy.combatTargetId > 1000) {
+                    const station = stationsRef.current.find(s => s.id === updatedEnemy.combatTargetId! - 1000);
+                    if(station) targetShip = { x: station.x, y: station.y, health: station.health + station.shield, isAlly: true };
+                } else {
+                    targetShip = enemiesRef.current.find(e => e.id === updatedEnemy.combatTargetId) ?? null;
+                }
 
                 if (targetShip && targetShip.health > 0) {
                     updatedEnemy.lastKnownPlayerPosition = { x: targetShip.x, y: targetShip.y };
@@ -1670,8 +1736,7 @@ export function GameContainer() {
                     }
 
                     if (timestamp - updatedEnemy.lastShotTimestamp > ENEMY_FIRE_RATE_MS && updatedEnemy.energy >= ENEMY_ENERGY_PER_SHOT) {
-                        const enemyShipConfig = SHIP_DATA[updatedEnemy.type];
-                        if (enemyShipConfig.weapons.manualTurrets.count > 0) {
+                        if (enemyShipInfo.weapons.manualTurrets.count > 0) {
                            newEnemyProjectiles.push({ id: getUniqueId(), x: updatedEnemy.x, y: updatedEnemy.y, rotation: angleToTarget * (180 / Math.PI), ownerId: updatedEnemy.id, type: 'basic' });
                            updatedEnemy.lastShotTimestamp = timestamp;
                            updatedEnemy.energy -= ENEMY_ENERGY_PER_SHOT;
@@ -1679,13 +1744,12 @@ export function GameContainer() {
                         }
                     }
 
-                    const enemyShipConfig = SHIP_DATA[updatedEnemy.type];
-                    if (enemyShipConfig.weapons.beam && updatedEnemy.energy >= AI_BEAM_ENERGY_COST) {
+                    if (enemyShipInfo.weapons.beam && updatedEnemy.energy > 0) {
                         const isAlreadyBeaming = activeBeamsRef.current.some(b => b.sourceId === updatedEnemy.id);
                         if (!isAlreadyBeaming) {
                             const newBeams: BeamState[] = [];
                             const shipRotRad = updatedEnemy.rotation * (Math.PI / 180);
-                            for (const offset of enemyShipConfig.weapons.beam.offsets) {
+                            for (const offset of enemyShipInfo.weapons.beam.offsets) {
                                 const rotatedOffsetX = offset.x * Math.cos(shipRotRad) - offset.y * Math.sin(shipRotRad);
                                 const rotatedOffsetY = offset.x * Math.sin(shipRotRad) + offset.y * Math.cos(shipRotRad);
                                 newBeams.push({
@@ -1693,14 +1757,12 @@ export function GameContainer() {
                                     sourceId: updatedEnemy.id,
                                     targetId: updatedEnemy.combatTargetId!,
                                     startTime: timestamp,
-                                    type: enemyShipConfig.weapons.beam.type,
+                                    type: enemyShipInfo.weapons.beam.type,
                                     sourceOffsetX: rotatedOffsetX,
                                     sourceOffsetY: rotatedOffsetY,
                                 });
                             }
-                            setActiveBeams(prev => [...prev, ...newBeams]);
-                            updatedEnemy.energy -= AI_BEAM_ENERGY_COST;
-                            updatedEnemy.lastEnergyUseTimestamp = timestamp;
+                            newActiveBeams = [...newActiveBeams, ...newBeams];
                         }
                     }
 
@@ -1708,12 +1770,12 @@ export function GameContainer() {
                     updatedEnemy.aiState = 'searching';
                     updatedEnemy.combatTargetId = null;
                     updatedEnemy.stateChangeTimestamp = timestamp;
-                    setActiveBeams(prev => prev.filter(b => b.sourceId !== updatedEnemy.id));
+                    newActiveBeams = newActiveBeams.filter(b => b.sourceId !== updatedEnemy.id);
                 }
                 break;
             }
             case 'searching':
-                setActiveBeams(prev => prev.filter(b => b.sourceId !== updatedEnemy.id));
+                newActiveBeams = newActiveBeams.filter(b => b.sourceId !== updatedEnemy.id);
                 if (timestamp - updatedEnemy.stateChangeTimestamp > ENEMY_SEARCH_DURATION_MS) {
                     updatedEnemy.aiState = 'patrolling';
                     updatedEnemy.lastKnownPlayerPosition = null;
@@ -1731,7 +1793,7 @@ export function GameContainer() {
                 }
                 break;
             case 'fleeing': {
-                setActiveBeams(prev => prev.filter(b => b.sourceId !== updatedEnemy.id));
+                newActiveBeams = newActiveBeams.filter(b => b.sourceId !== updatedEnemy.id);
                 const attacker = updatedEnemy.lastAttackerId === -1 
                     ? playerPositionRef.current
                     : enemiesRef.current.find(e => e.id === updatedEnemy.lastAttackerId);
@@ -1815,25 +1877,68 @@ export function GameContainer() {
       }).filter(Boolean) as EnemyState[];
 
       if (newEnemyProjectiles.length > 0) setEnemyProjectiles(prev => [...prev, ...newEnemyProjectiles]);
+      
+      newActiveBeams = newActiveBeams.map(beam => {
+          let source: { x: number; y: number; rotation?: number; energy?: number, maxEnergy?: number } | null = null;
+          let target: { x: number; y: number; isAlly?: boolean } | null = null;
+          
+          if (beam.sourceId === -1) {
+              source = { ...playerPositionRef.current, energy: playerDataRef.current.energy, rotation: playerRotationRef.current };
+          } else {
+              source = processedEnemies.find(e => e.id === beam.sourceId) || null;
+          }
+      
+          if (beam.targetId === -1) {
+              target = playerPositionRef.current;
+          } else if(beam.targetId > 1000) {
+              target = stationsRef.current.find(s => s.id === beam.targetId - 1000) || null;
+          } else {
+              target = processedEnemies.find(e => e.id === beam.targetId) || null;
+          }
+      
+          if (!source || !target) return null;
+      
+          const duration = timestamp - beam.startTime;
+          const rampUpTime = BEAM_RAMP_UP_TIME_MS;
+          const maxMultiplier = BEAM_RAMP_UP_MULTIPLIER;
+          const damageMultiplier = 1 + (Math.min(duration, rampUpTime) / rampUpTime) * (maxMultiplier - 1);
+          
+          // Drain energy
+          const energyDrain = (beam.type === 'heavy' ? HEAVY_BEAM_ENERGY_DRAIN_PER_FRAME : BEAM_ENERGY_DRAIN_PER_FRAME) * damageMultiplier;
+          
+          let hasEnergy = true;
+          if (beam.sourceId === -1) {
+              if (playerDataRef.current.energy < energyDrain) hasEnergy = false;
+              setPlayerData(d => ({ ...d, energy: Math.max(0, d.energy - energyDrain) }));
+              if(hasEnergy) lastEnergyUseTimestamp.current = timestamp;
+          } else {
+              const sourceEnemy = processedEnemies.find(e => e.id === beam.sourceId);
+              if (sourceEnemy && sourceEnemy.energy < energyDrain) hasEnergy = false;
+              processedEnemies = processedEnemies.map(e => e.id === beam.sourceId ? { ...e, energy: Math.max(0, e.energy - energyDrain), lastEnergyUseTimestamp: timestamp } : e);
+          }
+          
+          if (!hasEnergy) return null;
 
-      activeBeamsRef.current.forEach(beam => {
-        const source = beam.sourceId === -1 ? { x: playerPositionRef.current.x, y: playerPositionRef.current.y, rotation: playerRotationRef.current } : enemiesRef.current.find(e => e.id === beam.sourceId);
-        const target = beam.targetId === -1 ? { x: playerPositionRef.current.x, y: playerPositionRef.current.y } : enemiesRef.current.find(e => e.id === beam.targetId);
+          // Apply damage
+          const frameDamage = (beam.type === 'heavy' ? HEAVY_BEAM_DAMAGE_PER_FRAME : BEAM_DAMAGE_PER_FRAME) * damageMultiplier;
+          if (beam.targetId === -1) {
+              applyDamage(frameDamage);
+          } else if(beam.targetId > 1000) {
+              setStations(prev => prev.map(s => {
+                  if (s.id === beam.targetId - 1000) {
+                    let shieldDamage = Math.min(s.shield, frameDamage);
+                    let healthDamage = frameDamage - shieldDamage;
+                    return { ...s, shield: s.shield - shieldDamage, health: s.health - healthDamage, lastHitTimestamp: timestamp };
+                  }
+                  return s;
+              }));
+          } else {
+              processedEnemies = processedEnemies.map(e => e.id === beam.targetId ? { ...e, health: Math.max(0, e.health - frameDamage) } : e);
+          }
 
-        if (!source || !target) return;
-
-        const duration = timestamp - beam.startTime;
-        const rampUpTime = BEAM_RAMP_UP_TIME_MS;
-        const maxMultiplier = BEAM_RAMP_UP_MULTIPLIER;
-        const damageMultiplier = 1 + (Math.min(duration, rampUpTime) / rampUpTime) * (maxMultiplier - 1);
-        const frameDamage = (beam.type === 'heavy' ? HEAVY_BEAM_DAMAGE_PER_FRAME : BEAM_DAMAGE_PER_FRAME) * damageMultiplier;
-
-        if (beam.targetId === -1) {
-            applyDamage(frameDamage);
-        } else {
-            processedEnemies = processedEnemies.map(e => e.id === beam.targetId ? { ...e, health: Math.max(0, e.health - frameDamage) } : e);
-        }
-    });
+          return beam;
+      }).filter(Boolean) as BeamState[];
+      setActiveBeams(newActiveBeams);
 
       
       let playerVelocityUpdate = { ...velocityRef.current };
@@ -1909,6 +2014,36 @@ export function GameContainer() {
         }
       }
       if (damageToPlayerFromProjectiles > 0) applyDamage(damageToPlayerFromProjectiles);
+      
+      setStations(prevStations => prevStations.map(station => {
+          let newStation = {...station};
+          for (const proj of [...playerProjectilesRef.current, ...enemyProjectilesRef.current]) {
+              if (hitProjectileIds.has(proj.id)) continue;
+
+              const projOwnerIsPlayer = proj.ownerId === -1;
+              const projOwner = enemiesRef.current.find(e => e.id === proj.ownerId);
+
+              // Don't damage station if shot by player or allies
+              if (projOwnerIsPlayer || (projOwner && projOwner.isAlly)) {
+                continue;
+              }
+              
+              const distance = Math.hypot(proj.x - newStation.x, proj.y - newStation.y);
+              if (distance < STATION_COLLISION_RADIUS) {
+                  hitProjectileIds.add(proj.id);
+                  const damage = proj.type === 'heavy' ? HEAVY_PLAYER_PROJECTILE_DAMAGE : PLAYER_PROJECTILE_DAMAGE;
+                  let shieldDamage = Math.min(newStation.shield, damage);
+                  let healthDamage = damage - shieldDamage;
+
+                  newStation.shield -= shieldDamage;
+                  newStation.health -= healthDamage;
+                  newStation.lastHitTimestamp = timestamp;
+              }
+          }
+          return newStation;
+      }));
+
+
       if (hitProjectileIds.size > 0) {
         setPlayerProjectiles(prev => prev.filter(p => !hitProjectileIds.has(p.id)));
         setEnemyProjectiles(prev => prev.filter(p => !hitProjectileIds.has(p.id)));
@@ -1996,7 +2131,12 @@ export function GameContainer() {
 
 
       if (playerDataRef.current.health <= 0) {
-        setIsGameOver(true);
+        const mainStation = stationsRef.current.find(s => s.id === 1);
+        if (mainStation && mainStation.health > 0) {
+            handleRespawn();
+        } else {
+            setIsGameOver(true);
+        }
       } else {
         animationFrameId = requestAnimationFrame(gameLoop);
       }
@@ -2007,7 +2147,7 @@ export function GameContainer() {
     }
     
     return () => cancelAnimationFrame(animationFrameId);
-  }, [viewSize, isGameOver, controlScheme, isDocked, applyDamage, handleActionSelect, handleBuyAlly, handleBuyShip, handleBuyUpgrade, handleRepairHull, handleSellResource, resetGame, toast, handleBuildShipFromTactical]);
+  }, [viewSize, isGameOver, controlScheme, isDocked, applyDamage, handleActionSelect, handleBuyAlly, handleBuyShip, handleBuyUpgrade, handleRepairHull, handleSellResource, resetGame, toast, handleBuildShipFromTactical, handleRespawn]);
 
   let radarRange = BASE_RADAR_RANGE;
   if (shipMode === 'scan') radarRange = BASE_RADAR_RANGE * 2;
@@ -2092,9 +2232,15 @@ export function GameContainer() {
                 ? { x: playerPositionRef.current.x, y: playerPositionRef.current.y, rotation: playerRotationRef.current } 
                 : enemiesRef.current.find(e => e.id === beam.sourceId);
 
-            const targetEntity = beam.targetId === -1 
-                ? { x: playerPositionRef.current.x, y: playerPositionRef.current.y }
-                : enemiesRef.current.find(e => e.id === beam.targetId);
+            let targetEntity: {x: number, y: number} | null = null;
+            if(beam.targetId === -1) {
+                targetEntity = playerPositionRef.current;
+            } else if (beam.targetId > 1000) {
+                targetEntity = stationsRef.current.find(s => s.id === beam.targetId - 1000) || null;
+            } else {
+                targetEntity = enemiesRef.current.find(e => e.id === beam.targetId) || null;
+            }
+
 
             if (!sourceEntity || !targetEntity) return null;
             
@@ -2180,7 +2326,7 @@ export function GameContainer() {
         onBuildShip={handleBuildShipFromTactical}
       />
       {cruiseState === 'cruising' && <CruiseStreaks />}
-       {playerData.health < LOW_HEALTH_THRESHOLD && (
+       {playerData.health < LOW_HEALTH_THRESHOLD * 3 && ( // Adjusted for higher base health
           <div className="absolute inset-0 pointer-events-none animate-pulse" style={{ boxShadow: 'inset 0 0 80px 30px rgba(255, 0, 0, 0.4)' }} />
        )}
        {playerData.energy <= 0 && (
@@ -2253,8 +2399,8 @@ export function GameContainer() {
         onSellResource={handleSellResource}
         onBuyUpgrade={handleBuyUpgrade}
         onRepairHull={handleRepairHull}
-        onBuyShip={handleBuyShip}
-        onBuyAlly={handleBuyAlly}
+        onBuyShip={onBuyShip}
+        onBuyAlly={onBuyAlly}
       />
 
       <GameOverOverlay isOpen={isGameOver} onRestart={resetGame} />
