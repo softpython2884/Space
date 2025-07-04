@@ -42,7 +42,7 @@ import { useToast } from '@/hooks/use-toast';
 let ACCELERATION = 0.1;
 let STRAFE_ACCELERATION = 0.05;
 const REVERSE_ACCELERATION = 0.06;
-let MAX_SPEED = 6;
+let MAX_SPEED = 4;
 const FRICTION = 0.98;
 
 const PROJECTILE_SPEED = 10;
@@ -84,7 +84,7 @@ const LOW_HEALTH_THRESHOLD = 30;
 const ENEMY_AGGRO_RADIUS = 1200;
 const STATION_AGGRO_RADIUS = 2500;
 const ENEMY_FIRE_RATE_MS = 1500;
-const ENEMY_SPEED = 2.5;
+const ENEMY_SPEED = 4;
 
 const STEALTH_AGGRO_RADIUS = 350;
 const STEALTH_DETECTION_RADIUS_NEAR = 250;
@@ -140,7 +140,6 @@ const STATION_PLAYER_REGEN_RATE = 0.1;
 const STATION_SHIELD_REGEN_RATE = 0.05;
 const STATION_SHIELD_REGEN_DELAY_MS = 5000;
 
-const BEAM_RANGE = 1000;
 const BEAM_ENERGY_DRAIN_PER_FRAME = 0.25;
 
 let uniqueIdCounter = 0;
@@ -175,34 +174,34 @@ const generateInitialEnemies = (playerStation: StationState, enemyStation: Stati
         
         // 3 Miners
         for (let i = 0; i < 3; i++) {
-            fleet.push(createShip('Mineur', stationX + (Math.random() - 0.5) * 400, stationY + 150 + (Math.random() - 0.5) * 400, isAlly, 'patrolling', { role: 'miner', patrolCenter: { x: stationX, y: stationY } }));
+            fleet.push(createShip('Mineur', stationX + (Math.random() - 0.5) * 400, stationY + 150 + (Math.random() - 0.5) * 400, isAlly, 'guarding', { role: 'miner', patrolCenter: { x: stationX, y: stationY } }));
         }
 
         // 1 Frigate with 2 Chasseur escorts (defense)
-        const frigate = createShip('Frégate', stationX, stationY - 200, isAlly, 'patrolling', { patrolCenter: { x: stationX, y: stationY } });
+        const frigate = createShip('Frégate', stationX, stationY - 200, isAlly, 'guarding', { patrolCenter: { x: stationX, y: stationY } });
         fleet.push(frigate);
         for (let i = 0; i < 2; i++) {
             fleet.push(createShip('Chasseur', frigate.x + (i*100-50), frigate.y + 50, isAlly, 'following', { followTargetId: frigate.id, patrolCenter: { x: stationX, y: stationY } }));
         }
 
         const attackForceCommon = {
-            aiState: 'patrolling' as EnemyAiState, // Start by patrolling
+            aiState: 'guarding' as EnemyAiState, 
             role: 'attack' as const,
             patrolCenter: { x: stationX, y: stationY }
         };
         
         // 4 Interceptors
         for (let i = 0; i < 4; i++) {
-            fleet.push(createShip('Intercepteur', stationX + (Math.random() - 0.5) * 300, stationY - 300 + (Math.random() - 0.5) * 100, isAlly, 'patrolling', attackForceCommon));
+            fleet.push(createShip('Intercepteur', stationX + (Math.random() - 0.5) * 300, stationY - 300 + (Math.random() - 0.5) * 100, isAlly, 'guarding', attackForceCommon));
         }
         
         // 7 Chasseurs
         for (let i = 0; i < 7; i++) {
-            fleet.push(createShip('Chasseur', stationX + (Math.random() - 0.5) * 400, stationY - 400 + (Math.random() - 0.5) * 100, isAlly, 'patrolling', attackForceCommon));
+            fleet.push(createShip('Chasseur', stationX + (Math.random() - 0.5) * 400, stationY - 400 + (Math.random() - 0.5) * 100, isAlly, 'guarding', attackForceCommon));
         }
         
         // 1 Destroyer
-        fleet.push(createShip('Destroyer', stationX, stationY - 500, isAlly, 'patrolling', attackForceCommon));
+        fleet.push(createShip('Destroyer', stationX, stationY - 500, isAlly, 'guarding', attackForceCommon));
     };
 
     // Player Fleet
@@ -388,7 +387,7 @@ export function GameContainer() {
   useEffect(() => { activeBeamsRef.current = activeBeams; }, [activeBeams]);
   
   const isPlayerActionInProgress = playerAction !== null;
-  const radarRange = BASE_RADAR_RANGE;
+  const radarRange = shipMode === 'scan' ? BASE_RADAR_RANGE * 1.5 : BASE_RADAR_RANGE;
 
   useEffect(() => {
     setIsTacticalView(zoom === MIN_ZOOM);
@@ -862,6 +861,29 @@ export function GameContainer() {
 
     setEnemies(prev => [...prev, newAlly]);
     addChatMessage('System', `A Chasseur escort has joined your fleet.`, 'text-blue-400');
+  }, [addChatMessage]);
+
+  const handleAllFollow = useCallback(() => {
+    addChatMessage('Commander', 'All combat wings, form on me!', 'text-cyan-400');
+    setEnemies(prev => prev.map(e => 
+        (e.isAlly && e.type !== 'Mineur' && e.type !== 'Cargo') 
+        ? { ...e, aiState: 'following', followTargetId: -1, combatTargetId: null, orderTarget: null } 
+        : e
+    ));
+  }, [addChatMessage]);
+
+  const handleAllAttack = useCallback(() => {
+    const enemyBase = stationsRef.current.find(s => s.owner === 'enemy');
+    if (!enemyBase) {
+        addChatMessage('Commander', 'No enemy base detected.', 'text-red-400');
+        return;
+    }
+    addChatMessage('Commander', 'All combat wings, attack the enemy base!', 'text-red-500');
+    setEnemies(prev => prev.map(e => 
+        (e.isAlly && e.type !== 'Mineur' && e.type !== 'Cargo') 
+        ? { ...e, aiState: 'chasing', combatTargetId: enemyBase.id + 10000 } 
+        : e
+    ));
   }, [addChatMessage]);
 
   const handleToggleWeapon = useCallback((weapon: 'manualTurrets' | 'autoTurrets' | 'beam') => {
@@ -1409,11 +1431,11 @@ export function GameContainer() {
       // Manage active beams based on the target
       const existingPlayerBeams = activeBeamsRef.current.filter(b => b.sourceId === -1);
 
-      if (beamTarget) { // If we have a target
+      if (beamTarget && playerDataRef.current.energy > 0) {
           setPlayerData(d => ({ ...d, energy: Math.max(0, d.energy - BEAM_ENERGY_DRAIN_PER_FRAME) }));
           lastEnergyUseTimestamp.current = timestamp;
 
-          if (existingPlayerBeams.length === 0) { // If no beam exists, create it
+          if (existingPlayerBeams.length === 0 && beam) {
               const newBeams: BeamState[] = [];
               for (const offset of beam.offsets) {
                   newBeams.push({
@@ -1427,10 +1449,10 @@ export function GameContainer() {
                   });
               }
               setActiveBeams(prev => [...prev, ...newBeams]);
-          } else { // If beam exists, just update its target
+          } else { 
               setActiveBeams(prev => prev.map(b => b.sourceId === -1 ? { ...b, targetId: beamTarget!.id } : b));
           }
-      } else { // If no target, remove player beams
+      } else { 
           if (existingPlayerBeams.length > 0) {
               setActiveBeams(prev => prev.filter(b => b.sourceId !== -1));
           }
@@ -1546,7 +1568,7 @@ export function GameContainer() {
       const maxHealth = shipInfo.baseHealth * 3 + UPGRADE_VALUES.maxHealth[upgrades.maxHealth];
       const maxEnergy = shipInfo.maxEnergy;
       
-      const baseEnergyRechargeRate = shipInfo.baseEnergyRecharge + UPGRADE_VALUES.energyRecharge[upgrades.energyRecharge];
+      const baseEnergyRecharge = shipInfo.baseEnergyRecharge + UPGRADE_VALUES.energyRecharge[upgrades.energyRecharge];
       const antimatterRechargeRate = UPGRADE_VALUES.antimatterReactor[upgrades.antimatterReactor] || 0;
       const nanobotRechargeRate = UPGRADE_VALUES.nanobots[upgrades.nanobots];
       const ENERGY_REGEN_DELAY_MS = 2000;
@@ -1572,7 +1594,7 @@ export function GameContainer() {
             });
             if (playerDataRef.current.energy <= 0) setShipMode('normal');
         } else if (timestamp - lastEnergyUseTimestamp.current > ENERGY_REGEN_DELAY_MS) {
-            setPlayerData(d => ({ ...d, energy: Math.min(maxEnergy, d.energy + baseEnergyRechargeRate) }));
+            setPlayerData(d => ({ ...d, energy: Math.min(maxEnergy, d.energy + baseEnergyRecharge) }));
         }
       }
 
@@ -2726,7 +2748,7 @@ export function GameContainer() {
           isShieldActive={shipMode === 'shield'} 
         />
         {visibleEnemies.map(enemy => {
-          const props = {
+          const {id, ...props} = {
             x: enemy.x,
             y: enemy.y,
             rotation: enemy.rotation,
@@ -2753,7 +2775,17 @@ export function GameContainer() {
             <Asteroid key={a.id} id={a.id} x={a.x} y={a.y} size={a.size} rotation={a.rotation} />
         ))}
         {visibleStations.map((s) => (
-            <SpaceStation key={s.id} x={s.x} y={s.y} isEnemy={s.owner === 'enemy'} />
+            <SpaceStation 
+              key={s.id} 
+              x={s.x} 
+              y={s.y} 
+              isEnemy={s.owner === 'enemy'}
+              health={s.health}
+              maxHealth={s.maxHealth}
+              shield={s.shield}
+              maxShield={s.maxShield}
+              isTargeted={s.id + 10000 === targetId}
+            />
         ))}
         {visibleOutposts.map((o) => (
             <Outpost key={o.id} x={o.x} y={o.y} />
@@ -2775,6 +2807,8 @@ export function GameContainer() {
         playerResources={playerData.resources}
         onBuildShip={handleBuildShipFromTactical}
         onBuildOutpost={handleBuildOutpost}
+        onAllFollow={handleAllFollow}
+        onAllAttack={handleAllAttack}
       />
       <ClientOnly>
       {cruiseState === 'cruising' && <CruiseStreaks />}

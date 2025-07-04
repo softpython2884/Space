@@ -3,16 +3,19 @@
 import { cn } from '@/lib/utils';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Ship, CircleDollarSign, TowerControl, UserPlus } from 'lucide-react';
+import { PlusCircle, Ship, CircleDollarSign, TowerControl, Shield, Skull } from 'lucide-react';
 import type { Resources, BotShipType, PlayerShipClass } from '@/lib/types';
 import { SHIP_DATA, OUTPOST_COST } from '@/lib/constants';
 import { ScrollArea } from '../ui/scroll-area';
+import { Separator } from '../ui/separator';
 
 interface TacticalViewOverlayProps {
     isOpen: boolean;
     playerResources: Resources;
     onBuildShip: (type: BotShipType) => void;
     onBuildOutpost: () => void;
+    onAllFollow: () => void;
+    onAllAttack: () => void;
 }
 
 const ShipBuildCard = ({ shipInfo, canAfford, onBuildShip }: { shipInfo: (typeof SHIP_DATA)[PlayerShipClass], canAfford: boolean, onBuildShip: (type: BotShipType) => void }) => {
@@ -31,7 +34,7 @@ const ShipBuildCard = ({ shipInfo, canAfford, onBuildShip }: { shipInfo: (typeof
     )
 }
 
-export function TacticalViewOverlay({ isOpen, playerResources, onBuildShip, onBuildOutpost }: TacticalViewOverlayProps) {
+export function TacticalViewOverlay({ isOpen, playerResources, onBuildShip, onBuildOutpost, onAllFollow, onAllAttack }: TacticalViewOverlayProps) {
     if (!isOpen) {
         return null;
     }
@@ -75,6 +78,21 @@ export function TacticalViewOverlay({ isOpen, playerResources, onBuildShip, onBu
                         <CardDescription>Manage your fleet and issue orders.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
+
+                        <div>
+                            <h4 className="text-lg font-semibold mb-2">Global Orders</h4>
+                             <div className="grid grid-cols-2 gap-2">
+                                <Button onClick={onAllFollow}>
+                                    <Shield className="mr-2 h-4 w-4"/>All Follow
+                                </Button>
+                                <Button variant="destructive" onClick={onAllAttack}>
+                                    <Skull className="mr-2 h-4 w-4"/>All Attack
+                                </Button>
+                             </div>
+                        </div>
+
+                        <Separator />
+
                         <div>
                             <h4 className="text-lg font-semibold mb-2">Reinforcements</h4>
                             <ScrollArea className="h-64 pr-2">
@@ -100,13 +118,6 @@ export function TacticalViewOverlay({ isOpen, playerResources, onBuildShip, onBu
                                     </Card>
                                 </div>
                             </ScrollArea>
-                        </div>
-                        <div>
-                            <h4 className="text-lg font-semibold mb-2">Fleet Orders</h4>
-                            <div className="space-y-2">
-                                <Button className="w-full justify-start" disabled><Ship className="mr-2"/>Form Fleet Alpha</Button>
-                                <Button className="w-full justify-start" disabled><UserPlus className="mr-2"/>Assign to Fleet</Button>
-                            </div>
                         </div>
                     </CardContent>
                     <CardFooter className='p-3'>
