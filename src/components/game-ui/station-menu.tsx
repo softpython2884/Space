@@ -125,9 +125,9 @@ export function StationMenu({ isOpen, onOpenChange, playerData, stationData, onS
                                 <p className="text-sm text-muted-foreground">Ore</p>
                                 <p className="text-2xl font-bold flex items-center gap-2"><Mountain className="h-6 w-6 text-gray-400" /> {playerData.resources.ore}</p>
                             </div>
-                            <div className="text-center">
-                                <p className="text-sm text-muted-foreground">Gas</p>
-                                <p className="text-2xl font-bold flex items-center gap-2"><Flame className="h-6 w-6 text-orange-500" /> {playerData.resources.gas}</p>
+                             <div className="text-center">
+                                <p className="text-sm text-muted-foreground">Cargo</p>
+                                <p className="text-2xl font-bold flex items-center gap-2"><Warehouse className="h-6 w-6 text-gray-400" /> {playerData.cargo.current}/{maxCargo}</p>
                             </div>
                         </div>
 

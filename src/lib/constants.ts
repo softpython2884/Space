@@ -31,14 +31,21 @@ export const INITIAL_PLAYER_DATA: PlayerData = {
   upgrades: INITIAL_PLAYER_UPGRADES,
 };
 
-export const SHIP_DATA: Record<PlayerShipClass, { name: PlayerShipClass, description: string, cost: number, baseHealth: number, baseCargo: number }> = {
-    'Chasseur': { name: 'Chasseur', description: 'Vaisseau de base polyvalent. Peut être équipé de tourelles automatiques.', cost: 0, baseHealth: 100, baseCargo: 200 },
-    'Intercepteur': { name: 'Intercepteur', description: 'Petit et rapide, idéal pour les raids éclairs et l\'esquive.', cost: 5, baseHealth: 75, baseCargo: 100 },
-    'Frégate': { name: 'Frégate', description: 'Vaisseau de guerre lourdement armé. Futurs modules : rayons énergétiques et tourelles lourdes.', cost: 5, baseHealth: 250, baseCargo: 150 },
-    'Destroyer': { name: 'Destroyer', description: 'Plateforme d\'armement mobile dévastatrice. Futurs modules : armes destructrices et multiples tourelles.', cost: 5, baseHealth: 400, baseCargo: 250 },
-    'Porteur': { name: 'Porteur', description: 'Transporte et déploie une escouade de drones (fonction à venir).', cost: 5, baseHealth: 200, baseCargo: 300 },
-    'Cargo': { name: 'Cargo', description: 'Soute immense et coque résistante, mais lent et peu maniable.', cost: 5, baseHealth: 150, baseCargo: 1000 },
-    'Mineur': { name: 'Mineur', description: 'Équipé pour une extraction de ressources rapide et efficace. Octroie un bonus de rendement.', cost: 5, baseHealth: 100, baseCargo: 500 },
+export const SHIP_DATA: Record<PlayerShipClass, {
+    name: PlayerShipClass;
+    description: string;
+    cost: number;
+    baseHealth: number;
+    baseCargo: number;
+    miningBonus?: number;
+}> = {
+    'Chasseur': { name: 'Chasseur', description: 'Vaisseau de base polyvalent. Futur : 1 tourelle manuelle, améliorable avec 1 tourelle auto.', cost: 5, baseHealth: 100, baseCargo: 200 },
+    'Intercepteur': { name: 'Intercepteur', description: 'Très rapide, faible soute. Futur : 2 tourelles manuelles, améliorable pour poser des mines.', cost: 5, baseHealth: 75, baseCargo: 100 },
+    'Frégate': { name: 'Frégate', description: 'Vaisseau de guerre lourd. Futur : 2 tourelles auto, 1 tourelle lourde manuelle, 1 rayon.', cost: 5, baseHealth: 250, baseCargo: 150 },
+    'Destroyer': { name: 'Destroyer', description: 'Plateforme d\'armes ultime. Futur : 3 rayons, 2 tourelles auto lourdes, 2 manuelles lourdes.', cost: 5, baseHealth: 400, baseCargo: 250 },
+    'Porteur': { name: 'Porteur', description: 'Transporte des unités de soutien. Futur : peut déployer 2 intercepteurs et 1 chasseur.', cost: 5, baseHealth: 200, baseCargo: 300 },
+    'Cargo': { name: 'Cargo', description: 'Soute immense, coque résistante. Futur : 1 tourelle manuelle de défense.', cost: 5, baseHealth: 150, baseCargo: 1000 },
+    'Mineur': { name: 'Mineur', description: 'Extraction rapide des ressources. Futur : 1 tourelle manuelle. Vitesse de minage x1.5.', cost: 5, baseHealth: 100, baseCargo: 500, miningBonus: 1.5 },
 };
 
 export const ALLY_COST = 2500;
