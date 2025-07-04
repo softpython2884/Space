@@ -24,8 +24,9 @@ export function BoardingMenu({ isOpen, onOpenChange, targetEnemy, onComplete, pl
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<{ success: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  
   const startTimeRef = useRef(0);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const frameIdRef = useRef(0);
 
   useEffect(() => {
     if (!isOpen) {
@@ -33,32 +34,34 @@ export function BoardingMenu({ isOpen, onOpenChange, targetEnemy, onComplete, pl
       setProgress(0);
       setResult(null);
       setError(null);
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      cancelAnimationFrame(frameIdRef.current);
     }
   }, [isOpen]);
 
   useEffect(() => {
     if (isBoarding) {
-        startTimeRef.current = Date.now();
-        intervalRef.current = setInterval(() => {
-            const elapsed = Date.now() - startTimeRef.current;
-            const newProgress = Math.min((elapsed / BOARDING_DURATION_MS) * 100, 100);
-            setProgress(newProgress);
+      startTimeRef.current = Date.now();
+      
+      const animate = () => {
+        const elapsed = Date.now() - startTimeRef.current;
+        const newProgress = Math.min((elapsed / BOARDING_DURATION_MS) * 100, 100);
+        setProgress(newProgress);
 
-            if (newProgress >= 100) {
-                if (intervalRef.current) clearInterval(intervalRef.current);
-                const success = Math.random() < BOARDING_SUCCESS_CHANCE;
-                setResult({ success });
-                onComplete({ success });
-                setIsBoarding(false);
-            }
-        }, 50);
-    } else {
-        if (intervalRef.current) clearInterval(intervalRef.current);
+        if (newProgress < 100) {
+          frameIdRef.current = requestAnimationFrame(animate);
+        } else {
+          const success = Math.random() < BOARDING_SUCCESS_CHANCE;
+          setResult({ success });
+          onComplete({ success });
+          setIsBoarding(false);
+        }
+      };
+      
+      frameIdRef.current = requestAnimationFrame(animate);
     }
     
     return () => {
-        if (intervalRef.current) clearInterval(intervalRef.current);
+      cancelAnimationFrame(frameIdRef.current);
     }
   }, [isBoarding, onComplete]);
 

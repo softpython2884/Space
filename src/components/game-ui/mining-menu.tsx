@@ -20,8 +20,9 @@ export function MiningMenu({ isOpen, onOpenChange, targetAsteroid, onComplete }:
   const [isMining, setIsMining] = useState(false);
   const [progress, setProgress] = useState(0);
   const [oreGained, setOreGained] = useState(0);
+
   const startTimeRef = useRef(0);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const frameIdRef = useRef(0);
 
   useEffect(() => {
     // Reset state when menu is opened or closed
@@ -29,32 +30,34 @@ export function MiningMenu({ isOpen, onOpenChange, targetAsteroid, onComplete }:
         setIsMining(false);
         setProgress(0);
         setOreGained(0);
-        if (intervalRef.current) clearInterval(intervalRef.current);
+        cancelAnimationFrame(frameIdRef.current);
     }
   }, [isOpen]);
 
   useEffect(() => {
     if (isMining) {
       startTimeRef.current = Date.now();
-      intervalRef.current = setInterval(() => {
+      
+      const animate = () => {
         const elapsed = Date.now() - startTimeRef.current;
         const newProgress = Math.min((elapsed / MINING_DURATION_MS) * 100, 100);
         setProgress(newProgress);
         
-        if (newProgress >= 100) {
-          if (intervalRef.current) clearInterval(intervalRef.current);
+        if (newProgress < 100) {
+          frameIdRef.current = requestAnimationFrame(animate);
+        } else {
           const gained = Math.floor(Math.random() * 51) + 25;
           setOreGained(gained);
           onComplete({ ore: gained });
           setIsMining(false);
         }
-      }, 50); // check more frequently for smoother progress bar
-    } else {
-        if (intervalRef.current) clearInterval(intervalRef.current);
+      };
+
+      frameIdRef.current = requestAnimationFrame(animate);
     }
 
     return () => {
-        if (intervalRef.current) clearInterval(intervalRef.current);
+      cancelAnimationFrame(frameIdRef.current);
     }
   }, [isMining, onComplete]);
 

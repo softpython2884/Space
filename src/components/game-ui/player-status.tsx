@@ -2,11 +2,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Heart, Zap, Container, Star } from "lucide-react";
 import type { PlayerData } from "@/lib/types";
-import { UPGRADE_VALUES } from "@/lib/constants";
+import { UPGRADE_VALUES, SHIP_DATA } from "@/lib/constants";
 
 export function PlayerStatus({ data }: { data: PlayerData }) {
-  const maxHealth = UPGRADE_VALUES.maxHealth[data.upgrades.maxHealth];
-  const maxCargo = UPGRADE_VALUES.cargoCapacity[data.upgrades.cargoCapacity];
+  const maxHealth = SHIP_DATA[data.ship.class].baseHealth + UPGRADE_VALUES.maxHealth[data.upgrades.maxHealth];
+  const maxCargo = SHIP_DATA[data.ship.class].baseCargo + UPGRADE_VALUES.cargoCapacity[data.upgrades.cargoCapacity];
   const healthPercentage = (data.health / maxHealth) * 100;
 
   return (
@@ -49,7 +49,7 @@ export function PlayerStatus({ data }: { data: PlayerData }) {
               </div>
               <span className="ml-auto text-muted-foreground">{data.cargo.current} / {maxCargo}</span>
             </div>
-            <Progress value={(data.cargo.current / maxCargo) * 100} className="h-2" />
+            <Progress value={(data.cargo.current / (maxCargo || 1)) * 100} className="h-2" />
         </div>
       </CardContent>
     </Card>
