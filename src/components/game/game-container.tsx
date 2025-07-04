@@ -2399,8 +2399,8 @@ export function GameContainer() {
         onSellResource={handleSellResource}
         onBuyUpgrade={handleBuyUpgrade}
         onRepairHull={handleRepairHull}
-        onBuyShip={onBuyShip}
-        onBuyAlly={onBuyAlly}
+        onBuyShip={handleBuyShip}
+        onBuyAlly={handleBuyAlly}
       />
 
       <GameOverOverlay isOpen={isGameOver} onRestart={resetGame} />
