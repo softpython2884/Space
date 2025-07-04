@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { PlayerShip } from './player-ship';
 import { GameMap } from './game-map';
 import { Projectile } from './projectile';
@@ -47,7 +47,7 @@ const MAP_HEIGHT = 4000;
 const FIRE_RATE_MS = 250; 
 const ENEMY_CLICK_RADIUS = 30;
 const STATION_CLICK_RADIUS = 75;
-const ASTEROID_CLICK_RADIUS = 1.0; 
+const ASTEROID_CLICK_RADIUS = 2.0; 
 
 const BASE_RADAR_RANGE = 1200;
 const MIN_ZOOM = 0.5;
@@ -61,7 +61,7 @@ const FRIGATE_COLLISION_RADIUS = 30;
 const STAFF_COLLISION_RADIUS = 25;
 const DEBRIS_COLLISION_RADIUS = 20;
 const STATION_COLLISION_RADIUS = 75;
-const ASTEROID_COLLISION_RADIUS = 0.5;
+const ASTEROID_COLLISION_RADIUS = 0.75;
 
 const PLAYER_PROJECTILE_DAMAGE = 10;
 const ENEMY_PROJECTILE_DAMAGE = 5;
@@ -107,7 +107,7 @@ const ENEMY_RAM_HEALTH_ADVANTAGE = 1.5;
 const PILLAGE_DAMAGE = 15;
 const BOARDING_FAIL_DAMAGE = 20;
 const ACTION_MAX_RANGE = 200;
-const ASTEROID_ACTION_MAX_RANGE = 100;
+const ASTEROID_ACTION_MAX_RANGE = 75;
 
 // Station Constants
 const STATION_INTERACTION_RADIUS = 300;
@@ -331,7 +331,19 @@ export function GameContainer() {
     }
   };
 
-  const handleMiningComplete = (resourcesGained: { ore: number }) => {
+  const applyDamage = useCallback((damage: number) => {
+    setPlayerData(d => {
+        if (d.health <= 0) return d;
+        const energyCost = damage * SHIELD_DAMAGE_TO_ENERGY_COST;
+        if (shipModeRef.current === 'shield' && d.energy >= energyCost) {
+            lastEnergyUseTimestamp.current = Date.now();
+            return { ...d, energy: Math.max(0, d.energy - energyCost) };
+        }
+        return { ...d, health: Math.max(0, d.health - damage) };
+    });
+  }, []);
+
+  const handleMiningComplete = useCallback((resourcesGained: { ore: number }) => {
     setPlayerData(d => {
         const { ship, upgrades } = d;
         const maxCargo = SHIP_DATA[ship.class].baseCargo + UPGRADE_VALUES.cargoCapacity[upgrades.cargoCapacity];
@@ -345,9 +357,9 @@ export function GameContainer() {
     });
     setAsteroids(prev => prev.filter(a => a.id !== miningMenuState.targetId));
     setMiningMenuState({ isOpen: false, targetId: null });
-  };
+  }, [miningMenuState.targetId]);
 
-  const handlePillagingComplete = () => {
+  const handlePillagingComplete = useCallback(() => {
     const targetEnemy = enemiesRef.current.find(e => e.id === pillageMenuState.targetId);
     if (!targetEnemy) {
         setPillageMenuState({ isOpen: false, targetId: null });
@@ -370,9 +382,9 @@ export function GameContainer() {
     };
     setDebris(prev => [...prev, newDebris]);
     setPillageMenuState({ isOpen: false, targetId: null });
-  };
+  }, [pillageMenuState.targetId]);
 
-  const handleBoardingComplete = (result: { success: boolean }) => {
+  const handleBoardingComplete = useCallback((result: { success: boolean }) => {
     const targetEnemy = enemiesRef.current.find(e => e.id === boardingMenuState.targetId);
     if (!targetEnemy) {
         setBoardingMenuState({ isOpen: false, targetId: null });
@@ -388,7 +400,7 @@ export function GameContainer() {
         applyDamage(BOARDING_FAIL_DAMAGE);
     }
     setBoardingMenuState({ isOpen: false, targetId: null });
-  };
+  }, [boardingMenuState.targetId, applyDamage]);
 
   const handleModeChange = (newMode: ShipMode) => {
     const now = Date.now();
@@ -421,18 +433,6 @@ export function GameContainer() {
     }
 
     modeChangeAvailableAtRef.current = now + MODE_CHANGE_COOLDOWN_MS;
-  };
-
-  const applyDamage = (damage: number) => {
-    setPlayerData(d => {
-        if (d.health <= 0) return d;
-        const energyCost = damage * SHIELD_DAMAGE_TO_ENERGY_COST;
-        if (shipModeRef.current === 'shield' && d.energy >= energyCost) {
-            lastEnergyUseTimestamp.current = Date.now();
-            return { ...d, energy: Math.max(0, d.energy - energyCost) };
-        }
-        return { ...d, health: Math.max(0, d.health - damage) };
-    });
   };
 
   const handleSellResource = (resource: 'ore' | 'gas', amount: number) => {
@@ -1200,7 +1200,7 @@ export function GameContainer() {
     }
     
     return () => cancelAnimationFrame(animationFrameId);
-  }, [viewSize, isModalOpen, controlScheme, isDocked]);
+  }, [viewSize, isModalOpen, controlScheme, isDocked, applyDamage]);
 
   let radarRange = BASE_RADAR_RANGE;
   if (shipMode === 'scan') radarRange = BASE_RADAR_RANGE * 2;
