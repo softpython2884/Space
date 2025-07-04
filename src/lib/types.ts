@@ -4,7 +4,7 @@ export type ShipType = "Combat" | "Mining" | "Support" | "Galleon";
 export type ControlScheme = 'relative' | 'absolute' | 'hybrid';
 export type ShipMode = 'normal' | 'cruise' | 'stealth' | 'scan' | 'shield';
 export type ContextMenuTargetType = 'enemy' | 'asteroid' | 'station' | 'tactical_space' | 'ally';
-export type PlayerActionType = 'mining' | 'boarding' | 'pillaging' | 'open_station_menu' | 'tactical_move' | 'patrolling_order' | 'follow_target';
+export type PlayerActionType = 'mining' | 'boarding' | 'pillaging' | 'open_station_menu' | 'tactical_move' | 'patrolling_order' | 'follow_target' | 'follow_player';
 
 export type ShipSize = 'S' | 'M' | 'L' | 'XL';
 export type ShipRole = 'Combat' | 'Commerce' | 'Mining' | 'Construction' | 'Support';

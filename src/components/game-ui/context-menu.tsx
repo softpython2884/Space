@@ -3,7 +3,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { ContextMenuTargetType, PlayerActionType } from "@/lib/types";
-import { Mountain, Skull, Anchor, LogIn, Move, Shield, UserPlus } from "lucide-react";
+import { Mountain, Skull, Anchor, LogIn, Move, Shield, UserPlus, Ship } from "lucide-react";
 
 interface ContextMenuProps {
   x: number;
@@ -52,10 +52,16 @@ export function ContextMenu({ x, y, targetType, onAction, onClose }: ContextMenu
                         </Button>
                   )}
                   {targetType === 'ally' && (
-                      <Button variant="ghost" className="justify-start" onClick={() => handleActionClick('follow_target')}>
-                          <UserPlus className="mr-2 h-4 w-4" />
-                          Follow
-                      </Button>
+                      <>
+                          <Button variant="ghost" className="justify-start" onClick={() => handleActionClick('follow_target')}>
+                              <UserPlus className="mr-2 h-4 w-4" />
+                              Follow Ally
+                          </Button>
+                          <Button variant="ghost" className="justify-start" onClick={() => handleActionClick('follow_player')}>
+                              <Ship className="mr-2 h-4 w-4" />
+                              Follow Me
+                          </Button>
+                      </>
                   )}
                   {targetType === 'tactical_space' && (
                        <>
