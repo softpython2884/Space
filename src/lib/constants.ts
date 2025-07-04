@@ -52,6 +52,7 @@ export const SHIP_DATA: Record<PlayerShipClass, {
     'Mineur': { name: 'Mineur', description: 'Extraction rapide des ressources. 1 tourelle manuelle. Vitesse de minage x1.5.', cost: 2000, baseHealth: 300, baseCargo: 500, maxEnergy: 150, baseEnergyRecharge: 0.08, miningBonus: 1.5, weapons: { manualTurrets: { count: 1, type: 'basic', offsets: [{x: 0, y: -15}] } } },
 };
 
+export const BEAM_INITIAL_ENERGY_COST = 15;
 export const STATION_BASE_HEALTH = 45000;
 export const STATION_BASE_SHIELD = 9000;
 export const OUTPOST_COST = 5000;

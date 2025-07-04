@@ -15,6 +15,10 @@ interface TacticalViewOverlayProps {
 }
 
 export function TacticalViewOverlay({ isOpen, playerResources, onBuildShip, onBuildOutpost }: TacticalViewOverlayProps) {
+    if (!isOpen) {
+        return null;
+    }
+
     const buildableShips = Object.keys(SHIP_DATA) as PlayerShipClass[];
     const canAffordOutpost = playerResources.money >= OUTPOST_COST;
 

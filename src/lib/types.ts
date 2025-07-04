@@ -180,3 +180,10 @@ export type PlayerAction = {
   startTime: number;
   duration: number;
 };
+
+export interface ChatMessage {
+    id: number;
+    sender: string;
+    text: string;
+    color?: string;
+}

@@ -24,8 +24,8 @@ import { StellarBaseStatus } from '@/components/game-ui/stellar-base-status';
 import { VesselSystems } from '@/components/game-ui/vessel-systems';
 import { ShipModeSelector } from '@/components/game-ui/ship-mode-selector';
 import { CruiseStreaks } from '@/components/game/cruise-streaks';
-import { INITIAL_PLAYER_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS } from '@/lib/constants';
-import type { ControlScheme, PlayerData, StellarBaseData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState, AsteroidState, StationState, BotShipType, ContextMenuTargetType, PlayerActionType, Resources, PlayerUpgrades, PlayerShipClass, BeamState, ProjectileState, PlayerAction, EnemyAiState, OutpostState } from '@/lib/types';
+import { INITIAL_PLAYER_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST, STATION_BASE_HEALTH, STATION_BASE_SHIELD, OUTPOST_COST, OUTPOST_HEALTH, OUTPOST_RANGE, OUTPOST_FIRE_RATE_MS, BEAM_INITIAL_ENERGY_COST } from '@/lib/constants';
+import type { ControlScheme, PlayerData, StellarBaseData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState, AsteroidState, StationState, BotShipType, ContextMenuTargetType, PlayerActionType, Resources, PlayerUpgrades, PlayerShipClass, BeamState, ProjectileState, PlayerAction, EnemyAiState, OutpostState, ChatMessage } from '@/lib/types';
 import { ClientOnly } from '@/components/client-only';
 import { GameOverOverlay } from './game-over-overlay';
 import { TacticalViewOverlay } from './tactical-view-overlay';
@@ -241,6 +241,8 @@ export function GameContainer() {
   const [selectedAllyIds, setSelectedAllyIds] = useState<number[]>([]);
   const [activeWeapons, setActiveWeapons] = useState({ manualTurrets: true, autoTurrets: true, beam: true });
 
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+
 
   // Tactical View State
   const [cameraPosition, setCameraPosition] = useState({ x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 });
@@ -248,7 +250,7 @@ export function GameContainer() {
   const [isPanning, setIsPanning] = useState(false);
   const lastMousePosForPan = useRef({ x: 0, y: 0 });
 
-
+  const uniqueIdCounterRef = useRef(0);
   const keysPressed = useRef<Set<string>>(new Set());
   const mousePosition = useRef({ x: 0, y: 0 });
   const isLeftMouseDown = useRef(false);
@@ -338,6 +340,18 @@ export function GameContainer() {
     setIsTacticalView(zoom === MIN_ZOOM);
   }, [zoom]);
 
+  const addChatMessage = useCallback((sender: string, text: string, color?: string) => {
+    setChatMessages(prev => {
+        const newId = uniqueIdCounterRef.current++;
+        const newMessage: ChatMessage = { id: newId, sender, text, color };
+        const newMessages = [...prev, newMessage];
+        if (newMessages.length > 50) {
+            return newMessages.slice(newMessages.length - 50);
+        }
+        return newMessages;
+    });
+  }, []);
+
   const handleRespawn = useCallback(() => {
     toast({
         title: "Ship Destroyed!",
@@ -390,10 +404,11 @@ export function GameContainer() {
     setContextMenu(null);
     setPlayerAction(null);
     setSelectedAllyIds([]);
+    setChatMessages([{id: getUniqueId(), sender: 'System', text: 'Welcome to Cosmic Clash Arena!', color: 'text-yellow-400'}]);
     modeChangeAvailableAtRef.current = 0;
     cruiseAvailableAtRef.current = 0;
     setCooldowns({ modeChange: 1, cruise: 1 });
-  }, []);
+  }, [addChatMessage]);
 
   useEffect(() => {
     resetGame();
@@ -425,7 +440,7 @@ export function GameContainer() {
             if (distance < STATION_INTERACTION_RADIUS) {
                 setIsStationMenuOpen(true);
             } else {
-              toast({ title: "Target out of range", description: "Get closer to interact with the station.", variant: 'destructive' });
+              addChatMessage('System', "Target out of range. Get closer to interact with the station.", 'text-red-400');
             }
         }
         return;
@@ -436,11 +451,11 @@ export function GameContainer() {
     
     if (action === 'mining' && targetAsteroid) {
         if (targetAsteroid.cooldownUntil > Date.now()) {
-            toast({ title: "Mining Cooldown", description: "Asteroid is depleted. Try again later.", variant: "destructive" });
+            addChatMessage('System', "Asteroid is depleted. Try again later.", 'text-yellow-400');
             return;
         }
         if (targetAsteroid.mineableCharges <= 0) {
-            toast({ title: "No More Charges", description: "This asteroid is temporarily depleted.", variant: "destructive" });
+            addChatMessage('System', "This asteroid is temporarily depleted.", 'text-yellow-400');
             return;
         }
 
@@ -468,12 +483,12 @@ export function GameContainer() {
 
     if (targetEnemy) {
       if (targetEnemy.isAlly) {
-        toast({ title: "Invalid Target", description: "Cannot perform hostile actions on an allied ship." });
+        addChatMessage('System', "Cannot perform hostile actions on an allied ship.", 'text-red-400');
         return;
       }
       const distance = Math.hypot(targetEnemy.x - playerPositionRef.current.x, targetEnemy.y - playerPositionRef.current.y);
       if (distance > ACTION_MAX_RANGE) {
-          toast({ title: "Target out of range", description: "Get closer to perform this action.", variant: 'destructive' });
+          addChatMessage('System', "Target out of range. Get closer to perform this action.", 'text-red-400');
           return;
       }
     } else {
@@ -483,7 +498,7 @@ export function GameContainer() {
     switch(action) {
       case 'pillaging':
         if (playerDataRef.current.energy < PILLAGE_ENERGY_COST) {
-            toast({ title: "Insufficient Energy", description: `Pillaging requires ${PILLAGE_ENERGY_COST} energy.`, variant: 'destructive' });
+            addChatMessage('System', `Pillaging requires ${PILLAGE_ENERGY_COST} energy.`, 'text-red-400');
             return;
         }
         setPlayerData(d => ({ ...d, energy: d.energy - PILLAGE_ENERGY_COST }));
@@ -492,7 +507,7 @@ export function GameContainer() {
         break;
       case 'boarding':
         if (playerDataRef.current.energy < BOARDING_ENERGY_COST) {
-            toast({ title: "Insufficient Energy", description: `Boarding requires ${BOARDING_ENERGY_COST} energy.`, variant: 'destructive' });
+            addChatMessage('System', `Boarding requires ${BOARDING_ENERGY_COST} energy.`, 'text-red-400');
             return;
         }
         setPlayerData(d => ({ ...d, energy: d.energy - BOARDING_ENERGY_COST }));
@@ -500,7 +515,7 @@ export function GameContainer() {
         setPlayerAction({ type: 'boarding', targetId, startTime: Date.now(), duration: BOARDING_DURATION_MS });
         break;
     }
-  }, [toast, handleRespawn]);
+  }, [toast, handleRespawn, addChatMessage]);
 
   const applyDamage = useCallback((damage: number) => {
     setPlayerData(d => {
@@ -880,7 +895,7 @@ export function GameContainer() {
           }
         }
         for (const station of stationsRef.current) {
-            const distance = Math.hypot(clickWorldX - station.x, clickWorldY - station.y);
+            const distance = Math.hypot(clickWorldX - station.x, station.y - clickWorldY);
             if (distance < STATION_INTERACTION_RADIUS) {
               setContextMenu({ x: event.clientX, y: event.clientY, worldX: clickWorldX, worldY: clickWorldY, targetId: station.id, targetType: 'station' });
               return;
@@ -1112,54 +1127,50 @@ export function GameContainer() {
 
       
       const currentTarget = enemiesRef.current.find(e => e.id === targetIdRef.current);
-      const canShoot = playerDataRef.current.energy >= ENERGY_PER_SHOT && (shipMode === 'normal' || shipMode === 'stealth' || shipMode === 'shield') && cruiseStateRef.current === 'idle' && !isPlayerActionInProgress;
+      const canShoot = (shipMode === 'normal' || shipMode === 'stealth' || shipMode === 'shield') && cruiseStateRef.current === 'idle' && !isPlayerActionInProgress;
       const isShootingManually = keysPressed.current.has(' ');
       const playerShipConfig = SHIP_DATA[playerDataRef.current.ship.class];
       const hasUpgradedWeapons = playerDataRef.current.upgrades.maxHealth > 0; // Placeholder for weapon upgrade
 
       if (activeWeapons.manualTurrets && (currentTarget || isShootingManually) && canShoot && timestamp - lastFiredTimestamp.current > FIRE_RATE_MS) {
-        lastFiredTimestamp.current = timestamp;
-        
         const newProjectiles: ProjectileState[] = [];
         const { manualTurrets } = playerShipConfig.weapons;
 
-        if (manualTurrets.count > 0) {
-            const energyCost = ENERGY_PER_SHOT * manualTurrets.count;
-            if (playerDataRef.current.energy >= energyCost) {
-                lastEnergyUseTimestamp.current = timestamp;
-                setPlayerData(d => ({ ...d, energy: d.energy - energyCost }));
-                const shipRotRad = playerRotationRef.current * (Math.PI / 180);
+        if (manualTurrets.count > 0 && playerDataRef.current.energy >= ENERGY_PER_SHOT * manualTurrets.count) {
+            lastFiredTimestamp.current = timestamp;
+            lastEnergyUseTimestamp.current = timestamp;
+            setPlayerData(d => ({ ...d, energy: d.energy - (ENERGY_PER_SHOT * manualTurrets.count) }));
+            const shipRotRad = playerRotationRef.current * (Math.PI / 180);
+            
+            for (const offset of manualTurrets.offsets) {
+                const rotatedOffsetX = offset.x * Math.cos(shipRotRad) - offset.y * Math.sin(shipRotRad);
+                const rotatedOffsetY = offset.x * Math.sin(shipRotRad) + offset.y * Math.cos(shipRotRad);
                 
-                for (const offset of manualTurrets.offsets) {
-                    const rotatedOffsetX = offset.x * Math.cos(shipRotRad) - offset.y * Math.sin(shipRotRad);
-                    const rotatedOffsetY = offset.x * Math.sin(shipRotRad) + offset.y * Math.cos(shipRotRad);
-                    
-                    const turretX = playerPositionRef.current.x + rotatedOffsetX;
-                    const turretY = playerPositionRef.current.y + rotatedOffsetY;
+                const turretX = playerPositionRef.current.x + rotatedOffsetX;
+                const turretY = playerPositionRef.current.y + rotatedOffsetY;
 
-                    let fireRotation = aimAngle;
-                    if (currentTarget) {
-                        fireRotation = Math.atan2(currentTarget.y - turretY, currentTarget.x - turretX) * (180 / Math.PI);
-                    } else {
-                         const mouseVecX = mouseWorldX - playerPositionRef.current.x;
-                         const mouseVecY = mouseWorldY - playerPositionRef.current.y;
-                         const adjustedMouseX = turretX + mouseVecX;
-                         const adjustedMouseY = turretY + mouseVecY;
-                         fireRotation = Math.atan2(adjustedMouseY - turretY, adjustedMouseX - turretX) * (180 / Math.PI);
-                    }
+                let fireRotation = aimAngle;
+                if (currentTarget) {
+                    fireRotation = Math.atan2(currentTarget.y - turretY, currentTarget.x - turretX) * (180 / Math.PI);
+                } else {
+                      const mouseVecX = mouseWorldX - playerPositionRef.current.x;
+                      const mouseVecY = mouseWorldY - playerPositionRef.current.y;
+                      const adjustedMouseX = turretX + mouseVecX;
+                      const adjustedMouseY = turretY + mouseVecY;
+                      fireRotation = Math.atan2(adjustedMouseY - turretY, adjustedMouseX - turretX) * (180 / Math.PI);
+                }
 
-                    newProjectiles.push({ 
-                        id: getUniqueId(), 
-                        x: turretX, 
-                        y: turretY, 
-                        rotation: fireRotation, 
-                        ownerId: -1, 
-                        type: manualTurrets.type 
-                    });
-                }
-                if (newProjectiles.length > 0) {
-                    setPlayerProjectiles(prev => [...prev, ...newProjectiles]);
-                }
+                newProjectiles.push({ 
+                    id: getUniqueId(), 
+                    x: turretX, 
+                    y: turretY, 
+                    rotation: fireRotation, 
+                    ownerId: -1, 
+                    type: manualTurrets.type 
+                });
+            }
+            if (newProjectiles.length > 0) {
+                setPlayerProjectiles(prev => [...prev, ...newProjectiles]);
             }
         }
       }
@@ -1188,7 +1199,7 @@ export function GameContainer() {
                 const fireRotation = Math.atan2(autoTarget.y - playerPositionRef.current.y, autoTarget.x - playerPositionRef.current.x) * (180 / Math.PI);
                 const newAutoProjectiles: ProjectileState[] = [];
                 for (const offset of autoTurrets.offsets) {
-                     const rotatedOffsetX = offset.x * Math.cos(shipRotRad) - offset.y * Math.sin(shipRotRad);
+                      const rotatedOffsetX = offset.x * Math.cos(shipRotRad) - offset.y * Math.sin(shipRotRad);
                     const rotatedOffsetY = offset.x * Math.sin(shipRotRad) + offset.y * Math.cos(shipRotRad);
                     newAutoProjectiles.push({ 
                         id: getUniqueId(), 
@@ -1199,7 +1210,7 @@ export function GameContainer() {
                         type: autoTurrets.type 
                     });
                 }
-                 if (newAutoProjectiles.length > 0) {
+                  if (newAutoProjectiles.length > 0) {
                     setPlayerProjectiles(prev => [...prev, ...newAutoProjectiles]);
                 }
             }
@@ -1208,32 +1219,34 @@ export function GameContainer() {
         
       // Beam weapon logic for player
       const { beam } = playerShipConfig.weapons;
-      const isShootingTargetWithBeams = activeWeapons.beam && beam && beam.count > 0 && currentTarget && !currentTarget.isAlly && (isLeftMouseDown.current || isShootingManually) && canShoot;
-      
+      const isTryingToShootBeam = activeWeapons.beam && beam && beam.count > 0 && currentTarget && !currentTarget.isAlly && (isLeftMouseDown.current || isShootingManually);
       const existingPlayerBeams = activeBeamsRef.current.filter(b => b.sourceId === -1);
-
-      if (isShootingTargetWithBeams) {
-        if (existingPlayerBeams.length === 0 && playerDataRef.current.energy > 0) {
-            // Start new beams
-            const newBeams: BeamState[] = [];
-            const shipRotRad = playerRotationRef.current * (Math.PI / 180);
-            for (const offset of beam.offsets) {
-                const rotatedOffsetX = offset.x * Math.cos(shipRotRad) - offset.y * Math.sin(shipRotRad);
-                const rotatedOffsetY = offset.x * Math.sin(shipRotRad) + offset.y * Math.cos(shipRotRad);
-                newBeams.push({
-                    id: getUniqueId(),
-                    sourceId: -1,
-                    targetId: currentTarget.id,
-                    startTime: timestamp,
-                    type: beam.type,
-                    sourceOffsetX: rotatedOffsetX,
-                    sourceOffsetY: rotatedOffsetY,
-                });
+      
+      if (isTryingToShootBeam) {
+        if (existingPlayerBeams.length === 0) { // If not already beaming
+            const canFireBeam = playerDataRef.current.energy >= BEAM_INITIAL_ENERGY_COST && canShoot;
+            if (canFireBeam) {
+                setPlayerData(d => ({...d, energy: d.energy - BEAM_INITIAL_ENERGY_COST}));
+                lastEnergyUseTimestamp.current = timestamp;
+                const newBeams: BeamState[] = [];
+                const shipRotRad = playerRotationRef.current * (Math.PI / 180);
+                for (const offset of beam.offsets) {
+                    const rotatedOffsetX = offset.x * Math.cos(shipRotRad) - offset.y * Math.sin(shipRotRad);
+                    const rotatedOffsetY = offset.x * Math.sin(shipRotRad) + offset.y * Math.cos(shipRotRad);
+                    newBeams.push({
+                        id: getUniqueId(),
+                        sourceId: -1,
+                        targetId: currentTarget.id,
+                        startTime: timestamp,
+                        type: beam.type,
+                        sourceOffsetX: rotatedOffsetX,
+                        sourceOffsetY: rotatedOffsetY,
+                    });
+                }
+                setActiveBeams(prev => [...prev, ...newBeams]);
             }
-            setActiveBeams(prev => [...prev, ...newBeams]);
         }
       } else {
-          // Stop existing beams if not shooting
           if (existingPlayerBeams.length > 0) {
               setActiveBeams(prev => prev.filter(b => b.sourceId !== -1));
           }
@@ -1267,9 +1280,7 @@ export function GameContainer() {
                                   gasToAdd = Math.floor(gasToAdd * ratio);
                               }
                               
-                              setTimeout(() => {
-                                toast({ title: "Mining Successful", description: `Extracted ${oreToAdd} ore and ${gasToAdd} gas.` });
-                              }, 0);
+                              addChatMessage('System', `Extracted ${oreToAdd} ore and ${gasToAdd} gas.`, 'text-cyan-400');
 
                               return {
                                   ...d,
@@ -1286,9 +1297,7 @@ export function GameContainer() {
                               if (a.id === action.targetId) {
                                   const newCharges = a.mineableCharges - 1;
                                   if (newCharges <= 0) {
-                                      setTimeout(() => {
-                                        toast({ title: "Asteroid Depleted", description: `This asteroid needs time to recover.` });
-                                      }, 0);
+                                      addChatMessage('System', `Asteroid #${a.id} depleted.`, 'text-yellow-400');
                                       return { ...a, mineableCharges: MINING_CHARGES, cooldownUntil: Date.now() + MINING_LONG_COOLDOWN_MS };
                                   }
                                   return { ...a, mineableCharges: newCharges };
@@ -1311,9 +1320,7 @@ export function GameContainer() {
                               }
                           };
                           setDebris(prev => [...prev, newDebris]);
-                          setTimeout(() => {
-                            toast({ title: "Pillage Successful", description: "Enemy ship damaged, cargo dropped." });
-                          }, 0);
+                          addChatMessage('System', "Pillage successful, enemy cargo dropped.", 'text-green-400');
                       }
                       break;
                   }
@@ -1323,14 +1330,10 @@ export function GameContainer() {
                           const success = Math.random() < BOARDING_SUCCESS_CHANCE;
                           if (success) {
                               setEnemies(prev => prev.map(e => e.id === action.targetId ? { ...e, isAlly: true, aiState: 'following', followTargetId: -1 } : e));
-                              setTimeout(() => {
-                                toast({ title: "Boarding Successful!", description: "The enemy ship is now under your control." });
-                              }, 0);
+                              addChatMessage('System', `Successfully boarded enemy ${targetEnemy.type}. It's now an ally.`, 'text-green-400');
                           } else {
                               applyDamage(BOARDING_FAIL_DAMAGE);
-                              setTimeout(() => {
-                                toast({ title: "Boarding Failed", description: "Your crew was repelled and sustained damage.", variant: 'destructive' });
-                              }, 0);
+                              toast({ title: "Boarding Failed", description: "Your crew was repelled and sustained damage.", variant: 'destructive' });
                           }
                       }
                       break;
@@ -1452,7 +1455,7 @@ export function GameContainer() {
           }
           
           if (timestamp - updatedEnemy.lastEnergyUseTimestamp > ENEMY_ENERGY_REGEN_DELAY_MS) {
-              updatedEnemy.energy = Math.min(updatedEnemy.maxEnergy, updatedEnemy.energy + ENEMY_ENERGY_REGEN_RATE);
+              updatedEnemy.energy = Math.min(updatedEnemy.maxEnergy, updatedEnemy.energy + enemyShipInfo.baseEnergyRecharge);
           }
           
           let collisionRadius = ENEMY_COLLISION_RADIUS;
@@ -1464,7 +1467,7 @@ export function GameContainer() {
               if (hitProjectileIds.has(proj.id)) continue;
               if (proj.ownerId === updatedEnemy.id) continue;
               
-              const projOwnerIsPlayer = proj.ownerId === -1;
+              const projOwnerIsPlayer = proj.ownerId === -1 || outpostsRef.current.some(o => o.id === proj.ownerId);
               const projOwner = projOwnerIsPlayer ? null : enemiesRef.current.find(e => e.id === proj.ownerId);
 
               // Faction check: can't hit allies
@@ -1527,8 +1530,10 @@ export function GameContainer() {
 
           // 1. State Transitions
           const isMiner = updatedEnemy.role === 'miner' || updatedEnemy.type === 'Mineur';
-          const shouldFlee = (updatedEnemy.health / updatedEnemy.maxHealth) < ENEMY_FLEE_HEALTH_THRESHOLD;
-          if (updatedEnemy.aiState !== 'fleeing' && shouldFlee && updatedEnemy.lastAttackerId !== null) {
+          const isLowHealth = (updatedEnemy.health / updatedEnemy.maxHealth) < ENEMY_FLEE_HEALTH_THRESHOLD;
+          const hasNoEnergy = updatedEnemy.energy <= 0;
+          
+          if (updatedEnemy.aiState !== 'fleeing' && updatedEnemy.lastAttackerId !== null && (isLowHealth || (hasNoEnergy && updatedEnemy.aiState === 'chasing'))) {
               updatedEnemy.aiState = 'fleeing';
               const canCruise = updatedEnemy.cruiseState === 'idle' && timestamp > (updatedEnemy.cruiseAvailableAt || 0) && updatedEnemy.energy >= CRUISE_ENERGY_COST;
               if (canCruise && !isMiner) {
@@ -1801,9 +1806,7 @@ export function GameContainer() {
                         if (updatedEnemy.isAlly) {
                             const creditsEarned = updatedEnemy.cargo * RESOURCE_PRICES.ore;
                             if (creditsEarned > 0) {
-                                setTimeout(() => {
-                                    toast({ title: "Ally Drop-off", description: `An allied ${updatedEnemy.type} delivered resources, +${creditsEarned} credits.` });
-                                }, 0);
+                                addChatMessage('Ally', `${updatedEnemy.type} delivered resources, +${creditsEarned} credits.`, 'text-blue-400');
                                 setPlayerData(d => ({
                                     ...d,
                                     resources: { ...d.resources, money: d.resources.money + creditsEarned }
@@ -1818,11 +1821,6 @@ export function GameContainer() {
                 break;
             }
             case 'chasing': {
-                if (isMiner) {
-                    updatedEnemy.aiState = 'fleeing';
-                    break;
-                }
-
                 if (updatedEnemy.energy <= 0) {
                     updatedEnemy.aiState = 'fleeing';
                     currentActiveBeams = currentActiveBeams.filter(b => b.sourceId !== updatedEnemy.id);
@@ -2145,7 +2143,7 @@ export function GameContainer() {
           for (const proj of [...playerProjectilesRef.current, ...enemyProjectilesRef.current]) {
               if (hitProjectileIds.has(proj.id)) continue;
 
-              const projOwnerIsPlayer = proj.ownerId === -1;
+              const projOwnerIsPlayer = proj.ownerId === -1 || outpostsRef.current.some(o => o.id === proj.ownerId);
               const projOwner = enemiesRef.current.find(e => e.id === proj.ownerId);
 
               // Don't damage station if shot by player or allies
@@ -2205,8 +2203,8 @@ export function GameContainer() {
                   if (overflowOre > 0 || overflowGas > 0) {
                       newDebrisFromOverflow.push({
                           id: getUniqueId(),
-                          x: playerPositionRef.current.x + (Math.random() - 0.5) * 50,
-                          y: playerPositionRef.current.y + (Math.random() - 0.5) * 50,
+                          x: playerPositionRef.current.x + (Math.random() - 0.5) * 80,
+                          y: playerPositionRef.current.y + (Math.random() - 0.5) * 80,
                           resources: { ore: overflowOre, gas: overflowGas, money: 0 }
                       });
                   }
@@ -2272,7 +2270,7 @@ export function GameContainer() {
     }
     
     return () => cancelAnimationFrame(animationFrameId);
-  }, [viewSize, isGameOver, controlScheme, isDocked, applyDamage, handleActionSelect, handleBuyAlly, handleBuyShip, handleBuyUpgrade, handleRepairHull, handleSellResource, resetGame, toast, handleBuildShipFromTactical, handleBuildOutpost, handleRespawn]);
+  }, [viewSize, isGameOver, controlScheme, isDocked, applyDamage, handleActionSelect, handleBuyAlly, handleBuyShip, handleBuyUpgrade, handleRepairHull, handleSellResource, resetGame, toast, handleBuildShipFromTactical, handleBuildOutpost, handleRespawn, addChatMessage]);
 
   let radarRange = BASE_RADAR_RANGE;
   if (shipMode === 'scan') radarRange = BASE_RADAR_RANGE * 2;
@@ -2445,12 +2443,12 @@ export function GameContainer() {
         />
        )}
 
-      <TacticalViewOverlay 
+      {isTacticalView && <TacticalViewOverlay 
         isOpen={isTacticalView}
         playerResources={playerData.resources}
         onBuildShip={handleBuildShipFromTactical}
         onBuildOutpost={handleBuildOutpost}
-      />
+      />}
       {cruiseState === 'cruising' && <CruiseStreaks />}
        {playerData.health < LOW_HEALTH_THRESHOLD * 3 && ( // Adjusted for higher base health
           <div className="absolute inset-0 pointer-events-none animate-pulse" style={{ boxShadow: 'inset 0 0 80px 30px rgba(255, 0, 0, 0.4)' }} />
@@ -2477,7 +2475,7 @@ export function GameContainer() {
       <div className="absolute bottom-4 left-4 z-10 flex flex-col items-start gap-4" data-ui-element="true">
           {currentStellarBaseData && <StellarBaseStatus data={currentStellarBaseData} />}
           <ClientOnly>
-            <ChatBox />
+            <ChatBox messages={chatMessages} />
           </ClientOnly>
       </div>
 
