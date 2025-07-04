@@ -23,7 +23,7 @@ import { VesselSystems } from '@/components/game-ui/vessel-systems';
 import { ShipModeSelector } from '@/components/game-ui/ship-mode-selector';
 import { CruiseStreaks } from '@/components/game/cruise-streaks';
 import { INITIAL_PLAYER_DATA, UPGRADE_VALUES, UPGRADE_COSTS, RESOURCE_PRICES, SHIP_DATA, ALLY_COST } from '@/lib/constants';
-import type { ControlScheme, PlayerData, StellarBaseData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState as EnemyStateType, AsteroidState, StationState, BotShipType, ContextMenuTargetType, PlayerActionType, Resources, PlayerUpgrades, PlayerShipClass, BeamState } from '@/lib/types';
+import type { ControlScheme, PlayerData, StellarBaseData, VesselSystemsData, ShipMode, Debris as DebrisType, EnemyState, AsteroidState, StationState, BotShipType, ContextMenuTargetType, PlayerActionType, Resources, PlayerUpgrades, PlayerShipClass, BeamState, ProjectileState, PlayerAction } from '@/lib/types';
 import { ClientOnly } from '@/components/client-only';
 import { GameOverOverlay } from './game-over-overlay';
 import { MilitaryViewOverlay } from './military-view-overlay';
@@ -145,24 +145,6 @@ let uniqueIdCounter = 0;
 const getUniqueId = () => {
     uniqueIdCounter += 1;
     return Date.now() + uniqueIdCounter;
-};
-
-
-type ProjectileState = {
-  id: number;
-  x: number;
-  y: number;
-  rotation: number;
-  ownerId: number;
-  type: 'basic' | 'heavy';
-};
-
-export type EnemyState = EnemyStateType;
-export type PlayerAction = {
-  type: PlayerActionType;
-  targetId: number;
-  startTime: number;
-  duration: number;
 };
 
 
@@ -923,7 +905,7 @@ export function GameContainer() {
 
       // Player auto-turret logic
       const { autoTurrets } = playerShipConfig.weapons;
-      if (hasUpgradedWeapons && autoTurrets && autoTurrets.count > 0 && timestamp - lastPlayerAutoShotTimestamp > AUTO_TURRET_FIRE_RATE_MS) {
+      if (hasUpgradedWeapons && autoTurrets && autoTurrets.count > 0 && timestamp - lastPlayerAutoShotTimestamp.current > AUTO_TURRET_FIRE_RATE_MS) {
         if (playerDataRef.current.energy >= AUTO_TURRET_ENERGY_COST * autoTurrets.count) {
             let autoTarget: EnemyState | null = null;
             let minDistance = ENEMY_AGGRO_RADIUS;
@@ -937,7 +919,7 @@ export function GameContainer() {
                 }
             }
             if (autoTarget) {
-                lastPlayerAutoShotTimestamp = timestamp;
+                lastPlayerAutoShotTimestamp.current = timestamp;
                 setPlayerData(d => ({ ...d, energy: d.energy - AUTO_TURRET_ENERGY_COST * autoTurrets.count }));
                 const shipRotRad = playerRotationRef.current * (Math.PI / 180);
                 const fireRotation = Math.atan2(autoTarget.y - playerPositionRef.current.y, autoTarget.x - playerPositionRef.current.x) * (180 / Math.PI);

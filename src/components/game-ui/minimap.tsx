@@ -1,7 +1,7 @@
 import Image from "next/image";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Rocket } from "lucide-react";
-import type { EnemyState, AsteroidState, StationState } from "@/components/game/game-container";
+import type { EnemyState, AsteroidState, StationState } from "@/lib/types";
 
 const MINIMAP_SIZE = 256; // in pixels
 const VIEW_RADIUS = 1000; // world units visible on minimap radius
