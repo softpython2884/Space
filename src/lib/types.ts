@@ -82,6 +82,7 @@ export type EnemyState = {
   isAlly?: boolean;
   role?: 'escort' | 'miner';
   targetObjectId?: number | null;
+  combatTargetId?: number | null;
   patrolCenter?: { x: number, y: number };
 };
 
