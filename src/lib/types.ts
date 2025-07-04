@@ -3,13 +3,12 @@
 export type ShipType = "Combat" | "Mining" | "Support" | "Galleon";
 export type ControlScheme = 'relative' | 'absolute' | 'hybrid';
 export type ShipMode = 'normal' | 'cruise' | 'stealth' | 'scan' | 'shield';
-export type ContextMenuTargetType = 'enemy' | 'asteroid' | 'station' | 'tactical_space';
-export type PlayerActionType = 'mining' | 'boarding' | 'pillaging' | 'open_station_menu' | 'tactical_move' | 'patrolling_order';
+export type ContextMenuTargetType = 'enemy' | 'asteroid' | 'station' | 'tactical_space' | 'ally';
+export type PlayerActionType = 'mining' | 'boarding' | 'pillaging' | 'open_station_menu' | 'tactical_move' | 'patrolling_order' | 'follow_target';
 
 export type ShipSize = 'S' | 'M' | 'L' | 'XL';
 export type ShipRole = 'Combat' | 'Commerce' | 'Mining' | 'Construction' | 'Support';
 
-// Player ship types defined for future use
 export type PlayerShipClass = 'Chasseur' | 'Intercepteur' | 'Frégate' | 'Destroyer' | 'Porteur' | 'Cargo' | 'Mineur';
 
 export interface Resources {
@@ -167,10 +166,10 @@ export interface BeamState {
   id: number;
   sourceId: number;
   targetId: number;
-  startTime: number;
   type: 'basic' | 'heavy';
   sourceOffsetX?: number;
   sourceOffsetY?: number;
+  isAlly?: boolean;
 }
 
 export type ProjectileState = {
@@ -194,4 +193,15 @@ export interface ChatMessage {
     sender: string;
     text: string;
     color?: string;
+}
+
+export type ZoneType = 'nebula' | 'asteroid_field' | 'empty' | 'vortex';
+export interface Zone {
+  id: string;
+  type: ZoneType;
+  x: number;
+  y: number;
+  radius: number;
+  density?: number;
+  color?: string;
 }

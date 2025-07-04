@@ -30,7 +30,7 @@ export function PlayerStatus({ data }: { data: PlayerData }) {
                 <Heart className="h-4 w-4 text-red-500" />
                 <span className="font-medium">Health</span>
               </div>
-              <span className="text-muted-foreground">{Math.round(data.health)} / {maxHealth}</span>
+              <span className="text-muted-foreground">{Math.round(data.health)} / {Math.round(maxHealth)}</span>
             </div>
             <Progress value={healthPercentage} className="h-2" />
         </div>
