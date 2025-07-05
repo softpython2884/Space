@@ -430,7 +430,6 @@ export function GameContainer() {
   
   const isPlayerActionInProgress = playerAction !== null;
   const allies = React.useMemo(() => enemies.filter(e => e.isAlly), [enemies]);
-  const radarRange = shipMode === 'scan' ? BASE_RADAR_RANGE * 1.5 : BASE_RADAR_RANGE;
 
   useEffect(() => {
     setIsTacticalView(zoom === MIN_ZOOM);
@@ -1980,7 +1979,9 @@ export function GameContainer() {
       const newExplosions: Effect[] = [];
 
       let processedEnemies = enemiesRef.current.map(enemy => {
-          if (enemy.despawnTimestamp && timestamp > enemy.despawnTimestamp) {
+          let updatedEnemy = { ...enemy };
+
+          if (updatedEnemy.despawnTimestamp && timestamp > updatedEnemy.despawnTimestamp) {
             const warpId = getUniqueId();
             setWarpEffects(prev => [...prev, { id: warpId, x: enemy.x, y: enemy.y }]);
             if (enemy.id === targetIdRef.current) setTargetId(null);
@@ -1989,31 +1990,9 @@ export function GameContainer() {
             }
             return null; // This ship will be filtered out
           }
-          let updatedEnemy = { ...enemy };
+
           const enemyShipInfo = SHIP_DATA[updatedEnemy.type];
-
-          // Check if it's an ally following the player and the player is cruising
-          if (updatedEnemy.isAlly && updatedEnemy.aiState === 'following') {
-            const targetToFollow = updatedEnemy.followTargetId === -1 
-                ? playerPositionRef.current
-                : enemiesRef.current.find(e => e.id === updatedEnemy.followTargetId);
-            
-            if (targetToFollow) {
-                const distanceToTarget = Math.hypot(targetToFollow.x - updatedEnemy.x, updatedEnemy.y - updatedEnemy.y);
-                const isTargetCruising = updatedEnemy.followTargetId === -1 
-                    ? cruiseStateRef.current === 'cruising'
-                    : enemiesRef.current.find(e => e.id === updatedEnemy.followTargetId)?.cruiseState === 'cruising';
-                const canCruise = timestamp >= (updatedEnemy.cruiseAvailableAt || 0) && updatedEnemy.energy >= CRUISE_ENERGY_COST;
-
-                if ((isTargetCruising || distanceToTarget > 400) && updatedEnemy.cruiseState === 'idle' && canCruise) {
-                    updatedEnemy.cruiseState = 'charging';
-                    updatedEnemy.energy -= CRUISE_ENERGY_COST;
-                } else if (!isTargetCruising && distanceToTarget < 300 && updatedEnemy.cruiseState !== 'idle') {
-                    updatedEnemy.cruiseState = 'idle';
-                }
-            }
-          }
-
+          
           // --- AI CRUISE STATE MACHINE ---
           if (updatedEnemy.cruiseState === 'charging') {
               if (!updatedEnemy.cruiseChargeStartTimestamp) updatedEnemy.cruiseChargeStartTimestamp = timestamp;
@@ -2541,7 +2520,7 @@ export function GameContainer() {
                 break;
             }
             case 'following': {
-                 // Check for nearby enemies to engage
+                // Check for nearby enemies to engage
                 const potentialTargets = [...enemiesRef.current.filter(e => !e.isAlly)];
                 if(!updatedEnemy.isAlly) potentialTargets.push({ ...playerDataRef.current, x: playerPositionRef.current.x, y: playerPositionRef.current.y, isAlly: true, id: -1 } as any);
 
@@ -2559,23 +2538,37 @@ export function GameContainer() {
 
                 if (closestTarget) break; // Switched to chasing, so skip follow logic
 
-                const targetToFollow = updatedEnemy.followTargetId === -1 
+                const targetToFollow = updatedEnemy.followTargetId === -1
                     ? playerPositionRef.current
                     : enemiesRef.current.find(e => e.id === updatedEnemy.followTargetId);
                 
                 if (targetToFollow) {
-                    const followDistance = 250;
+                    const desiredDistance = 200; // Increased to create more space
                     const distanceToTarget = Math.hypot(targetToFollow.x - updatedEnemy.x, targetToFollow.y - updatedEnemy.y);
 
-                    if (distanceToTarget > followDistance) {
+                    const isTargetCruising = (updatedEnemy.followTargetId === -1 && cruiseStateRef.current === 'cruising') ||
+                                             (updatedEnemy.followTargetId !== -1 && enemiesRef.current.find(e => e.id === updatedEnemy.followTargetId)?.cruiseState === 'cruising');
+                    const canCruise = timestamp >= (updatedEnemy.cruiseAvailableAt || 0) && updatedEnemy.energy >= CRUISE_ENERGY_COST;
+                    
+                    if ((isTargetCruising || distanceToTarget > 500) && updatedEnemy.cruiseState === 'idle' && canCruise) {
+                        updatedEnemy.cruiseState = 'charging';
+                        updatedEnemy.energy -= CRUISE_ENERGY_COST;
+                    }
+
+                    if (distanceToTarget > desiredDistance + 50) { // Move towards if too far
                         const angleToTarget = Math.atan2(targetToFollow.y - updatedEnemy.y, targetToFollow.x - updatedEnemy.x);
                         finalAccel.x += Math.cos(angleToTarget) * ACCELERATION * 0.8;
                         finalAccel.y += Math.sin(angleToTarget) * ACCELERATION * 0.8;
-                    } else if (distanceToTarget < followDistance * 0.8) {
-                        // Apply braking force if too close
+                    } else if (distanceToTarget < desiredDistance) { // Brake and move away if too close
+                        const speed = Math.hypot(updatedEnemy.vx, updatedEnemy.vy);
+                        if (speed > 0.1) {
+                           updatedEnemy.vx *= 0.90; // Stronger friction
+                           updatedEnemy.vy *= 0.90;
+                        }
+                        
                          const angleAway = Math.atan2(updatedEnemy.y - targetToFollow.y, updatedEnemy.x - targetToFollow.x);
-                         finalAccel.x += Math.cos(angleAway) * ACCELERATION * 0.5;
-                         finalAccel.y += Math.sin(angleAway) * ACCELERATION * 0.5;
+                         finalAccel.x += Math.cos(angleAway) * ACCELERATION * 0.8; // Increased push back
+                         finalAccel.y += Math.sin(angleAway) * ACCELERATION * 0.8;
                     }
 
                 } else {
@@ -3073,6 +3066,8 @@ export function GameContainer() {
     return () => cancelAnimationFrame(animationFrameId);
   }, [viewSize, isGameOver, controlScheme, isDocked, applyDamage, handleActionSelect, handleBuyAlly, handleBuyShip, handleBuyUpgrade, handleRepairHull, handleSellResource, resetGame, addChatMessage, handleBuildShipFromTactical, handleBuildOutpost, handleRespawn, zones, cheats, handleCallReinforcements, handleAllAttack, handleAllFollow, handleAllHold, callAiReinforcements, createNewShip]);
 
+  const radarRange = shipMode === 'scan' ? BASE_RADAR_RANGE * 1.5 : BASE_RADAR_RANGE;
+
   const isEntityVisible = useCallback((entity: { x: number; y: number }) => {
     // Player vision
     if (Math.hypot(entity.x - playerPosition.x, entity.y - playerPosition.y) < radarRange) {
@@ -3240,7 +3235,6 @@ export function GameContainer() {
         />
         {visibleEnemies.map(enemy => {
           const props = {
-            key: enemy.id,
             x: enemy.x,
             y: enemy.y,
             rotation: enemy.rotation,
@@ -3252,19 +3246,19 @@ export function GameContainer() {
           };
           switch (enemy.type) {
             case 'Chasseur':
-              return <EnemyShip {...props} />;
+              return <EnemyShip key={enemy.id} {...props} />;
             case 'Frégate':
-              return <FrigateShip {...props} />;
+              return <FrigateShip key={enemy.id} {...props} />;
             case 'Mineur':
-              return <StaffShip {...props} />;
+              return <StaffShip key={enemy.id} {...props} />;
             case 'Intercepteur':
-              return <InterceptorShip {...props} />;
+              return <InterceptorShip key={enemy.id} {...props} />;
             case 'Destroyer':
-              return <DestroyerShip {...props} />;
+              return <DestroyerShip key={enemy.id} {...props} />;
             case 'Porteur':
-              return <CarrierShip {...props} />;
+              return <CarrierShip key={enemy.id} {...props} />;
             case 'Cargo':
-              return <CargoShip {...props} />;
+              return <CargoShip key={enemy.id} {...props} />;
             default:
               return null;
           }
